@@ -1,6 +1,6 @@
 using TensorCrossInterpolation
 using Test
+using LinearAlgebra
 
-@testset "TensorCrossInterpolation.jl" begin
-    # Write your tests here.
-end
+include("test_IndexSet.jl")
+include("test_MatrixCI.jl")
