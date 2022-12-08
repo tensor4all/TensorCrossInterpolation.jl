@@ -34,7 +34,7 @@
     end
 
     @testset "Empty constructor" begin
-        ci = TensorCrossInterpolation.MatrixCrossInterpolation{Float64}(10, 25)
+        ci = TensorCrossInterpolation.MatrixCI{Float64}(10, 25)
 
         @test ci.row_indices == []
         @test ci.col_indices == []
@@ -70,7 +70,7 @@
         row_indices = [8, 2, 3]
         col_indices = [1, 5, 4]
 
-        ci = MatrixCrossInterpolation(
+        ci = MatrixCI(
             row_indices, col_indices,
             A[:, col_indices], A[row_indices, :]
         )
@@ -116,7 +116,7 @@
     @testset "Finding pivots, trivial case" begin
         A = fill(1.0, 5, 3)
 
-        ci = MatrixCrossInterpolation{Float64}(size(A)...)
+        ci = MatrixCI{Float64}(size(A)...)
 
         @test_throws DimensionMismatch add_pivot!(zeros(6, 6), ci)
         @test_throws BoundsError add_pivot!(A, ci, (6, 3))
@@ -155,13 +155,13 @@
 
     @testset "Finding pivots, rank-1 case" begin
         A = [1.0; 2.0; 3.0] * [2.0 4.0 8.0 16.0]
-        ci = MatrixCrossInterpolation{Float64}(3, 4)
+        ci = MatrixCI{Float64}(3, 4)
 
         @test local_error(A, ci) ≈ A
-        @test TensorCrossInterpolation.find_new_pivot(A, ci) == (3, 4)
+        @test TensorCrossInterpolation.find_new_pivot(A, ci) == ((3, 4), 48.0)
         add_pivot!(A, ci)
 
-        @test ci ≈ MatrixCrossInterpolation(A, (3, 4))
+        @test ci ≈ MatrixCI(A, (3, 4))
 
         @test ci.row_indices == [3]
         @test ci.col_indices == [4]

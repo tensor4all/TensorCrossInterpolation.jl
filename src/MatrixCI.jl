@@ -34,7 +34,7 @@ necessary to evaluate a cross interpolation. This data can be fed into various
 methods such as eval(c, i, j) to get interpolated values, and be improved by
 dynamically adding pivots.
 """
-mutable struct MatrixCrossInterpolation{T}
+mutable struct MatrixCI{T}
     "Same as `CrossData.Iset` in xfac code, or ``\\mathcal{I}`` in TCI paper."
     row_indices::Vector{Int}
     "Same as `CrossData.Jset` in xfac code, or ``\\mathcal{J}`` in TCI paper."
@@ -44,82 +44,82 @@ mutable struct MatrixCrossInterpolation{T}
     "Same as `CrossData.R` in xfac code, or ``A(\\mathcal{I}, \\mathbb{J})`` in TCI paper."
     pivot_rows::Matrix{T}
 
-    function MatrixCrossInterpolation{T}(
+    function MatrixCI{T}(
         n_rows::Int, n_cols::Int
     ) where {T<:Number}
         return new{T}([], [], zeros(n_rows, 0), zeros(0, n_cols))
     end
 
-    function MatrixCrossInterpolation(
+    function MatrixCI(
         row_indices::AbstractVector{Int}, col_indices::AbstractVector{Int},
         pivot_cols::AbstractMatrix{T}, pivot_rows::AbstractMatrix{T}
     ) where {T<:Number}
         return new{T}(row_indices, col_indices, pivot_cols, pivot_rows)
     end
-
-    function MatrixCrossInterpolation(
-        A::AbstractMatrix{T}, firstpivot
-    ) where {T<:Number}
-        return MatrixCrossInterpolation(
-            [firstpivot[1]], [firstpivot[2]],
-            A[:, [firstpivot[2]]], A[[firstpivot[1]], :]
-        )
-    end
 end
 
-function Iset(ci::MatrixCrossInterpolation{T}) where {T}
+function MatrixCI(
+    A::AbstractMatrix{T}, firstpivot
+) where {T<:Number}
+    return MatrixCI(
+        [firstpivot[1]], [firstpivot[2]],
+        A[:, [firstpivot[2]]], A[[firstpivot[1]], :]
+    )
+end
+
+function Iset(ci::MatrixCI{T}) where {T}
     return ci.row_indices
 end
 
-function Jset(ci::MatrixCrossInterpolation{T}) where {T}
+function Jset(ci::MatrixCI{T}) where {T}
     return ci.col_indices
 end
 
-function n_rows(ci::MatrixCrossInterpolation{T}) where {T}
+function n_rows(ci::MatrixCI{T}) where {T}
     return size(ci.pivot_cols, 1)
 end
 
-function n_cols(ci::MatrixCrossInterpolation{T}) where {T}
+function n_cols(ci::MatrixCI{T}) where {T}
     return size(ci.pivot_rows, 2)
 end
 
-function Base.size(ci::MatrixCrossInterpolation{T}) where {T}
+function Base.size(ci::MatrixCI{T}) where {T}
     return n_rows(ci), n_cols(ci)
 end
 
-function pivot_matrix(ci::MatrixCrossInterpolation{T}) where {T}
+function pivot_matrix(ci::MatrixCI{T}) where {T}
     return ci.pivot_cols[ci.row_indices, :]
 end
 
-function left_matrix(ci::MatrixCrossInterpolation{T}) where {T}
+function left_matrix(ci::MatrixCI{T}) where {T}
     return AtimesBinv(ci.pivot_cols, pivot_matrix(ci))
 end
 
-function right_matrix(ci::MatrixCrossInterpolation{T}) where {T}
+function right_matrix(ci::MatrixCI{T}) where {T}
     return AinvtimesB(pivot_matrix(ci), ci.pivot_rows)
 end
 
-function avail_rows(ci::MatrixCrossInterpolation{T}) where {T}
+function avail_rows(ci::MatrixCI{T}) where {T}
     return setdiff(1:n_rows(ci), ci.row_indices)
 end
 
-function avail_cols(ci::MatrixCrossInterpolation{T}) where {T}
+function avail_cols(ci::MatrixCI{T}) where {T}
     return setdiff(1:n_cols(ci), ci.col_indices)
 end
 
-function rank(ci::MatrixCrossInterpolation{T}) where {T}
+function rank(ci::MatrixCI{T}) where {T}
     return length(ci.row_indices)
 end
 
-function isempty(ci::MatrixCrossInterpolation{T}) where {T}
+function isempty(ci::MatrixCI{T}) where {T}
     return Base.isempty(ci.pivot_cols)
 end
 
-function first_pivot_value(ci::MatrixCrossInterpolation{T}) where {T}
+function first_pivot_value(ci::MatrixCI{T}) where {T}
     return isempty(ci) ? 1.0 : ci.pivot_cols[ci.row_indices[1], 1]
 end
 
-function eval(ci::MatrixCrossInterpolation{T}, i::Int, j::Int) where {T}
+function eval(ci::MatrixCI{T}, i::Int, j::Int) where {T}
     if isempty(ci)
         return T(0)
     else
@@ -136,7 +136,7 @@ function length_or_default(c, default)
 end
 
 function submatrix(
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     rows::Union{AbstractVector{Int},Colon,Int},
     cols::Union{AbstractVector{Int},Colon,Int}
 ) where {T}
@@ -151,46 +151,46 @@ function submatrix(
 end
 
 function row(
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     i::Int;
     cols::Union{AbstractVector{Int},Colon}=Colon()) where {T}
     return submatrix(ci, [i], cols)[:]
 end
 
 function col(
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     j::Int;
     rows::Union{AbstractVector{Int},Colon}=Colon()) where {T}
     return submatrix(ci, rows, [j])[:]
 end
 
 function Base.getindex(
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     rows::Union{AbstractVector{Int},Colon},
     cols::Union{AbstractVector{Int},Colon}) where {T}
     return submatrix(ci, rows, cols)
 end
 
 function Base.getindex(
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     i::Int,
     cols::Union{AbstractVector{Int},Colon}) where {T}
     return row(ci, i; cols=cols)
 end
 
-function Base.getindex(ci::MatrixCrossInterpolation{T},
+function Base.getindex(ci::MatrixCI{T},
     rows::Union{AbstractVector{Int},Colon},
     j::Int) where {T}
     return col(ci, j; rows=rows)
 end
 
 function Base.getindex(
-    ci::MatrixCrossInterpolation{T}, i::Int, j::Int) where {T}
+    ci::MatrixCI{T}, i::Int, j::Int) where {T}
     return eval(ci, i, j)
 end
 
 function Base.isapprox(
-    lhs::MatrixCrossInterpolation{T}, rhs::MatrixCrossInterpolation{T}
+    lhs::MatrixCI{T}, rhs::MatrixCI{T}
 ) where {T}
     return (lhs.col_indices == rhs.col_indices) &&
            (lhs.row_indices == rhs.row_indices) &&
@@ -198,7 +198,7 @@ function Base.isapprox(
            Base.isapprox(lhs.pivot_rows, rhs.pivot_rows)
 end
 
-function Base.Matrix(ci::MatrixCrossInterpolation{T}) where {T}
+function Base.Matrix(ci::MatrixCI{T}) where {T}
     return left_matrix(ci) * ci.pivot_rows
 end
 
@@ -215,7 +215,7 @@ end
 """
 function local_error(
     a::AbstractMatrix{T},
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     row_indices::Union{AbstractVector{Int},Colon,Int}=Colon(),
     col_indices::Union{AbstractVector{Int},Colon,Int}=Colon()
 ) where {T}
@@ -235,7 +235,7 @@ end
 """
 function find_new_pivot(
     a::AbstractMatrix{T},
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     row_indices::Union{Vector{Int},Colon}=avail_rows(ci),
     col_indices::Union{Vector{Int},Colon}=avail_cols(ci)
 ) where {T}
@@ -255,8 +255,9 @@ function find_new_pivot(
         ))
     end
 
-    ijraw = argmax(local_error(a, ci, row_indices, col_indices))
-    return row_indices[ijraw[1]], col_indices[ijraw[2]]
+    localerrors = local_error(a, ci, row_indices, col_indices)
+    ijraw = argmax(localerrors)
+    return (row_indices[ijraw[1]], col_indices[ijraw[2]]), localerrors[ijraw]
 end
 
 """
@@ -270,7 +271,7 @@ end
 """
 function add_pivot!(
     a::AbstractMatrix{T},
-    ci::MatrixCrossInterpolation{T},
+    ci::MatrixCI{T},
     pivot_indices::Union{CartesianIndex{2},Tuple{Int,Int},Pair{Int,Int}}
 ) where {T}
     i = pivot_indices[1]
@@ -312,9 +313,9 @@ end
 """
 function add_pivot!(
     a::AbstractMatrix{T},
-    ci::MatrixCrossInterpolation{T}
+    ci::MatrixCI{T}
 ) where {T}
-    return add_pivot!(a, ci, find_new_pivot(a, ci))
+    return add_pivot!(a, ci, find_new_pivot(a, ci)[1])
 end
 
 function cross_interpolate(
@@ -323,7 +324,7 @@ function cross_interpolate(
     maxiter=200,
     firstpivot=argmax(abs.(a))
 ) where {T}
-    ci = MatrixCrossInterpolation(a, firstpivot)
+    ci = MatrixCI(a, firstpivot)
     for iter in 1:maxiter
         pivoterror, newpivot = findmax(local_error(a, ci))
         if pivoterror < tolerance
@@ -331,4 +332,5 @@ function cross_interpolate(
         end
         add_pivot!(a, ci, newpivot)
     end
+    return ci
 end
