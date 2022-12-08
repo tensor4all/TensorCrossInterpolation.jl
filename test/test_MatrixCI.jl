@@ -194,22 +194,22 @@
     end
 
     @testset "Cross interpolate smooth functions" begin
-        grid = range(-1, 1, length=21)
+        grid = range(0, 1, length=21)
 
         gauss = exp.(-grid .^ 2 .- grid' .^ 2)
         cigauss = cross_interpolate(gauss)
         @test rank(cigauss) == 1
         @test n_rows(cigauss) == 21
         @test n_cols(cigauss) == 21
-        @test cigauss.row_indices == [11]
-        @test cigauss.col_indices == [11]
+        @test cigauss.row_indices == [1]
+        @test cigauss.col_indices == [1]
 
         lorentz = 1 ./ (1 .+ grid .^ 2 .+ grid' .^ 2)
         cilorentz = cross_interpolate(lorentz, tolerance=1e-6, maxiter=10)
         @test rank(cilorentz) == 5
         @test n_rows(cilorentz) == 21
         @test n_cols(cilorentz) == 21
-        @test Set(cilorentz.row_indices) == Set([11, 1, 5, 8, 3])
-        @test Set(cilorentz.col_indices) == Set([11, 1, 5, 8, 3])
+        @test Set(cilorentz.row_indices) == Set([21, 7, 12, 17, 1])
+        @test Set(cilorentz.col_indices) == Set([21, 7, 12, 17, 1])
     end
 end
