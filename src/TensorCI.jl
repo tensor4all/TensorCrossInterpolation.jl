@@ -262,8 +262,11 @@ function cross_interpolate(
 
     # Start at two, because the constructor already added a pivot everywhere.
     for iter in 2:maxiter
-        foward_sweep = sweepstrategy == forward ||
-                       (sweepstrategy != backward && isodd(iter))
+        foward_sweep = (
+            sweepstrategy == SweepStrategies.forward ||
+            (sweepstrategy != SweepStrategies.backward && isodd(iter))
+        )
+
         if foward_sweep
             addPivotAt!.(tci, 1:n-1, tolerance)
         else
