@@ -1,5 +1,7 @@
-using TensorCrossInterpolation
 using Documenter
+
+push!(LOAD_PATH, "../src/")
+using TensorCrossInterpolation
 
 DocMeta.setdocmeta!(TensorCrossInterpolation, :DocTestSetup, :(using TensorCrossInterpolation); recursive=true)
 
