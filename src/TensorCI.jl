@@ -213,6 +213,10 @@ function addPivotAt!(
 
     cross = buildCrossAt(tci, p)
 
+    if rank(cross) >= minimum(size(tci.Pi[p]))
+        return
+    end
+
     newpivot, newerror = find_new_pivot(tci.Pi[p], cross)
     tci.pivot_errors[p] = newerror
     if newerror < tolerance
@@ -269,13 +273,13 @@ function cross_interpolate(
         end
     end
 
-    return ranks, errors, tci
+    return tci, ranks, errors
 end
 
 function cross_interpolate(
     f::Function,
     localdims::Vector{Int},
-    firstpivot::MultiIndex=ones(Int, length(localdims)),
+    firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
     sweepstrategy::SweepStrategy=back_and_forth
