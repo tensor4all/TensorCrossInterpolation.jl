@@ -11,6 +11,8 @@ export MatrixCI, n_rows, n_cols, size,
     pivot_matrix, left_matrix, right_matrix, rank, Matrix,
     local_error, add_pivot!, cross_interpolate
 export TensorCI, tensortrain, evaluateTCI, cross_interpolate
+export MultiIndex, CachedFunction
+export SweepStrategies
 
 include("MatrixCI.jl")
 include("IndexSet.jl")

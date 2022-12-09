@@ -6,10 +6,12 @@
 const LocalIndex = Int
 const MultiIndex = Vector{LocalIndex}
 
+module SweepStrategies
 @enum SweepStrategy begin
     back_and_forth
     forward
     backward
+end
 end
 
 mutable struct TensorCI{ValueType}
@@ -121,7 +123,7 @@ function Base.broadcastable(tci::TensorCI{V}) where {V}
 end
 
 function rank(tci::TensorCI{V}) where {V}
-    return [size(t, 1) for t in tci.T]
+    return [size(t, 1) for t in tci.T[2:end]]
 end
 
 function lastSweepPivotError(tci::TensorCI{V}) where {V}
@@ -214,6 +216,7 @@ function addPivotAt!(
     cross = buildCrossAt(tci, p)
 
     if rank(cross) >= minimum(size(tci.Pi[p]))
+        tci.pivot_errors[p] = 0.0
         return
     end
 
@@ -250,14 +253,15 @@ function cross_interpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategy=back_and_forth
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
 ) where {ValueType}
     tci = TensorCI(f, localdims, firstpivot)
     n = length(tci)
     errors = []
     ranks = []
 
-    for iter in 1:maxiter
+    # Start at two, because the constructor already added a pivot everywhere.
+    for iter in 2:maxiter
         foward_sweep = sweepstrategy == forward ||
                        (sweepstrategy != backward && isodd(iter))
         if foward_sweep
@@ -282,7 +286,7 @@ function cross_interpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategy=back_and_forth
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
 )
     firstpivotval = f(firstpivot)
     cf = CachedFunction(f, Dict(firstpivot => firstpivotval))

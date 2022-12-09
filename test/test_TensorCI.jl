@@ -1,11 +1,12 @@
-import TensorCrossInterpolation: IndexSet, MultiIndex
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
+    addPivotAt!
 
 @testset "TensorCI" begin
     @testset "trivial MPS" begin
-        n = 3
+        n = 5
         f(v) = 1
 
-        cf = TensorCrossInterpolation.CachedFunction(
+        cf = CachedFunction(
             f,
             Dict(fill(1, n) => 1.0))
 
@@ -46,7 +47,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex
 
         # Because the MPS is trivial, no new pivot should be added.
         for i in 1:n-1
-            TensorCrossInterpolation.addPivotAt!(tci, i, 1e-8)
+            addPivotAt!(tci, i, 1e-8)
         end
 
         for i in 1:n
@@ -61,6 +62,61 @@ import TensorCrossInterpolation: IndexSet, MultiIndex
 
         for i in 1:n-1
             @test tci.Pi[i] == ones(2, 2)
+        end
+    end
+
+    @testset "Lorentz MPS" begin
+        n = 5
+        f(v) = 1 ./ (sum(v .^ 2) + 1)
+
+        tci = TensorCI(
+            CachedFunction{Vector{Int},Float64}(f),
+            fill(10, n),
+            ones(Int, n)
+        )
+
+        @test rank(tci) == ones(n - 1)
+
+        for p in 1:n-1
+            addPivotAt!(tci, p, 1e-8)
+        end
+        @test rank(tci) == fill(2, n - 1)
+
+        for iter in 3:8
+            for p in 1:n-1
+                addPivotAt!(tci, p, 1e-8)
+            end
+            @test rank(tci) == fill(iter, n - 1)
+        end
+
+        tci2, ranks, errors = cross_interpolate(
+            f,
+            fill(10, n),
+            ones(Int, n);
+            tolerance=1e-8,
+            maxiter=8,
+            sweepstrategy=SweepStrategies.forward
+        )
+
+        @test rank(tci) == rank(tci2)
+
+        tci3, ranks, errors = cross_interpolate(
+            f,
+            fill(3, n),
+            ones(Int, n);
+            tolerance=1e-12,
+            maxiter=200
+        )
+
+        @test tci3.pivot_errors <= fill(1e-12, n)
+        @test rank(tci3) <= fill(200, n - 1)
+
+        tt3 = tensortrain(tci3)
+
+        for v in Iterators.product([1:3 for p in 1:n]...)
+            value = evaluateTCI(tci3, [i for i in v])
+            @test value ≈ prod([tt3[p][:, v[p], :] for p in eachindex(v)])[1]
+            @test value ≈ f(v)
         end
     end
 end
