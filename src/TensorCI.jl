@@ -67,6 +67,10 @@ mutable struct TensorCI{ValueType}
     end
 end
 
+function Base.show(io::IO, tci::TensorCI{ValueType}) where {ValueType}
+    print(io, "$(typeof(tci)) with ranks $(rank(tci))")
+end
+
 function TensorCI(
     f::CachedFunction{MultiIndex,ValueType},
     localdim::Int,

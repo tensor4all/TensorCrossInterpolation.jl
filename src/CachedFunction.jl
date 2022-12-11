@@ -7,6 +7,10 @@ struct CachedFunction{ArgType,ValueType}
     d::Dict{ArgType,ValueType}
 end
 
+function Base.show(io::IO, f::CachedFunction{ArgType,ValueType}) where {ArgType,ValueType}
+    print(io, "$(typeof(f))")
+end
+
 function CachedFunction{ArgType,ValueType}(
     f::Function
 ) where {ArgType,ValueType}
