@@ -1,7 +1,7 @@
 @testset "IndexSet tests" begin
     is = TensorCrossInterpolation.IndexSet{Vector{Int}}()
-    @test is.to_int == Dict{Vector{Int64},Int64}()
-    @test is.from_int == []
+    @test is.toint == Dict{Vector{Int64},Int64}()
+    @test is.fromint == []
     @test length(is) == 0
     @test isempty(is)
     @test is == TensorCrossInterpolation.IndexSet{Vector{Int}}()
@@ -22,8 +22,8 @@
     for i in eachindex(L)
         push!(is, L[i])
         @test is[i] == L[i]
-        @test is.to_int[L[i]] == i
-        @test is.from_int[i] == L[i]
+        @test is.toint[L[i]] == i
+        @test is.fromint[i] == L[i]
     end
 
     @test length(is) == length(L)
