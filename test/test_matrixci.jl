@@ -36,12 +36,12 @@
     @testset "Empty constructor" begin
         ci = TensorCrossInterpolation.MatrixCI{Float64}(10, 25)
 
-        @test ci.row_indices == []
-        @test ci.col_indices == []
-        @test ci.pivot_cols == zeros(10, 0)
-        @test ci.pivot_rows == zeros(0, 25)
-        @test n_rows(ci) == 10
-        @test n_cols(ci) == 25
+        @test ci.rowindices == []
+        @test ci.colindices == []
+        @test ci.pivotcols == zeros(10, 0)
+        @test ci.pivotrows == zeros(0, 25)
+        @test nrows(ci) == 10
+        @test ncols(ci) == 25
         @test size(ci) == (10, 25)
         @test rank(ci) == 0
         @test ci[:, :] ≈ zeros(size(ci))
@@ -67,50 +67,50 @@
             0.0614368 0.0709293 0.343843 0.197515 0.45067
         ]
 
-        row_indices = [8, 2, 3]
-        col_indices = [1, 5, 4]
+        rowindices = [8, 2, 3]
+        colindices = [1, 5, 4]
 
         ci = MatrixCI(
-            row_indices, col_indices,
-            A[:, col_indices], A[row_indices, :]
+            rowindices, colindices,
+            A[:, colindices], A[rowindices, :]
         )
 
-        @test ci.row_indices == row_indices
-        @test ci.col_indices == col_indices
-        @test ci.pivot_cols == A[:, col_indices]
-        @test ci.pivot_rows == A[row_indices, :]
-        @test n_rows(ci) == 8
-        @test n_cols(ci) == 5
+        @test ci.rowindices == rowindices
+        @test ci.colindices == colindices
+        @test ci.pivotcols == A[:, colindices]
+        @test ci.pivotrows == A[rowindices, :]
+        @test nrows(ci) == 8
+        @test ncols(ci) == 5
         @test size(ci) == size(A)
         @test rank(ci) == 3
 
-        Apivot = A[row_indices, col_indices]
-        @test pivot_matrix(ci) == Apivot
-        @test left_matrix(ci) ≈ A[:, col_indices] * inv(Apivot)
-        @test right_matrix(ci) ≈ inv(Apivot) * A[row_indices, :]
+        Apivot = A[rowindices, colindices]
+        @test pivotmatrix(ci) == Apivot
+        @test leftmatrix(ci) ≈ A[:, colindices] * inv(Apivot)
+        @test rightmatrix(ci) ≈ inv(Apivot) * A[rowindices, :]
 
-        @test TensorCrossInterpolation.avail_rows(ci) == [1, 4, 5, 6, 7]
-        @test TensorCrossInterpolation.avail_cols(ci) == [2, 3]
+        @test TensorCrossInterpolation.availablerows(ci) == [1, 4, 5, 6, 7]
+        @test TensorCrossInterpolation.availablecols(ci) == [2, 3]
 
-        for i in row_indices, j in col_indices
-            @test TensorCrossInterpolation.eval(ci, i, j) ≈ A[i, j]
+        for i in rowindices, j in colindices
+            @test TensorCrossInterpolation.evaluate(ci, i, j) ≈ A[i, j]
             ci[i, j] ≈ A[i, j]
         end
 
-        for i in row_indices
-            @test TensorCrossInterpolation.row(ci, i)[col_indices] ≈ A[i, col_indices]
-            @test ci[i, col_indices] ≈ A[i, col_indices]
+        for i in rowindices
+            @test TensorCrossInterpolation.row(ci, i)[colindices] ≈ A[i, colindices]
+            @test ci[i, colindices] ≈ A[i, colindices]
         end
 
-        for j in col_indices
-            @test TensorCrossInterpolation.col(ci, j)[row_indices] ≈ A[row_indices, j]
-            @test ci[row_indices, j] ≈ A[row_indices, j]
+        for j in colindices
+            @test TensorCrossInterpolation.col(ci, j)[rowindices] ≈ A[rowindices, j]
+            @test ci[rowindices, j] ≈ A[rowindices, j]
         end
 
-        @test TensorCrossInterpolation.submatrix(ci, row_indices, col_indices) ≈
-              A[row_indices, col_indices]
-        @test ci[row_indices, col_indices] ≈ A[row_indices, col_indices]
-        @test Matrix(ci)[row_indices, col_indices] ≈ A[row_indices, col_indices]
+        @test TensorCrossInterpolation.submatrix(ci, rowindices, colindices) ≈
+              A[rowindices, colindices]
+        @test ci[rowindices, colindices] ≈ A[rowindices, colindices]
+        @test Matrix(ci)[rowindices, colindices] ≈ A[rowindices, colindices]
     end
 
     @testset "Finding pivots, trivial case" begin
@@ -118,37 +118,37 @@
 
         ci = MatrixCI{Float64}(size(A)...)
 
-        @test_throws DimensionMismatch add_pivot!(zeros(6, 6), ci)
-        @test_throws BoundsError add_pivot!(A, ci, (6, 3))
-        @test_throws BoundsError add_pivot!(A, ci, (5, 4))
-        @test_throws BoundsError add_pivot!(A, ci, (-1, 2))
-        @test_throws BoundsError add_pivot!(A, ci, (3, -1))
-        @test_throws ArgumentError TensorCrossInterpolation.find_new_pivot(A, ci, zeros(Int64, 0), [2, 3])
-        @test_throws ArgumentError TensorCrossInterpolation.find_new_pivot(A, ci, [1, 2], zeros(Int64, 0))
+        @test_throws DimensionMismatch addpivot!(zeros(6, 6), ci)
+        @test_throws BoundsError addpivot!(A, ci, (6, 3))
+        @test_throws BoundsError addpivot!(A, ci, (5, 4))
+        @test_throws BoundsError addpivot!(A, ci, (-1, 2))
+        @test_throws BoundsError addpivot!(A, ci, (3, -1))
+        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(A, ci, zeros(Int64, 0), [2, 3])
+        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(A, ci, [1, 2], zeros(Int64, 0))
 
         @test rank(ci) == 0
 
-        add_pivot!(A, ci, (2, 3))
-        @test ci.row_indices == [2]
-        @test ci.col_indices == [3]
-        @test ci.pivot_rows == fill(1.0, 1, 3)
-        @test ci.pivot_cols == fill(1.0, 5, 1)
+        addpivot!(A, ci, (2, 3))
+        @test ci.rowindices == [2]
+        @test ci.colindices == [3]
+        @test ci.pivotrows == fill(1.0, 1, 3)
+        @test ci.pivotcols == fill(1.0, 5, 1)
         @test rank(ci) == 1
         for i in 1:5, j in 1:3
-            @test TensorCrossInterpolation.eval(ci, i, j) ≈ 1.0
+            @test evaluate(ci, i, j) ≈ 1.0
             @test ci[i, j] ≈ 1.0
         end
-        add_pivot!(A, ci)
-        @test ci.pivot_rows == fill(1.0, 2, 3)
-        @test ci.pivot_cols == fill(1.0, 5, 2)
-        @test length(ci.row_indices) == 2
-        @test length(ci.col_indices) == 2
+        addpivot!(A, ci)
+        @test ci.pivotrows == fill(1.0, 2, 3)
+        @test ci.pivotcols == fill(1.0, 5, 2)
+        @test length(ci.rowindices) == 2
+        @test length(ci.colindices) == 2
         @test rank(ci) == 2
-        add_pivot!(A, ci, (TensorCrossInterpolation.avail_rows(ci)[1], TensorCrossInterpolation.avail_cols(ci)[1]))
-        @test ci.pivot_rows == fill(1.0, 3, 3)
-        @test ci.pivot_cols == fill(1.0, 5, 3)
-        @test length(ci.row_indices) == 3
-        @test length(ci.col_indices) == 3
+        addpivot!(A, ci, (TensorCrossInterpolation.availablerows(ci)[1], TensorCrossInterpolation.availablecols(ci)[1]))
+        @test ci.pivotrows == fill(1.0, 3, 3)
+        @test ci.pivotcols == fill(1.0, 5, 3)
+        @test length(ci.rowindices) == 3
+        @test length(ci.colindices) == 3
         @test rank(ci) == 3
     end
 
@@ -157,59 +157,59 @@
         A = [1.0; 2.0; 3.0] * [2.0 4.0 8.0 16.0]
         ci = MatrixCI{Float64}(3, 4)
 
-        @test local_error(A, ci) ≈ A
-        @test TensorCrossInterpolation.find_new_pivot(A, ci) == ((3, 4), 48.0)
-        add_pivot!(A, ci)
+        @test localerror(A, ci) ≈ A
+        @test TensorCrossInterpolation.findnewpivot(A, ci) == ((3, 4), 48.0)
+        addpivot!(A, ci)
 
         @test ci ≈ MatrixCI(A, (3, 4))
 
-        @test ci.row_indices == [3]
-        @test ci.col_indices == [4]
-        @test ci.pivot_rows ≈ 3.0 .* [2.0 4.0 8.0 16.0]
-        @test ci.pivot_cols ≈ 16.0 .* [1.0; 2.0; 3.0]
+        @test ci.rowindices == [3]
+        @test ci.colindices == [4]
+        @test ci.pivotrows ≈ 3.0 .* [2.0 4.0 8.0 16.0]
+        @test ci.pivotcols ≈ 16.0 .* [1.0; 2.0; 3.0]
         @test ci[:, :] ≈ A
-        @test TensorCrossInterpolation.avail_rows(ci) == [1, 2]
-        @test TensorCrossInterpolation.avail_cols(ci) == [1, 2, 3]
+        @test TensorCrossInterpolation.availablerows(ci) == [1, 2]
+        @test TensorCrossInterpolation.availablecols(ci) == [1, 2, 3]
 
-        add_pivot!(A, ci)
-        @test length(ci.row_indices) == 2
-        @test length(ci.col_indices) == 2
-        @test unique(ci.row_indices) == ci.row_indices
-        @test unique(ci.col_indices) == ci.col_indices
-        @test size(ci.pivot_rows) == (2, 4)
-        @test size(ci.pivot_cols) == (3, 2)
+        addpivot!(A, ci)
+        @test length(ci.rowindices) == 2
+        @test length(ci.colindices) == 2
+        @test unique(ci.rowindices) == ci.rowindices
+        @test unique(ci.colindices) == ci.colindices
+        @test size(ci.pivotrows) == (2, 4)
+        @test size(ci.pivotcols) == (3, 2)
         @test ci[:, :] ≈ A
 
-        add_pivot!(A, ci)
+        addpivot!(A, ci)
         # From here, the ci will become singular; checking values is useless.
-        @test length(ci.row_indices) == 3
-        @test length(ci.col_indices) == 3
-        @test unique(ci.row_indices) == ci.row_indices
-        @test unique(ci.col_indices) == ci.col_indices
-        @test size(ci.pivot_rows) == (3, 4)
-        @test size(ci.pivot_cols) == (3, 3)
+        @test length(ci.rowindices) == 3
+        @test length(ci.colindices) == 3
+        @test unique(ci.rowindices) == ci.rowindices
+        @test unique(ci.colindices) == ci.colindices
+        @test size(ci.pivotrows) == (3, 4)
+        @test size(ci.pivotcols) == (3, 3)
 
-        @test_throws ArgumentError TensorCrossInterpolation.find_new_pivot(A, ci)
-        @test_throws ArgumentError add_pivot!(A, ci)
+        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(A, ci)
+        @test_throws ArgumentError addpivot!(A, ci)
     end
 
     @testset "Cross interpolate smooth functions" begin
         grid = range(0, 1, length=21)
 
         gauss = exp.(-grid .^ 2 .- grid' .^ 2)
-        cigauss = cross_interpolate(gauss)
+        cigauss = crossinterpolate(gauss)
         @test rank(cigauss) == 1
-        @test n_rows(cigauss) == 21
-        @test n_cols(cigauss) == 21
-        @test cigauss.row_indices == [1]
-        @test cigauss.col_indices == [1]
+        @test nrows(cigauss) == 21
+        @test ncols(cigauss) == 21
+        @test cigauss.rowindices == [1]
+        @test cigauss.colindices == [1]
 
         lorentz = 1 ./ (1 .+ grid .^ 2 .+ grid' .^ 2)
-        cilorentz = cross_interpolate(lorentz, tolerance=1e-6, maxiter=10)
+        cilorentz = crossinterpolate(lorentz, tolerance=1e-6, maxiter=10)
         @test rank(cilorentz) == 5
-        @test n_rows(cilorentz) == 21
-        @test n_cols(cilorentz) == 21
-        @test Set(cilorentz.row_indices) == Set([21, 7, 12, 17, 1])
-        @test Set(cilorentz.col_indices) == Set([21, 7, 12, 17, 1])
+        @test nrows(cilorentz) == 21
+        @test ncols(cilorentz) == 21
+        @test Set(cilorentz.rowindices) == Set([21, 7, 12, 17, 1])
+        @test Set(cilorentz.colindices) == Set([21, 7, 12, 17, 1])
     end
 end

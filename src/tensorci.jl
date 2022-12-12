@@ -19,10 +19,10 @@ mutable struct TensorCI{ValueType}
 
     Iset::Vector{IndexSet{MultiIndex}}
     Jset::Vector{IndexSet{MultiIndex}}
-    localSet::Vector{Vector{Int}}
+    localset::Vector{Vector{Int}}
 
     """
-    The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to 
+    The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to
     adjacent ``P^{-1}`` matrices, and the second leg is the local index. The
     outermost vector iterates over the site index ``p``, such that
     `T[p]` is the ``p``-th site tensor.
@@ -39,13 +39,13 @@ mutable struct TensorCI{ValueType}
     obtain ``T`` and ``P``. Have to be kept in memory for efficient updates.
     """
     Pi::Vector{Matrix{ValueType}}
-    Pi_Iset::Vector{IndexSet{MultiIndex}}
-    Pi_Jset::Vector{IndexSet{MultiIndex}}
+    PiIset::Vector{IndexSet{MultiIndex}}
+    PiJset::Vector{IndexSet{MultiIndex}}
 
     """
     Pivot errors at each site index ``p``.
     """
-    pivot_errors::Vector{Float64}
+    pivoterrors::Vector{Float64}
 
     function TensorCI(
         f::CachedFunction{MultiIndex,ValueType},
@@ -95,23 +95,23 @@ function TensorCI(
     end
 
     n = length(localdims)
-    tci.localSet = [collect(1:localdim) for localdim in localdims]
+    tci.localset = [collect(1:localdim) for localdim in localdims]
     tci.Iset = [IndexSet([firstpivot[1:p-1]]) for p in 1:n]
     tci.Jset = [IndexSet([firstpivot[p+1:end]]) for p in 1:n]
-    tci.Pi_Iset = [getPiIsetAt(tci, p) for p in 1:n]
-    tci.Pi_Jset = [getPiJsetAt(tci, p) for p in 1:n]
-    tci.Pi = [buildPiAt(tci, p) for p in 1:n-1]
+    tci.PiIset = [getPiIset(tci, p) for p in 1:n]
+    tci.PiJset = [getPiJset(tci, p) for p in 1:n]
+    tci.Pi = [getPi(tci, p) for p in 1:n-1]
 
     for p in 1:n-1
         cross = MatrixCI(
             tci.Pi[p],
-            (pos(tci.Pi_Iset[p], tci.Iset[p+1][1]),
-                pos(tci.Pi_Jset[p+1], tci.Jset[p][1])))
+            (pos(tci.PiIset[p], tci.Iset[p+1][1]),
+                pos(tci.PiJset[p+1], tci.Jset[p][1])))
         if p == 1
-            updateT!(tci, 1, cross.pivot_cols)
+            updateT!(tci, 1, cross.pivotcols)
         end
-        updateT!(tci, p + 1, cross.pivot_rows)
-        tci.P[p] = pivot_matrix(cross)
+        updateT!(tci, p + 1, cross.pivotrows)
+        tci.P[p] = pivotmatrix(cross)
     end
     tci.P[end] = ones(ValueType, 1, 1)
 
@@ -119,7 +119,7 @@ function TensorCI(
 end
 
 function Base.length(tci::TensorCI{V}) where {V}
-    return length(tci.localSet)
+    return length(tci.localset)
 end
 
 function Base.broadcastable(tci::TensorCI{V}) where {V}
@@ -130,8 +130,8 @@ function rank(tci::TensorCI{V}) where {V}
     return [size(t, 1) for t in tci.T[2:end]]
 end
 
-function lastSweepPivotError(tci::TensorCI{V}) where {V}
-    return maximum(tci.pivot_errors)
+function lastsweeppivoterror(tci::TensorCI{V}) where {V}
+    return maximum(tci.pivoterrors)
 end
 
 function TtimesPinv(tci::TensorCI{V}, p::Int) where {V}
@@ -152,7 +152,7 @@ function tensortrain(tci::TensorCI{V}) where {V}
     return TtimesPinv.(tci, 1:length(tci))
 end
 
-function evaluateTCI(
+function evaluate(
     tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}
 ) where {V}
     return prod(
@@ -160,15 +160,15 @@ function evaluateTCI(
         for p in 1:length(tci))[1, 1]
 end
 
-function getPiIsetAt(tci::TensorCI{V}, p::Int) where {V}
+function getPiIset(tci::TensorCI{V}, p::Int) where {V}
     return IndexSet([
-        [is..., ups] for is in tci.Iset[p].from_int, ups in tci.localSet[p]
+        [is..., ups] for is in tci.Iset[p].fromint, ups in tci.localset[p]
     ][:])
 end
 
-function getPiJsetAt(tci::TensorCI{V}, p::Int) where {V}
+function getPiJset(tci::TensorCI{V}, p::Int) where {V}
     return IndexSet([
-        [up1s, js...] for up1s in tci.localSet[p], js in tci.Jset[p].from_int
+        [up1s, js...] for up1s in tci.localset[p], js in tci.Jset[p].fromint
     ][:])
 end
 
@@ -178,16 +178,16 @@ end
 Build a 4-legged ``\\Pi`` tensor at site `p`. Indices are in the order
 ``i, u_p, u_{p + 1}, j``, as in the TCI paper.
 """
-function buildPiAt(tci::TensorCI{V}, p::Int) where {V}
-    iset = tci.Pi_Iset[p]
-    jset = tci.Pi_Jset[p+1]
-    return [tci.f([is..., js...]) for is in iset.from_int, js in jset.from_int]
+function getPi(tci::TensorCI{V}, p::Int) where {V}
+    iset = tci.PiIset[p]
+    jset = tci.PiJset[p+1]
+    return [tci.f([is..., js...]) for is in iset.fromint, js in jset.fromint]
 end
 
-function buildCrossAt(tci::TensorCI{V}, p::Int) where {V}
+function getcross(tci::TensorCI{V}, p::Int) where {V}
     # Translate to order at site p from adjacent sites.
-    iset = pos(tci.Pi_Iset[p], tci.Iset[p+1].from_int)
-    jset = pos(tci.Pi_Jset[p+1], tci.Jset[p].from_int)
+    iset = pos(tci.PiIset[p], tci.Iset[p+1].fromint)
+    jset = pos(tci.PiJset[p+1], tci.Jset[p].fromint)
     shape = size(tci.T[p])
     Tp = reshape(tci.T[p], (shape[1] * shape[2], shape[3]))
     shape1 = size(tci.T[p+1])
@@ -203,11 +203,11 @@ function updateT!(
     tci.T[p] = reshape(
         new_T,
         length(tci.Iset[p]),
-        length(tci.localSet[p]),
+        length(tci.localset[p]),
         length(tci.Jset[p]))
 end
 
-function addPivotAt!(
+function addpivot!(
     tci::TensorCI{V},
     p::Int,
     tolerance::T=T()
@@ -217,41 +217,41 @@ function addPivotAt!(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))
     end
 
-    cross = buildCrossAt(tci, p)
+    cross = getcross(tci, p)
 
     if rank(cross) >= minimum(size(tci.Pi[p]))
-        tci.pivot_errors[p] = 0.0
+        tci.pivoterrors[p] = 0.0
         return
     end
 
-    newpivot, newerror = find_new_pivot(tci.Pi[p], cross)
-    tci.pivot_errors[p] = newerror
+    newpivot, newerror = findnewpivot(tci.Pi[p], cross)
+    tci.pivoterrors[p] = newerror
     if newerror < tolerance
         return
     end
 
     # Update T, P, T that formed Pi
-    add_pivot!(tci.Pi[p], cross, newpivot)
-    push!(tci.Iset[p+1], tci.Pi_Iset[p][newpivot[1]])
-    push!(tci.Jset[p], tci.Pi_Jset[p+1][newpivot[2]])
-    updateT!(tci, p, cross.pivot_cols)
-    updateT!(tci, p + 1, cross.pivot_rows)
-    tci.P[p] = pivot_matrix(cross)
+    addpivot!(tci.Pi[p], cross, newpivot)
+    push!(tci.Iset[p+1], tci.PiIset[p][newpivot[1]])
+    push!(tci.Jset[p], tci.PiJset[p+1][newpivot[2]])
+    updateT!(tci, p, cross.pivotcols)
+    updateT!(tci, p + 1, cross.pivotrows)
+    tci.P[p] = pivotmatrix(cross)
 
     # Update adjacent Pi matrices, since shared Ts have changed
     # TODO: re-use existing data in old Pi matrices
     if p < length(tci) - 1
-        tci.Pi_Iset[p+1] = getPiIsetAt(tci, p + 1)
-        tci.Pi[p+1] = buildPiAt(tci, p + 1)
+        tci.PiIset[p+1] = getPiIset(tci, p + 1)
+        tci.Pi[p+1] = getPi(tci, p + 1)
     end
 
     if p > 1
-        tci.Pi_Jset[p] = getPiJsetAt(tci, p)
-        tci.Pi[p-1] = buildPiAt(tci, p - 1)
+        tci.PiJset[p] = getPiJset(tci, p)
+        tci.Pi[p-1] = getPi(tci, p - 1)
     end
 end
 
-function cross_interpolate(
+function crossinterpolate(
     f::CachedFunction{MultiIndex,ValueType},
     localdims::Vector{Int},
     firstpivot::MultiIndex=ones(Int, length(localdims));
@@ -272,12 +272,12 @@ function cross_interpolate(
         )
 
         if foward_sweep
-            addPivotAt!.(tci, 1:n-1, tolerance)
+            addpivot!.(tci, 1:n-1, tolerance)
         else
-            addPivotAt!.(tci, (n-1):-1:1, tolerance)
+            addpivot!.(tci, (n-1):-1:1, tolerance)
         end
 
-        push!(errors, lastSweepPivotError(tci))
+        push!(errors, lastsweeppivoterror(tci))
         push!(ranks, maximum(rank(tci)))
         if last(errors) < tolerance
             break
@@ -287,7 +287,7 @@ function cross_interpolate(
     return tci, ranks, errors
 end
 
-function cross_interpolate(
+function crossinterpolate(
     f::Function,
     localdims::Vector{Int},
     firstpivot::MultiIndex=ones(Int, length(localdims));
@@ -297,7 +297,7 @@ function cross_interpolate(
 )
     firstpivotval = f(firstpivot)
     cf = CachedFunction(f, Dict(firstpivot => firstpivotval))
-    return cross_interpolate(
+    return crossinterpolate(
         cf,
         localdims,
         firstpivot,
