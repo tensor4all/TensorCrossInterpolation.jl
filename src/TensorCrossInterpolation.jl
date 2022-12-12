@@ -14,9 +14,9 @@ export TensorCI, tensortrain, evaluateTCI, cross_interpolate
 export MultiIndex, CachedFunction
 export SweepStrategies
 
-include("MatrixCI.jl")
-include("IndexSet.jl")
-include("CachedFunction.jl")
-include("TensorCI.jl")
+include("matrixci.jl")
+include("indexset.jl")
+include("cachedfunction.jl")
+include("tensorci.jl")
 
 end
