@@ -261,8 +261,8 @@ function cross_interpolate(
 ) where {ValueType}
     tci = TensorCI(f, localdims, firstpivot)
     n = length(tci)
-    errors = []
-    ranks = []
+    errors = Float64[]
+    ranks = Int[]
 
     # Start at two, because the constructor already added a pivot everywhere.
     for iter in 2:maxiter
