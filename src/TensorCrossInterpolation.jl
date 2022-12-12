@@ -10,7 +10,7 @@ import Base: ==
 export MatrixCI, nrows, ncols, size
 export pivotmatrix, leftmatrix, rightmatrix, rank, Matrix
 export localerror, addpivot!, crossinterpolate
-export TensorCI, tensortrain, evaluate, crossinterpolate
+export TensorCI, linkdims, tensortrain, evaluate, crossinterpolate
 export MultiIndex, CachedFunction
 export SweepStrategies
 

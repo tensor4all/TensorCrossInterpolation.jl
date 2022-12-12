@@ -1,8 +1,7 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
-import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
-    addPivotAt!
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction
 
 @testset "TensorCI" begin
     @testset "trivial MPS" begin
@@ -80,18 +79,21 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
             ones(Int, n)
         )
 
-        @test rank(tci) == ones(n - 1)
+        @test linkdims(tci) == ones(n - 1)
+        @test rank(tci) == 1
 
         for p in 1:n-1
             addpivot!(tci, p, 1e-8)
         end
-        @test rank(tci) == fill(2, n - 1)
+        @test linkdims(tci) == fill(2, n - 1)
+        @test rank(tci) == 2
 
         for iter in 3:8
             for p in 1:n-1
                 addpivot!(tci, p, 1e-8)
             end
-            @test rank(tci) == fill(iter, n - 1)
+            @test linkdims(tci) == fill(iter, n - 1)
+            @test rank(tci) == iter
         end
 
         tci2, ranks, errors = crossinterpolate(
@@ -103,6 +105,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
             sweepstrategy=SweepStrategies.forward
         )
 
+        @test linkdims(tci) == linkdims(tci2)
         @test rank(tci) == rank(tci2)
 
         tci3, ranks, errors = crossinterpolate(
@@ -114,7 +117,8 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
         )
 
         @test all(tci3.pivoterrors .<= 1e-12)
-        @test all(rank(tci3) .<= 200)
+        @test all(linkdims(tci3) .<= 200)
+        @test rank(tci3) <= 200
 
         tt3 = tensortrain(tci3)
 

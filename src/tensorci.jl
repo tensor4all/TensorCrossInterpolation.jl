@@ -126,8 +126,12 @@ function Base.broadcastable(tci::TensorCI{V}) where {V}
     return Ref(tci)
 end
 
-function rank(tci::TensorCI{V}) where {V}
+function linkdims(tci::TensorCI{V}) where {V}
     return [size(t, 1) for t in tci.T[2:end]]
+end
+
+function rank(tci::TensorCI{V}) where {V}
+    return maximum(linkdims(tci))
 end
 
 function lastsweeppivoterror(tci::TensorCI{V}) where {V}
