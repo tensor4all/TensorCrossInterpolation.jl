@@ -45,7 +45,7 @@ mutable struct TensorCI{ValueType}
     """
     Pivot errors at each site index ``p``.
     """
-    pivot_errors::Vector{ValueType}
+    pivot_errors::Vector{Float64}
 
     function TensorCI(
         f::CachedFunction{MultiIndex,ValueType},
@@ -210,8 +210,8 @@ end
 function addPivotAt!(
     tci::TensorCI{V},
     p::Int,
-    tolerance::V=V()
-) where {V}
+    tolerance::T=T()
+) where {V, T<:Real}
     if (p < 1) || (p > length(tci) - 1)
         throw(BoundsError(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))

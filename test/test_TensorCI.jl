@@ -1,3 +1,6 @@
+using TensorCrossInterpolation
+using Test
+using LinearAlgebra
 import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
     addPivotAt!
 
@@ -65,12 +68,14 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
         end
     end
 
-    @testset "Lorentz MPS" begin
+    @testset "Lorentz MPS" for coeff in [1.0, 1.0im]
         n = 5
-        f(v) = 1 ./ (sum(v .^ 2) + 1)
+        f(v) = coeff ./ (sum(v .^ 2) + 1)
+
+        ValueType = typeof(coeff)
 
         tci = TensorCI(
-            CachedFunction{Vector{Int},Float64}(f),
+            CachedFunction{Vector{Int},ValueType}(f),
             fill(10, n),
             ones(Int, n)
         )
@@ -108,8 +113,8 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction,
             maxiter=200
         )
 
-        @test tci3.pivot_errors <= fill(1e-12, n)
-        @test rank(tci3) <= fill(200, n - 1)
+        @test all(tci3.pivot_errors .<= 1e-12)
+        @test all(rank(tci3) .<= 200)
 
         tt3 = tensortrain(tci3)
 
