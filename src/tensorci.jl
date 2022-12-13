@@ -211,11 +211,43 @@ function updateT!(
         length(tci.Jset[p]))
 end
 
+function updatePirows!(tci::TensorCI{V}, p::Int) where {V}
+    newIset = getPiIset(tci, p)
+    diffIset = setdiff(newIset.fromint, tci.PiIset[p].fromint)
+    newPi = Matrix{V}(undef, length(newIset), size(tci.Pi[p], 2))
+    for (oldi, imulti) in enumerate(tci.PiIset[p].fromint)
+        newi = pos(newIset, imulti)
+        newPi[newi, :] = tci.Pi[p][oldi, :]
+    end
+    for imulti in diffIset
+        newi = pos(newIset, imulti)
+        newPi[newi, :] = [tci.f([imulti..., js...]) for js in tci.PiJset[p+1].fromint]
+    end
+    tci.Pi[p] = newPi
+    tci.PiIset[p] = newIset
+end
+
+function updatePicols!(tci::TensorCI{V}, p::Int) where {V}
+    newJset = getPiJset(tci, p + 1)
+    diffJset = setdiff(newJset.fromint, tci.PiJset[p+1].fromint)
+    newPi = Matrix{V}(undef, size(tci.Pi[p], 1), length(newJset))
+    for (oldj, jmulti) in enumerate(tci.PiJset[p+1].fromint)
+        newj = pos(newJset, jmulti)
+        newPi[:, newj] = tci.Pi[p][:, oldj]
+    end
+    for jmulti in diffJset
+        newj = pos(newJset, jmulti)
+        newPi[:, newj] = [tci.f([is..., jmulti...]) for is in tci.PiIset[p].fromint]
+    end
+    tci.Pi[p] = newPi
+    tci.PiJset[p+1] = newJset
+end
+
 function addpivot!(
     tci::TensorCI{V},
     p::Int,
     tolerance::T=T()
-) where {V, T<:Real}
+) where {V,T<:Real}
     if (p < 1) || (p > length(tci) - 1)
         throw(BoundsError(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))
@@ -243,15 +275,12 @@ function addpivot!(
     tci.P[p] = pivotmatrix(cross)
 
     # Update adjacent Pi matrices, since shared Ts have changed
-    # TODO: re-use existing data in old Pi matrices
     if p < length(tci) - 1
-        tci.PiIset[p+1] = getPiIset(tci, p + 1)
-        tci.Pi[p+1] = getPi(tci, p + 1)
+        updatePirows!(tci, p + 1)
     end
 
     if p > 1
-        tci.PiJset[p] = getPiJset(tci, p)
-        tci.Pi[p-1] = getPi(tci, p - 1)
+        updatePicols!(tci, p - 1)
     end
 end
 
