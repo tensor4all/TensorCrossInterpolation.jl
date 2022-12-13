@@ -7,16 +7,16 @@ import LinearAlgebra: rank
 # To define equality of IndexSet
 import Base: ==
 
-export MatrixCI, n_rows, n_cols, size,
-    pivot_matrix, left_matrix, right_matrix, rank, Matrix,
-    local_error, add_pivot!, cross_interpolate
-export TensorCI, tensortrain, evaluateTCI, cross_interpolate
+export MatrixCI, nrows, ncols, size
+export pivotmatrix, leftmatrix, rightmatrix, rank, Matrix
+export localerror, addpivot!, crossinterpolate
+export TensorCI, linkdims, tensortrain, evaluate, crossinterpolate
 export MultiIndex, CachedFunction
 export SweepStrategies
 
-include("MatrixCI.jl")
-include("IndexSet.jl")
-include("CachedFunction.jl")
-include("TensorCI.jl")
+include("matrixci.jl")
+include("indexset.jl")
+include("cachedfunction.jl")
+include("tensorci.jl")
 
 end
