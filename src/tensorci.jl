@@ -6,6 +6,12 @@
 const LocalIndex = Int
 const MultiIndex = Vector{LocalIndex}
 
+"""
+    module SweepStrategies
+
+Wraps the enum SweepStrategy, such that sweep strategies are available as
+`SweepStrategies.forward`, etc.
+"""
 module SweepStrategies
 @enum SweepStrategy begin
     back_and_forth
@@ -14,6 +20,12 @@ module SweepStrategies
 end
 end
 
+"""
+    mutable struct TensorCI{ValueType}
+
+An object that represents a tensor cross interpolation. Users may want to create these using
+`crossinterpolate(...)` rather than calling a constructor directly.
+"""
 mutable struct TensorCI{ValueType}
     f::CachedFunction{MultiIndex,ValueType}
 
@@ -126,10 +138,21 @@ function Base.broadcastable(tci::TensorCI{V}) where {V}
     return Ref(tci)
 end
 
+"""
+    function linkdims(tci::TensorCI{V}) where {V}
+
+Bond dimensions along the links between ``T`` and ``P`` matrices in the TCI.
+"""
 function linkdims(tci::TensorCI{V}) where {V}
     return [size(t, 1) for t in tci.T[2:end]]
 end
 
+"""
+    function rank(tci::TensorCI{V}) where {V}
+
+Maximum link dimension, which is approximately the rank of the tensor being cross
+interpolated.
+"""
 function rank(tci::TensorCI{V}) where {V}
     return maximum(linkdims(tci))
 end
@@ -152,13 +175,24 @@ function PinvtimesT(tci::TensorCI{V}, p::Int) where {V}
     return reshape(PinvT, shape)
 end
 
+"""
+    function tensortrain(tci::TensorCI{V}) where {V}
+
+Convert the TCI object into a tensor train, i.e. an MPS. Returns an Array of 3-leg tensors,
+where the first and last leg connect to neighboring tensors and the second leg is the local
+site index.
+"""
 function tensortrain(tci::TensorCI{V}) where {V}
     return TtimesPinv.(tci, 1:length(tci))
 end
 
-function evaluate(
-    tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}
-) where {V}
+"""
+    function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
+
+Evaluate the TCI at a specific set of indices. This method is inefficient; to evaluate
+many points, first convert the TCI object into a tensor train using `tensortrain(tci)`.
+"""
+function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
     return prod(
         AtimesBinv(tci.T[p][:, indexset[p], :], tci.P[p])
         for p in 1:length(tci))[1, 1]
@@ -243,11 +277,12 @@ function updatePicols!(tci::TensorCI{V}, p::Int) where {V}
     tci.PiJset[p+1] = newJset
 end
 
-function addpivot!(
-    tci::TensorCI{V},
-    p::Int,
-    tolerance::T=T()
-) where {V,T<:Real}
+"""
+    function addpivot!(tci::TensorCI{V}, p::Int, tolerance::T=T()) where {V,T<:Real}
+
+Add a pivot to the TCI at site `p`. Do not add a pivot if the error is below tolerance.
+"""
+function addpivot!(tci::TensorCI{V}, p::Int, tolerance::T=T()) where {V,T<:Real}
     if (p < 1) || (p > length(tci) - 1)
         throw(BoundsError(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))
@@ -284,6 +319,27 @@ function addpivot!(
     end
 end
 
+"""
+    function crossinterpolate(
+        f::CachedFunction{MultiIndex,ValueType},
+        localdims::Vector{Int},
+        firstpivot::MultiIndex=ones(Int, length(localdims));
+        tolerance::Float64=1e-8,
+        maxiter::Int=200,
+        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
+    ) where {ValueType}
+
+Cross interpolate a function `f`, which can be called with a single argument `u`, where `u`
+is an array of the same length as `localdims` and `firstpivot` with each component `u[p]`
+between 1 and `localdims[p]`.
+
+Arguments:
+- `f::CachedFunction{MultiIndex,ValueType}` is the function to be interpolated, as `CachedFunction` object.
+- `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
+- `tolerance::Float64` is a float specifying the tolerance for the interpolation.
+- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction.
+- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization.
+"""
 function crossinterpolate(
     f::CachedFunction{MultiIndex,ValueType},
     localdims::Vector{Int},
@@ -320,6 +376,27 @@ function crossinterpolate(
     return tci, ranks, errors
 end
 
+"""
+    function crossinterpolate(
+        f::Function,
+        localdims::Vector{Int},
+        firstpivot::MultiIndex=ones(Int, length(localdims));
+        tolerance::Float64=1e-8,
+        maxiter::Int=200,
+        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
+    ) where {ValueType}
+
+Cross interpolate a function `f`, which can be called with a single argument `u`, where `u`
+is an array of the same length as `localdims` and `firstpivot` with each component `u[p]`
+between 1 and `localdims[p]`.
+
+Arguments:
+- `f::Function` is the function to be interpolated.
+- `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
+- `tolerance::Float64` is a float specifying the tolerance for the interpolation.
+- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting TCI construction.
+- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization.
+"""
 function crossinterpolate(
     f::Function,
     localdims::Vector{Int},

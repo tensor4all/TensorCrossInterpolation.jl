@@ -209,9 +209,8 @@ end
         row_indices::Union{AbstractVector{Int},Colon,Int}=Colon(),
         col_indices::Union{AbstractVector{Int},Colon,Int}=Colon())
 
-    Returns all local errors of the cross interpolation ci with respect to
-    matrix a. To find local errors on a submatrix, specify row_indices or
-    col_indices.
+Returns all local errors of the cross interpolation ci with respect to matrix a. To find
+local errors on a submatrix, specify row_indices or col_indices.
 """
 function localerror(
     a::AbstractMatrix{T},
@@ -229,9 +228,9 @@ end
         row_indices::Union{Vector{Int},Colon},
         col_indices::Union{Vector{Int},Colon})
 
-    Finds the pivot that maximizes the local error across all components of
-    `a` and `ci` within the subset given by `rowindices` and `colindices`. By
-    default, all avalable rows of `ci` will be considered.
+Finds the pivot that maximizes the local error across all components of `a` and `ci` within
+the subset given by `rowindices` and `colindices`. By default, all avalable rows of `ci`
+will be considered.
 """
 function findnewpivot(
     a::AbstractMatrix{T},
@@ -245,13 +244,11 @@ function findnewpivot(
             already full rank."))
     elseif (length(rowindices) == 0)
         throw(ArgumentError(
-            "Cannot find a new pivot in an empty set of rows
-            (row_indices = $rowindices)"
+            "Cannot find a new pivot in an empty set of rows (row_indices = $rowindices)"
         ))
     elseif (length(colindices) == 0)
         throw(ArgumentError(
-            "Cannot find a new pivot in an empty set of cols
-            (col_indices = $rowindices)"
+            "Cannot find a new pivot in an empty set of cols (col_indices = $rowindices)"
         ))
     end
 
@@ -266,8 +263,7 @@ end
         ci::MatrixCrossInterpolation{T},
         pivotindices::AbstractArray{T, 2})
 
-    Add a new pivot given by `pivotindices` to the cross interpolation `ci` of
-    the matrix `a`.
+Add a new pivot given by `pivotindices` to the cross interpolation `ci` of the matrix `a`.
 """
 function addpivot!(
     a::AbstractMatrix{T},
@@ -279,20 +275,18 @@ function addpivot!(
 
     if size(a) != size(ci)
         throw(DimensionMismatch(
-            "This matrix doesn't match the MatrixCrossInterpolation object.
-            Their sizes mismatch: $(size(a)) != $(size(ci))."))
+            "This matrix doesn't match the MatrixCrossInterpolation object. Their sizes
+            mismatch: $(size(a)) != $(size(ci))."))
     elseif (i < 0) || (i > nrows(ci)) || (j < 0) || (j > ncols(ci))
         throw(BoundsError(
-            "Cannot add a pivot at indices ($i, $j): These indices are out of
-            bounds for a $(nrows(ci)) * $(ncols(ci)) matrix."))
+            "Cannot add a pivot at indices ($i, $j): These indices are out of bounds for a
+            $(nrows(ci)) * $(ncols(ci)) matrix."))
     elseif i in ci.rowindices
         throw(ArgumentError(
-            "Cannot add a pivot at indices ($i, $j) because row $i already has a
-            pivot."))
+            "Cannot add a pivot at indices ($i, $j) because row $i already has a pivot."))
     elseif j in ci.colindices
         throw(ArgumentError(
-            "Cannot add a pivot at indices ($i, $j) because col $j already has a
-            pivot."))
+            "Cannot add a pivot at indices ($i, $j) because col $j already has a pivot."))
     end
 
     row = transpose(a[i, :])
@@ -308,8 +302,7 @@ end
         a::AbstractMatrix{T},
         ci::MatrixCrossInterpolation{T})
 
-    Add a new pivot that maximizes the error to the cross interpolation `ci` of
-    the matrix `a`.
+Add a new pivot that maximizes the error to the cross interpolation `ci` of the matrix `a`.
 """
 function addpivot!(
     a::AbstractMatrix{T},
@@ -318,6 +311,18 @@ function addpivot!(
     return addpivot!(a, ci, findnewpivot(a, ci)[1])
 end
 
+"""
+    function crossinterpolate(
+        a::AbstractMatrix{T};
+        tolerance=1e-6,
+        maxiter=200,
+        firstpivot=argmax(abs.(a))
+    ) where {T}
+
+Cross interpolate a ``m\\times n`` matrix ``a``, i.e. find a set of indices ``I`` and ``J``,
+such that
+``a(1\\ldots m, 1\\ldots n) \\approx a(1\\ldots m, I) (a(I, J))^{-1} a(J, 1\\ldots m)``.
+"""
 function crossinterpolate(
     a::AbstractMatrix{T};
     tolerance=1e-6,
