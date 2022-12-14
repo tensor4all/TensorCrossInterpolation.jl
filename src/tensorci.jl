@@ -336,9 +336,11 @@ between 1 and `localdims[p]`.
 Arguments:
 - `f::CachedFunction{MultiIndex,ValueType}` is the function to be interpolated, as `CachedFunction` object.
 - `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
-- `tolerance::Float64` is a float specifying the tolerance for the interpolation.
-- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction.
-- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization.
+- `tolerance::Float64` is a float specifying the tolerance for the interpolation. Default: `1e-8`.
+- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
+- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `pivottolerance::Float64` specifies the tolerance below which no new pivot will be added to each tensor. Default: `1e-12`.
+- `errornormalization::Float64` is the value by which the error will be normalized. Set this to `1.0` to get a pure absolute error; set this to `f(firstpivot)` to get the same behaviour as in the C++ library *xfac*. Default: `f(firstpivot)`.
 """
 function crossinterpolate(
     f::CachedFunction{MultiIndex,ValueType},
@@ -346,12 +348,15 @@ function crossinterpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
+    pivottolerance::Float64=1e-12,
+    errornormalization=nothing
 ) where {ValueType}
     tci = TensorCI(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
+    N::Float64 = isnothing(errornormalization) ? f(firstpivot) : 1.0
 
     # Start at two, because the constructor already added a pivot everywhere.
     for iter in 2:maxiter
@@ -361,12 +366,12 @@ function crossinterpolate(
         )
 
         if foward_sweep
-            addpivot!.(tci, 1:n-1, tolerance)
+            addpivot!.(tci, 1:n-1, pivottolerance)
         else
-            addpivot!.(tci, (n-1):-1:1, tolerance)
+            addpivot!.(tci, (n-1):-1:1, pivottolerance)
         end
 
-        push!(errors, lastsweeppivoterror(tci))
+        push!(errors, lastsweeppivoterror(tci) / N)
         push!(ranks, maximum(rank(tci)))
         if last(errors) < tolerance
             break
@@ -393,9 +398,11 @@ between 1 and `localdims[p]`.
 Arguments:
 - `f::Function` is the function to be interpolated.
 - `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
-- `tolerance::Float64` is a float specifying the tolerance for the interpolation.
-- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting TCI construction.
-- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization.
+- `tolerance::Float64` is a float specifying the tolerance for the interpolation. Default: `1e-8`.
+- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
+- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `pivottolerance::Float64` specifies the tolerance below which no new pivot will be added to each tensor. Default: `1e-12`.
+- `errornormalization::Float64` is the value by which the error will be normalized. Set this to `1.0` to get a pure absolute error; set this to `f(firstpivot)` to get the same behaviour as in the C++ library *xfac*. Default: `f(firstpivot)`.
 """
 function crossinterpolate(
     f::Function,
@@ -403,16 +410,24 @@ function crossinterpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
+    pivottolerance::Float64=1e-12,
+    errornormalization=nothing
 )
+    # This is necessary to find the return type of f.
     firstpivotval = f(firstpivot)
     cf = CachedFunction(f, Dict(firstpivot => firstpivotval))
+
+    N::Float64 = isnothing(errornormalization) ? abs(firstpivotval) : errornormalization
+
     return crossinterpolate(
         cf,
         localdims,
         firstpivot,
         tolerance=tolerance,
         maxiter=maxiter,
-        sweepstrategy=sweepstrategy
+        sweepstrategy=sweepstrategy,
+        pivottolerance=pivottolerance,
+        errornormalization=N
     )
 end
