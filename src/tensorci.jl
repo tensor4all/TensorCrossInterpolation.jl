@@ -431,3 +431,37 @@ function crossinterpolate(
         errornormalization=N
     )
 end
+
+"""
+Optimize firstpivot by a simple deterministic algorithm
+"""
+function optfirstpivot(
+    f,
+    localdims::Vector{Int},
+    firstpivot::MultiIndex=ones(Int, length(localdims));
+    maxsweep=1000
+)
+    n = length(localdims)
+    valf = abs(f(firstpivot))
+    pivot = copy(firstpivot)
+
+    for _ in 1:maxsweep
+        valf_prev = valf
+        for i in 1:n
+            for d in 1:localdims[i]
+                bak = pivot[i]
+                pivot[i] = d
+                if abs(f(pivot)) > valf
+                    valf = abs(f(pivot))
+                else
+                    pivot[i] = bak
+                end
+            end
+        end
+        if valf_prev == valf
+            break
+        end
+    end
+
+    return pivot
+end

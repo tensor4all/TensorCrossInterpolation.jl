@@ -1,7 +1,7 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
-import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, optfirstpivot
 
 @testset "TensorCI" begin
     @testset "trivial MPS" begin
@@ -127,5 +127,17 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction
             @test value ≈ prod([tt3[p][:, v[p], :] for p in eachindex(v)])[1]
             @test value ≈ f(v)
         end
+    end
+
+    @testset "optfirstpivot" begin
+        f(v) = 2^2 * (v[3]-1) + 2^1 * (v[2]-1) + 2^0 * (v[1]-1)
+        localdims = [2, 2, 2]
+        firstpivot = [1, 1, 1]
+        firstpivotval = f(firstpivot)
+        cf = CachedFunction(f, Dict(firstpivot => firstpivotval))
+
+        pivot = optfirstpivot(cf, localdims, firstpivot)
+
+        @test pivot == [2, 2, 2]
     end
 end
