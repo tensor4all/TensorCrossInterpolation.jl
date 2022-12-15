@@ -350,13 +350,13 @@ function crossinterpolate(
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
     pivottolerance::Float64=1e-12,
-    errornormalization=nothing
+    errornormalization::Union{Nothing,Float64}=nothing
 ) where {ValueType}
     tci = TensorCI(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
-    N::Float64 = isnothing(errornormalization) ? f(firstpivot) : 1.0
+    N::Float64 = isnothing(errornormalization) ? abs(f(firstpivot)) : abs(errornormalization)
 
     # Start at two, because the constructor already added a pivot everywhere.
     for iter in 2:maxiter
@@ -412,13 +412,13 @@ function crossinterpolate(
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
     pivottolerance::Float64=1e-12,
-    errornormalization=nothing
+    errornormalization::Union{Nothing,Float64}=nothing
 )
     # This is necessary to find the return type of f.
     firstpivotval = f(firstpivot)
     cf = CachedFunction(f, Dict(firstpivot => firstpivotval))
 
-    N::Float64 = isnothing(errornormalization) ? abs(firstpivotval) : errornormalization
+    N::Float64 = isnothing(errornormalization) ? abs(firstpivotval) : abs(errornormalization)
 
     return crossinterpolate(
         cf,
