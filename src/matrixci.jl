@@ -111,7 +111,7 @@ function rank(ci::MatrixCI{T}) where {T}
     return length(ci.rowindices)
 end
 
-function isempty(ci::MatrixCI{T}) where {T}
+function Base.isempty(ci::MatrixCI{T}) where {T}
     return Base.isempty(ci.pivotcols)
 end
 

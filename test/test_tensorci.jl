@@ -1,7 +1,7 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
-import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, optfirstpivot
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims
 
 @testset "TensorCI" begin
     @testset "trivial MPS" begin
