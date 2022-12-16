@@ -5,13 +5,10 @@ using LinearAlgebra
 # To add a method for rank(tci)
 import LinearAlgebra: rank
 # To define equality of IndexSet
-import Base: ==
+import Base: ==, isempty
 
-export MatrixCI, nrows, ncols, size
-export pivotmatrix, leftmatrix, rightmatrix, rank, Matrix
-export localerror, addpivot!, crossinterpolate
-export TensorCI, linkdims, tensortrain, evaluate, crossinterpolate
-export MultiIndex, CachedFunction
+export crossinterpolate
+export optfirstpivot, tensortrain
 export SweepStrategies
 
 include("matrixci.jl")
