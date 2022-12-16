@@ -1,3 +1,5 @@
+import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
+
 @testset "MatrixCI" begin
     @testset "Matrix util" begin
         A = [
@@ -34,7 +36,7 @@
     end
 
     @testset "Empty constructor" begin
-        ci = TensorCrossInterpolation.MatrixCI{Float64}(10, 25)
+        ci = MatrixCI{Float64}(10, 25)
 
         @test ci.rowindices == []
         @test ci.colindices == []
@@ -85,9 +87,9 @@
         @test rank(ci) == 3
 
         Apivot = A[rowindices, colindices]
-        @test pivotmatrix(ci) == Apivot
-        @test leftmatrix(ci) ≈ A[:, colindices] * inv(Apivot)
-        @test rightmatrix(ci) ≈ inv(Apivot) * A[rowindices, :]
+        @test TensorCrossInterpolation.pivotmatrix(ci) == Apivot
+        @test TensorCrossInterpolation.leftmatrix(ci) ≈ A[:, colindices] * inv(Apivot)
+        @test TensorCrossInterpolation.rightmatrix(ci) ≈ inv(Apivot) * A[rowindices, :]
 
         @test TensorCrossInterpolation.availablerows(ci) == [1, 4, 5, 6, 7]
         @test TensorCrossInterpolation.availablecols(ci) == [2, 3]
@@ -157,7 +159,7 @@
         A = [1.0; 2.0; 3.0] * [2.0 4.0 8.0 16.0]
         ci = MatrixCI{Float64}(3, 4)
 
-        @test localerror(A, ci) ≈ A
+        @test TensorCrossInterpolation.localerror(A, ci) ≈ A
         @test TensorCrossInterpolation.findnewpivot(A, ci) == ((3, 4), 48.0)
         addpivot!(A, ci)
 
