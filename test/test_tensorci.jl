@@ -67,7 +67,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         end
     end
 
-    @testset "Lorentz MPS" for coeff in [1.0, 1.0im]
+    @testset "Lorentz MPS" for coeff in [1.0, 1.0im], cache in [true, false]
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
 
@@ -102,7 +102,8 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             ones(Int, n);
             tolerance=1e-8,
             maxiter=8,
-            sweepstrategy=SweepStrategies.forward
+            sweepstrategy=SweepStrategies.forward,
+            cache=cache
         )
 
         @test linkdims(tci) == linkdims(tci2)

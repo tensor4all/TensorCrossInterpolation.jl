@@ -350,7 +350,8 @@ function crossinterpolate(
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
     pivottolerance::Float64=1e-12,
-    errornormalization::Union{Nothing,Float64}=nothing
+    errornormalization::Union{Nothing,Float64}=nothing,
+    verbosity::Int=0
 ) where {ValueType}
     tci = TensorCI(f, localdims, firstpivot)
     n = length(tci)
@@ -373,6 +374,9 @@ function crossinterpolate(
 
         push!(errors, lastsweeppivoterror(tci) / N)
         push!(ranks, maximum(rank(tci)))
+        if verbosity > 0 && mod(iter, 10) == 0
+            println("rank= $(last(ranks)) , error= $(last(errors))")
+        end
         if last(errors) < tolerance
             break
         end
@@ -403,6 +407,7 @@ Arguments:
 - `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
 - `pivottolerance::Float64` specifies the tolerance below which no new pivot will be added to each tensor. Default: `1e-12`.
 - `errornormalization::Float64` is the value by which the error will be normalized. Set this to `1.0` to get a pure absolute error; set this to `f(firstpivot)` to get the same behaviour as in the C++ library *xfac*. Default: `f(firstpivot)`.
+- `cache::Bool` specifies if the computed values of the function are cached.
 """
 function crossinterpolate(
     f::Function,
@@ -412,11 +417,13 @@ function crossinterpolate(
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
     pivottolerance::Float64=1e-12,
-    errornormalization::Union{Nothing,Float64}=nothing
+    errornormalization::Union{Nothing,Float64}=nothing,
+    verbosity::Int=0,
+    cache::Bool=true
 )
     # This is necessary to find the return type of f.
     firstpivotval = f(firstpivot)
-    cf = CachedFunction(f, Dict(firstpivot => firstpivotval))
+    cf = cache ? CachedFunction(f, Dict(firstpivot => firstpivotval)) : f
 
     N::Float64 = isnothing(errornormalization) ? abs(firstpivotval) : abs(errornormalization)
 
@@ -428,7 +435,8 @@ function crossinterpolate(
         maxiter=maxiter,
         sweepstrategy=sweepstrategy,
         pivottolerance=pivottolerance,
-        errornormalization=N
+        errornormalization=N,
+        verbosity=verbosity
     )
 end
 
