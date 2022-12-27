@@ -1,20 +1,14 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
-import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims, addpivot!, evaluate
 
 @testset "TensorCI" begin
     @testset "trivial MPS" begin
         n = 5
         f(v) = 1
 
-        cf = CachedFunction(
-            f,
-            Dict(fill(1, n) => 1.0))
-
-        tci = TensorCI(cf, fill(2, n))
-
-        @test tci.f.f == f
+        tci = TensorCI{Int}(fill(2, n))
 
         for i in 1:n
             @test isempty(tci.Iset[i])
@@ -31,7 +25,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test tci.pivoterrors[i] == Inf
         end
 
-        tci = TensorCI(cf, fill(2, n), fill(1, n))
+        tci = TensorCI{Int}(f, fill(2, n), fill(1, n))
 
         for i in 1:n
             @test tci.Iset[i].fromint == [fill(1, i - 1)]
@@ -49,7 +43,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
 
         # Because the MPS is trivial, no new pivot should be added.
         for i in 1:n-1
-            addpivot!(tci, i, 1e-8)
+            addpivot!(tci, i, f, 1e-8)
         end
 
         for i in 1:n
@@ -67,14 +61,14 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         end
     end
 
-    @testset "Lorentz MPS" for coeff in [1.0, 1.0im], cache in [true, false]
+    @testset "Lorentz MPS" for coeff in [1.0, 1.0im]
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
 
         ValueType = typeof(coeff)
 
-        tci = TensorCI(
-            CachedFunction{Vector{Int},ValueType}(f),
+        tci = TensorCI{ValueType}(
+            f,
             fill(10, n),
             ones(Int, n)
         )
@@ -83,33 +77,34 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         @test rank(tci) == 1
 
         for p in 1:n-1
-            addpivot!(tci, p, 1e-8)
+            addpivot!(tci, p, f, 1e-8)
         end
         @test linkdims(tci) == fill(2, n - 1)
         @test rank(tci) == 2
 
         for iter in 3:8
             for p in 1:n-1
-                addpivot!(tci, p, 1e-8)
+                addpivot!(tci, p, f, 1e-8)
             end
             @test linkdims(tci) == fill(iter, n - 1)
             @test rank(tci) == iter
         end
 
         tci2, ranks, errors = crossinterpolate(
+            ValueType,
             f,
             fill(10, n),
             ones(Int, n);
             tolerance=1e-8,
             maxiter=8,
-            sweepstrategy=SweepStrategies.forward,
-            cache=cache
+            sweepstrategy=SweepStrategies.forward
         )
 
         @test linkdims(tci) == linkdims(tci2)
         @test rank(tci) == rank(tci2)
 
         tci3, ranks, errors = crossinterpolate(
+            ValueType,
             f,
             fill(3, n),
             ones(Int, n);
@@ -134,10 +129,8 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         f(v) = 2^2 * (v[3]-1) + 2^1 * (v[2]-1) + 2^0 * (v[1]-1)
         localdims = [2, 2, 2]
         firstpivot = [1, 1, 1]
-        firstpivotval = f(firstpivot)
-        cf = CachedFunction(f, Dict(firstpivot => firstpivotval))
 
-        pivot = optfirstpivot(cf, localdims, firstpivot)
+        pivot = optfirstpivot(f, localdims, firstpivot)
 
         @test pivot == [2, 2, 2]
     end

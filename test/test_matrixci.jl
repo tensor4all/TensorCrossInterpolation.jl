@@ -1,3 +1,8 @@
+using Test
+
+using TensorCrossInterpolation
+using LinearAlgebra
+
 import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
 
 @testset "MatrixCI" begin

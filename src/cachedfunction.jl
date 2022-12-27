@@ -2,25 +2,26 @@
 Represents a function that maps ArgType -> ValueType and automatically caches
 function values.
 """
-struct CachedFunction{ArgType,ValueType}
+struct CachedFunction{ValueType}
     f::Function
-    d::Dict{ArgType,ValueType}
+    d::Dict{UInt,ValueType}
 end
 
-function Base.show(io::IO, f::CachedFunction{ArgType,ValueType}) where {ArgType,ValueType}
-    print(io, "$(typeof(f))")
+function Base.show(io::IO, f::CachedFunction{ValueType}) where {ValueType}
+    print(io, "$(typeof(f)) with $(length(f)) entries")
 end
 
-function CachedFunction{ArgType,ValueType}(
+function CachedFunction{ValueType}(
     f::Function
-) where {ArgType,ValueType}
-    return CachedFunction(f, Dict{ArgType,ValueType}())
+) where {ValueType}
+    return CachedFunction(f, Dict{UInt,ValueType}())
 end
 
-function (cf::CachedFunction{ArgType,ValueType})(
+function (cf::CachedFunction{ValueType})(
     x::ArgType
 ) where {ArgType,ValueType}
-    return get!(cf.d, x) do
+    hx = hash(x)
+    return get!(cf.d, hx) do
         cf.f(x)
     end
 end

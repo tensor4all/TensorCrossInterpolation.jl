@@ -27,8 +27,6 @@ An object that represents a tensor cross interpolation. Users may want to create
 `crossinterpolate(...)` rather than calling a constructor directly.
 """
 mutable struct TensorCI{ValueType}
-    f::CachedFunction{MultiIndex,ValueType}
-
     Iset::Vector{IndexSet{MultiIndex}}
     Jset::Vector{IndexSet{MultiIndex}}
     localset::Vector{Vector{Int}}
@@ -59,13 +57,11 @@ mutable struct TensorCI{ValueType}
     """
     pivoterrors::Vector{Float64}
 
-    function TensorCI(
-        f::CachedFunction{MultiIndex,ValueType},
+    function TensorCI{ValueType}(
         localdims::Vector{Int}
     ) where {ValueType}
         n = length(localdims)
         new{ValueType}(
-            f,
             [IndexSet{MultiIndex}() for _ in 1:n],
             [IndexSet{MultiIndex}() for _ in 1:n],
             [collect(1:d) for d in localdims],
@@ -83,20 +79,20 @@ function Base.show(io::IO, tci::TensorCI{ValueType}) where {ValueType}
     print(io, "$(typeof(tci)) with ranks $(rank(tci))")
 end
 
-function TensorCI(
-    f::CachedFunction{MultiIndex,ValueType},
+function TensorCI{ValueType}(
     localdim::Int,
     length::Int
 ) where {ValueType}
-    return TensorCI(f, fill(localdim, length))
+    return TensorCI{ValueType}(fill(localdim, length))
 end
 
-function TensorCI(
-    f::CachedFunction{MultiIndex,ValueType},
+function TensorCI{ValueType}(
+    func::F,
     localdims::Vector{Int},
     firstpivot::Vector{Int}
-) where {ValueType}
-    tci = TensorCI(f, localdims)
+) where {F,ValueType}
+    tci = TensorCI{ValueType}(localdims)
+    f = x -> convert(ValueType, func(x)) # Avoid type instability
 
     firstpivotval = f(firstpivot)
     if firstpivotval == 0
@@ -112,7 +108,7 @@ function TensorCI(
     tci.Jset = [IndexSet([firstpivot[p+1:end]]) for p in 1:n]
     tci.PiIset = [getPiIset(tci, p) for p in 1:n]
     tci.PiJset = [getPiJset(tci, p) for p in 1:n]
-    tci.Pi = [getPi(tci, p) for p in 1:n-1]
+    tci.Pi = [getPi(tci, p, f) for p in 1:n-1]
 
     for p in 1:n-1
         cross = MatrixCI(
@@ -216,10 +212,10 @@ end
 Build a 4-legged ``\\Pi`` tensor at site `p`. Indices are in the order
 ``i, u_p, u_{p + 1}, j``, as in the TCI paper.
 """
-function getPi(tci::TensorCI{V}, p::Int) where {V}
+function getPi(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     iset = tci.PiIset[p]
     jset = tci.PiJset[p+1]
-    return [tci.f([is..., js...]) for is in iset.fromint, js in jset.fromint]
+    return [f([is..., js...]) for is in iset.fromint, js in jset.fromint]
 end
 
 function getcross(tci::TensorCI{V}, p::Int) where {V}
@@ -245,7 +241,7 @@ function updateT!(
         length(tci.Jset[p]))
 end
 
-function updatePirows!(tci::TensorCI{V}, p::Int) where {V}
+function updatePirows!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     newIset = getPiIset(tci, p)
     diffIset = setdiff(newIset.fromint, tci.PiIset[p].fromint)
     newPi = Matrix{V}(undef, length(newIset), size(tci.Pi[p], 2))
@@ -255,13 +251,13 @@ function updatePirows!(tci::TensorCI{V}, p::Int) where {V}
     end
     for imulti in diffIset
         newi = pos(newIset, imulti)
-        newPi[newi, :] = [tci.f([imulti..., js...]) for js in tci.PiJset[p+1].fromint]
+        newPi[newi, :] = [f([imulti..., js...]) for js in tci.PiJset[p+1].fromint]
     end
     tci.Pi[p] = newPi
     tci.PiIset[p] = newIset
 end
 
-function updatePicols!(tci::TensorCI{V}, p::Int) where {V}
+function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     newJset = getPiJset(tci, p + 1)
     diffJset = setdiff(newJset.fromint, tci.PiJset[p+1].fromint)
     newPi = Matrix{V}(undef, size(tci.Pi[p], 1), length(newJset))
@@ -271,7 +267,7 @@ function updatePicols!(tci::TensorCI{V}, p::Int) where {V}
     end
     for jmulti in diffJset
         newj = pos(newJset, jmulti)
-        newPi[:, newj] = [tci.f([is..., jmulti...]) for is in tci.PiIset[p].fromint]
+        newPi[:, newj] = [f([is..., jmulti...]) for is in tci.PiIset[p].fromint]
     end
     tci.Pi[p] = newPi
     tci.PiJset[p+1] = newJset
@@ -282,7 +278,7 @@ end
 
 Add a pivot to the TCI at site `p`. Do not add a pivot if the error is below tolerance.
 """
-function addpivot!(tci::TensorCI{V}, p::Int, tolerance::T=T()) where {V,T<:Real}
+function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::T=T()) where {V,T<:Real,F}
     if (p < 1) || (p > length(tci) - 1)
         throw(BoundsError(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))
@@ -311,17 +307,18 @@ function addpivot!(tci::TensorCI{V}, p::Int, tolerance::T=T()) where {V,T<:Real}
 
     # Update adjacent Pi matrices, since shared Ts have changed
     if p < length(tci) - 1
-        updatePirows!(tci, p + 1)
+        updatePirows!(tci, p + 1, f)
     end
 
     if p > 1
-        updatePicols!(tci, p - 1)
+        updatePicols!(tci, p - 1, f)
     end
 end
 
 """
     function crossinterpolate(
-        f::CachedFunction{MultiIndex,ValueType},
+        ::Type{ValueType},
+        f,
         localdims::Vector{Int},
         firstpivot::MultiIndex=ones(Int, length(localdims));
         tolerance::Float64=1e-8,
@@ -334,7 +331,8 @@ is an array of the same length as `localdims` and `firstpivot` with each compone
 between 1 and `localdims[p]`.
 
 Arguments:
-- `f::CachedFunction{MultiIndex,ValueType}` is the function to be interpolated, as `CachedFunction` object.
+- `ValueType` is the value type of a TensorCI object to be constructed.
+- `f` is the function to be interpolated. The return type must be `ValueType`
 - `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
 - `tolerance::Float64` is a float specifying the tolerance for the interpolation. Default: `1e-8`.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
@@ -343,7 +341,8 @@ Arguments:
 - `errornormalization::Float64` is the value by which the error will be normalized. Set this to `1.0` to get a pure absolute error; set this to `f(firstpivot)` to get the same behaviour as in the C++ library *xfac*. Default: `f(firstpivot)`.
 """
 function crossinterpolate(
-    f::CachedFunction{MultiIndex,ValueType},
+    ::Type{ValueType},
+    f,
     localdims::Vector{Int},
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
@@ -353,7 +352,7 @@ function crossinterpolate(
     errornormalization::Union{Nothing,Float64}=nothing,
     verbosity::Int=0
 ) where {ValueType}
-    tci = TensorCI(f, localdims, firstpivot)
+    tci = TensorCI{ValueType}(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
@@ -367,9 +366,9 @@ function crossinterpolate(
         )
 
         if foward_sweep
-            addpivot!.(tci, 1:n-1, pivottolerance)
+            addpivot!.(tci, 1:n-1, f, pivottolerance)
         else
-            addpivot!.(tci, (n-1):-1:1, pivottolerance)
+            addpivot!.(tci, (n-1):-1:1, f, pivottolerance)
         end
 
         push!(errors, lastsweeppivoterror(tci) / N)
@@ -385,60 +384,6 @@ function crossinterpolate(
     return tci, ranks, errors
 end
 
-"""
-    function crossinterpolate(
-        f::Function,
-        localdims::Vector{Int},
-        firstpivot::MultiIndex=ones(Int, length(localdims));
-        tolerance::Float64=1e-8,
-        maxiter::Int=200,
-        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
-    ) where {ValueType}
-
-Cross interpolate a function `f`, which can be called with a single argument `u`, where `u`
-is an array of the same length as `localdims` and `firstpivot` with each component `u[p]`
-between 1 and `localdims[p]`.
-
-Arguments:
-- `f::Function` is the function to be interpolated.
-- `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
-- `tolerance::Float64` is a float specifying the tolerance for the interpolation. Default: `1e-8`.
-- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
-- `pivottolerance::Float64` specifies the tolerance below which no new pivot will be added to each tensor. Default: `1e-12`.
-- `errornormalization::Float64` is the value by which the error will be normalized. Set this to `1.0` to get a pure absolute error; set this to `f(firstpivot)` to get the same behaviour as in the C++ library *xfac*. Default: `f(firstpivot)`.
-- `cache::Bool` specifies if the computed values of the function are cached.
-"""
-function crossinterpolate(
-    f::Function,
-    localdims::Vector{Int},
-    firstpivot::MultiIndex=ones(Int, length(localdims));
-    tolerance::Float64=1e-8,
-    maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
-    pivottolerance::Float64=1e-12,
-    errornormalization::Union{Nothing,Float64}=nothing,
-    verbosity::Int=0,
-    cache::Bool=true
-)
-    # This is necessary to find the return type of f.
-    firstpivotval = f(firstpivot)
-    cf = cache ? CachedFunction(f, Dict(firstpivot => firstpivotval)) : f
-
-    N::Float64 = isnothing(errornormalization) ? abs(firstpivotval) : abs(errornormalization)
-
-    return crossinterpolate(
-        cf,
-        localdims,
-        firstpivot,
-        tolerance=tolerance,
-        maxiter=maxiter,
-        sweepstrategy=sweepstrategy,
-        pivottolerance=pivottolerance,
-        errornormalization=N,
-        verbosity=verbosity
-    )
-end
 
 """
 Optimize firstpivot by a simple deterministic algorithm
@@ -473,3 +418,4 @@ function optfirstpivot(
 
     return pivot
 end
+
