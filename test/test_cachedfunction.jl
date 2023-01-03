@@ -36,11 +36,16 @@ function tobins(i, nbit)
 end
 
 @testset "Cached Function (key collision)" begin
+    T = ComplexF64
     nbit = 16
-    f(x) = 1.0
-    cf = TCI.CachedFunction{Float64}(f, fill(2, nbit))
+    f(x)::T = 1.0
+    cf = TCI.CachedFunction{T}(f, fill(2, nbit))
     for i in 1:2^nbit
         cf(tobins(i, nbit))
     end
     @test length(cf.d) == 2^nbit
+    databytes = sizeof(T) * 2^nbit
+
+    # Overhead must be small enough
+    @test Base.summarysize(cf.d)/databytes < 8
 end
