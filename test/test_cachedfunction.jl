@@ -40,12 +40,15 @@ end
     nbit = 16
     f(x)::T = 1.0
     cf = TCI.CachedFunction{T}(f, fill(2, nbit))
+    d = Dict{Vector{Int},T}()
     for i in 1:2^nbit
-        cf(tobins(i, nbit))
+        x = tobins(i, nbit)
+        d[x] = cf(x)
     end
     @test length(cf.d) == 2^nbit
     databytes = sizeof(T) * 2^nbit
 
     # Overhead must be small enough
-    @test Base.summarysize(cf.d)/databytes < 8
+    @test 16 < Base.summarysize(d)/databytes < 17
+    @test 7 < Base.summarysize(cf.d)/databytes < 8
 end
