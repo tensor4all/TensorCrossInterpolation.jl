@@ -36,4 +36,7 @@ function (cf::CachedFunction{ValueType})(
     end
 end
 
-_key(cf::CachedFunction{ValueType}, x::Vector{T}) where  {ValueType, T<:Number} = sum(cf.coeffs .* x)
+function _key(cf::CachedFunction{ValueType}, x::Vector{T}) where  {ValueType, T<:Number}
+    all(1 .<= x .<= cf.dims) || error("Invalid x $x $(cf.dims)")
+    return sum(cf.coeffs .* x)
+end
