@@ -11,6 +11,7 @@ export crossinterpolate
 export optfirstpivot, tensortrain
 export SweepStrategies
 
+include("qrupdate.jl")
 include("matrixci.jl")
 include("indexset.jl")
 include("cachedfunction.jl")
