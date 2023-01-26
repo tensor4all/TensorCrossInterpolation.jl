@@ -15,5 +15,6 @@ include("matrixci.jl")
 include("indexset.jl")
 include("cachedfunction.jl")
 include("tensorci.jl")
+include("tensorcibase.jl")
 
 end
