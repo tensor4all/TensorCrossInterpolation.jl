@@ -30,7 +30,7 @@ Compute u_k(x) for all x
 function uk(aca::MatrixACA{T}, A) where {T}
     k = length(aca.colindices)
     yk = aca.colindices[end]
-    result = A[:, yk]
+    result = copy(A[:, yk])
     u, v = aca.u, aca.v
     for l in 1:k-1
         xl = aca.rowindices[l]
@@ -45,7 +45,7 @@ Compute v_k(y) for all y
 function vk(aca::MatrixACA{T}, A) where {T}
     k = length(aca.rowindices)
     xk = aca.rowindices[end]
-    result = A[xk, :]
+    result = copy(A[xk, :])
     u, v = aca.u, aca.v
     for l in 1:k-1
         xl = aca.rowindices[l]
