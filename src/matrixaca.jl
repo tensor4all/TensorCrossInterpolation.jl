@@ -103,49 +103,36 @@ function addpivot!(a::AbstractMatrix{T}, aca::MatrixACA{T}) where {T}
     push!(aca.alpha, 1 / aca.u[xk, end])
 end
 
-function Base.Matrix(aca::MatrixACA{T})::Matrix{T} where {T}
-    return aca.u * Diagonal(aca.alpha) * aca.v
-end
-
-function evaluate(aca::MatrixACA{T})::Matrix{T} where {T}
-    return Matrix(aca)
-end
-
-function evaluate(aca::MatrixACA{T}, i::Int, j::Int)::T where {T}
-    if isempty(aca)
-        return T(0)
-    else
-        np = npivots(aca)
-        left = reshape(view(aca.u, i, :), 1, np)
-        right = reshape(view(aca.v, :, j), np, 1)
-        return (left*Diagonal(aca.alpha)*right)[1, 1]
-    end
-end
-
 function submatrix(
     aca::MatrixACA{T},
     rows::Union{AbstractVector{Int},Colon,Int},
     cols::Union{AbstractVector{Int},Colon,Int}
-)::Matrix{T} where {T}
+) where {T}
     if isempty(aca)
         return zeros(
             T,
             _lengthordefault(rows, nrows(aca)),
             _lengthordefault(cols, ncols(aca)))
     else
-        return sum(aca.u[rows, i] * aca.alpha[i] * aca.v[i, cols]' for i in 1:rank(aca))
-        # return aca.u[rows, :] * Diagonal(aca.alpha) * aca.v[:, cols]
+        # The obvious way with Diagonal(aca.alpha) runs into bug
+        # https://github.com/JuliaLang/julia/issues/33143
+        # Hence this workaround.
+        return sum(
+            aca.u[rows, i] * aca.alpha[i] * transpose(aca.v[i, cols]) for i in 1:rank(aca))
     end
 end
 
-# function adaptivecrossinterpolate(
-#     a::AbstractMatrix{T};
-#     tolerance=1e-6,
-#     maxiter=200,
-#     firstpivot=argmax(abs.(a))
-# ) where {T}
-#     aca = MatrixACA(a, firstpivot)
-# end
+function Base.Matrix(aca::MatrixACA{T})::Matrix{T} where {T}
+    return submatrix(aca, :, :)
+end
+
+function evaluate(aca::MatrixACA{T})::Matrix{T} where {T}
+    return submatrix(aca, :, :)
+end
+
+function evaluate(aca::MatrixACA{T}, i::Int, j::Int)::T where {T}
+    return submatrix(aca, i, j)
+end
 
 function setcols!(
     aca::MatrixACA{T},
