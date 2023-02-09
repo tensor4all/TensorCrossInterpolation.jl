@@ -16,7 +16,7 @@ import TensorCrossInterpolation as TCI
         # aca = TCI.MatrixACA{Float64}(2, 2)
         # TCI.addpivot!(A, aca, (1,1))
 
-        aca = TCI.MatrixACA{Float64}(A, (1, 1))
+        aca = TCI.MatrixACA(A, (1, 1))
 
         @test TCI.ncols(aca) == 3
         @test TCI.nrows(aca) == 3
@@ -38,7 +38,7 @@ import TensorCrossInterpolation as TCI
         @test aca.colindices == [1, 3, 2]
 
         @test TCI.evaluate(aca) ≈ A
-        @test [TCI.evaluate(aca, i, j) for i in 1:3, j in 1:3] ≈ A
+        @test aca[:, :] ≈ A
     end
 end
 

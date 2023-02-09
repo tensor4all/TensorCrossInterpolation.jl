@@ -46,7 +46,8 @@ mutable struct MatrixCI{T} <: AbstractMatrixCI{T}
     "Same as `CrossData.R` in xfac code, or ``A(\\mathcal{I}, \\mathbb{J})`` in TCI paper."
     pivotrows::Matrix{T}
 
-    function MatrixCI{T}(
+    function MatrixCI(
+        ::Type{T},
         nrows::Int, ncols::Int
     ) where {T<:Number}
         return new{T}([], [], zeros(nrows, 0), zeros(0, ncols))
@@ -109,7 +110,7 @@ function availablecols(ci::MatrixCI{T}) where {T}
     return setdiff(1:ncols(ci), ci.colindices)
 end
 
-function rank(ci::MatrixCI{T}) where {T}
+function rank(ci::AbstractMatrixCI{T}) where {T}
     return length(ci.rowindices)
 end
 
@@ -153,41 +154,46 @@ function submatrix(
 end
 
 function row(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     i::Int;
-    cols::Union{AbstractVector{Int},Colon}=Colon()) where {T}
+    cols::Union{AbstractVector{Int},Colon}=Colon()
+) where {T}
     return submatrix(ci, [i], cols)[:]
 end
 
 function col(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     j::Int;
-    rows::Union{AbstractVector{Int},Colon}=Colon()) where {T}
+    rows::Union{AbstractVector{Int},Colon}=Colon()
+) where {T}
     return submatrix(ci, rows, [j])[:]
 end
 
 function Base.getindex(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     rows::Union{AbstractVector{Int},Colon},
-    cols::Union{AbstractVector{Int},Colon}) where {T}
+    cols::Union{AbstractVector{Int},Colon}
+) where {T}
     return submatrix(ci, rows, cols)
 end
 
 function Base.getindex(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     i::Int,
-    cols::Union{AbstractVector{Int},Colon}) where {T}
+    cols::Union{AbstractVector{Int},Colon}
+) where {T}
     return row(ci, i; cols=cols)
 end
 
-function Base.getindex(ci::MatrixCI{T},
+function Base.getindex(
+    ci::AbstractMatrixCI{T},
     rows::Union{AbstractVector{Int},Colon},
-    j::Int) where {T}
+    j::Int
+) where {T}
     return col(ci, j; rows=rows)
 end
 
-function Base.getindex(
-    ci::MatrixCI{T}, i::Int, j::Int) where {T}
+function Base.getindex(ci::AbstractMatrixCI{T}, i::Int, j::Int) where {T}
     return evaluate(ci, i, j)
 end
 
@@ -216,7 +222,7 @@ local errors on a submatrix, specify row_indices or col_indices.
 """
 function localerror(
     a::AbstractMatrix{T},
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     rowindices::Union{AbstractVector{Int},Colon,Int}=Colon(),
     colindices::Union{AbstractVector{Int},Colon,Int}=Colon()
 ) where {T}
@@ -236,7 +242,7 @@ will be considered.
 """
 function findnewpivot(
     a::AbstractMatrix{T},
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     rowindices::Union{Vector{Int},Colon}=availablerows(ci),
     colindices::Union{Vector{Int},Colon}=availablecols(ci)
 ) where {T}
