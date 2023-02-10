@@ -114,11 +114,15 @@ function submatrix(
             _lengthordefault(rows, nrows(aca)),
             _lengthordefault(cols, ncols(aca)))
     else
-        # The obvious way with Diagonal(aca.alpha) runs into bug
-        # https://github.com/JuliaLang/julia/issues/33143
-        # Hence this workaround.
-        return sum(
-            aca.u[rows, i] * aca.alpha[i] * transpose(aca.v[i, cols]) for i in 1:rank(aca))
+        r = rank(aca)
+        newaxis = [CartesianIndex()]
+        res =  aca.u[rows, 1:r] * (aca.alpha[1:r, newaxis] .* aca.v[1:r, cols])
+        # FIXME: make this type stable
+        if length(res) == 1
+            return res[1]
+        else
+            return res
+        end
     end
 end
 
