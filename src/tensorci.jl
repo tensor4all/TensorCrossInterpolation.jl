@@ -288,6 +288,32 @@ function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     setcols!(tci.aca[p], Tp, permutation)
 end
 
+function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V,T<:Real}
+    addpivotrow!(tci.aca[p], tci.Pi[p], newi)
+    addpivotrow!(cross, tci.Pi[p], newi)
+    push!(tci.Iset[p+1], tci.PiIset[p][newi])
+    updateT!(tci, p + 1, cross.pivotrows)
+    tci.P[p] = pivotmatrix(cross)
+
+    # Update adjacent Pi matrix, since shared Ts have changed
+    if p < length(tci) - 1
+        updatePirows!(tci, p + 1, f)
+    end
+end
+
+function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V,T<:Real}
+    addpivotcol!(tci.aca[p], tci.Pi[p], newj)
+    addpivotcol!(cross, tci.Pi[p], newj)
+    push!(tci.Jset[p], tci.PiJset[p+1][newj])
+    updateT!(tci, p, cross.pivotcols)
+    tci.P[p] = pivotmatrix(cross)
+
+    # Update adjacent Pi matrix, since shared Ts have changed
+    if p > 1
+        updatePicols!(tci, p - 1, f)
+    end
+end
+
 """
     function addpivot!(tci::TensorCI{V}, p::Int, tolerance::T=T()) where {V,T<:Real}
 
@@ -304,33 +330,112 @@ function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::T=T()) where {V,T<
         return
     end
 
-    newpivot, newerror = findnewpivot(tci.Pi[p], tci.aca[p])
+    newpivot, newerror = findnewpivot(tci.aca[p], tci.Pi[p])
 
     tci.pivoterrors[p] = newerror
     if newerror < tolerance
         return
     end
 
-    addpivot!(tci.Pi[p], tci.aca[p], newpivot)
-
     cross = getcross(tci, p)
-    # Update T, P, T that formed Pi
-    addpivot!(tci.Pi[p], cross, newpivot)
-    push!(tci.Iset[p+1], tci.PiIset[p][newpivot[1]])
-    push!(tci.Jset[p], tci.PiJset[p+1][newpivot[2]])
-    updateT!(tci, p, cross.pivotcols)
-    updateT!(tci, p + 1, cross.pivotrows)
-    tci.P[p] = pivotmatrix(cross)
+    addpivotcol!(tci, cross, p, newpivot[2], f)
+    addpivotrow!(tci, cross, p, newpivot[1], f)
+end
 
-    # Update adjacent Pi matrices, since shared Ts have changed
-    if p < length(tci) - 1
-        updatePirows!(tci, p + 1, f)
+function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 where {T}
+    if isempty(x) || isempty(y)
+        return 0.0
     end
 
-    if p > 1
-        updatePicols!(tci, p - 1, f)
+    bondindex = length(x)
+    if (isempty(tci.Jset[bondindex]))
+        return abs(f(vcat(x, y)))
+    end
+
+    fx = [f(vcat(x, j)) for j in tci.Jset[bondindex]]
+    fy = [f(vcat(i, y)) for i in tci.Iset[bondindex+1]]
+    return abs(first(AtimesBinv(transpose(fx), tci.P[bondindex]) * fy) - f(vcat(x, y)))
+end
+
+function proposepivotI(
+    tci::TensorCI{T},
+    f,
+    newpivot::Vector{Int},
+    newJ::Vector{MultiIndex},
+    abstol::Float64
+) where {T}
+    newI = fill(MultiIndex(), length(tci))
+    error = Inf
+    for bondindex in 1:length(tci)-1
+        if error > abstol
+            newI[bondindex+1] = vcat(newI[bondindex], newpivot[bondindex])
+            error = crosserror(tci, f, newI[bondindex+1], newJ[bondindex])
+        else
+            xset = [vcat(i, newpivot[bondindex]) for i in tci.Iset[bondindex]]
+            errors = [crosserror(tci, f, x, newJ[bondindex]) for x in xset]
+            maxindex = argmax(errors)
+            newI[bondindex+1] = xset[maxindex]
+            error = error[maxindex]
+        end
+
+        if error < abstol
+            newI[bondindex+1] = MultiIndex()
+        end
+    end
+    return newI
+end
+
+function proposepivotJ(
+    tci::TensorCI{T},
+    f,
+    newpivot::Vector{Int},
+    newI::Vector{MultiIndex},
+    abstol::Float64
+) where {T}
+    newJ = fill(MultiIndex(), length(tci))
+    error = Inf
+    for bondindex in length(tci)-1:-1:1
+        if error > abstol
+            newJ[bondindex] = vcat(newpivot[bondindex+1], newJ[bondindex+1])
+            error = crosserror(tci, f, newI[bondindex+1], newJ[bondindex])
+        else
+            yset = [vcat(newpivot[bondindex+1], j) for j in tci.Jset[bondindex+1]]
+            errors = [crosserror(tci, f, newI[bondindex+1], y) for y in yset]
+            maxindex = argmax(errors)
+            newJ[bondindex] = yset[maxindex]
+            error = errors[maxindex]
+        end
+
+        if error < abstol
+            newJ[bondindex] = MultiIndex()
+        end
+    end
+    return newJ
+end
+
+function addglobalpivot!(
+    tci::TensorCI{T},
+    f,
+    newpivot::Vector{Int},
+    abstol::Float64
+) where {T}
+    newJ = [newpivot[p+1:end] for p in 1:length(tci)-1]
+    newI = proposepivotI(tci, f, newpivot, newJ, abstol)
+    newJ = proposepivotJ(tci, f, newpivot, newI, abstol)
+
+    for p in 1:length(newI)-1
+        if !isempty(newI[p+1])
+            addpivotrow!(tci, getcross(tci, p), p, pos(tci.PiIset[p], newI[p+1]), f)
+        end
+    end
+
+    for p in length(newJ)-1:-1:1
+        if !isempty(newJ[p])
+            addpivotcol!(tci, getcross(tci, p), p, pos(tci.PiJset[p+1], newJ[p]), f)
+        end
     end
 end
+
 
 """
     function crossinterpolate(

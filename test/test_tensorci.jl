@@ -1,7 +1,7 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
-import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims, addpivot!, evaluate
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims, addpivot!, addglobalpivot!, evaluate
 
 @testset "TensorCI" begin
     @testset "trivial MPS" begin
@@ -82,7 +82,13 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         @test linkdims(tci) == fill(2, n - 1)
         @test rank(tci) == 2
 
-        for iter in 3:8
+        globalpivot = [2, 9, 10, 5, 7]
+        addglobalpivot!(tci, f, globalpivot, 1e-12)
+        @test linkdims(tci) == fill(3, n - 1)
+        @test rank(tci) == 3
+        @test evaluate(tci, globalpivot) ≈ f(globalpivot)
+
+        for iter in 4:8
             for p in 1:n-1
                 addpivot!(tci, p, f, 1e-8)
             end
@@ -126,7 +132,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
     end
 
     @testset "optfirstpivot" begin
-        f(v) = 2^2 * (v[3]-1) + 2^1 * (v[2]-1) + 2^0 * (v[1]-1)
+        f(v) = 2^2 * (v[3] - 1) + 2^1 * (v[2] - 1) + 2^0 * (v[1] - 1)
         localdims = [2, 2, 2]
         firstpivot = [1, 1, 1]
 

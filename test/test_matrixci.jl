@@ -125,17 +125,17 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
 
         ci = MatrixCI(Float64, size(A)...)
 
-        @test_throws DimensionMismatch addpivot!(zeros(6, 6), ci)
-        @test_throws BoundsError addpivot!(A, ci, (6, 3))
-        @test_throws BoundsError addpivot!(A, ci, (5, 4))
-        @test_throws BoundsError addpivot!(A, ci, (-1, 2))
-        @test_throws BoundsError addpivot!(A, ci, (3, -1))
-        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(A, ci, zeros(Int64, 0), [2, 3])
-        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(A, ci, [1, 2], zeros(Int64, 0))
+        @test_throws DimensionMismatch addpivot!(ci, zeros(6, 6))
+        @test_throws BoundsError addpivot!(ci, A, (6, 3))
+        @test_throws BoundsError addpivot!(ci, A, (5, 4))
+        @test_throws BoundsError addpivot!(ci, A, (-1, 2))
+        @test_throws BoundsError addpivot!(ci, A, (3, -1))
+        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(ci, A, zeros(Int64, 0), [2, 3])
+        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(ci, A, [1, 2], zeros(Int64, 0))
 
         @test rank(ci) == 0
 
-        addpivot!(A, ci, (2, 3))
+        addpivot!(ci, A, (2, 3))
         @test ci.rowindices == [2]
         @test ci.colindices == [3]
         @test ci.pivotrows == fill(1.0, 1, 3)
@@ -145,13 +145,13 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
             @test evaluate(ci, i, j) ≈ 1.0
             @test ci[i, j] ≈ 1.0
         end
-        addpivot!(A, ci)
+        addpivot!(ci, A)
         @test ci.pivotrows == fill(1.0, 2, 3)
         @test ci.pivotcols == fill(1.0, 5, 2)
         @test length(ci.rowindices) == 2
         @test length(ci.colindices) == 2
         @test rank(ci) == 2
-        addpivot!(A, ci, (TensorCrossInterpolation.availablerows(ci)[1], TensorCrossInterpolation.availablecols(ci)[1]))
+        addpivot!(ci, A, (TensorCrossInterpolation.availablerows(ci)[1], TensorCrossInterpolation.availablecols(ci)[1]))
         @test ci.pivotrows == fill(1.0, 3, 3)
         @test ci.pivotcols == fill(1.0, 5, 3)
         @test length(ci.rowindices) == 3
@@ -164,9 +164,9 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
         A = [1.0; 2.0; 3.0] * [2.0 4.0 8.0 16.0]
         ci = MatrixCI(Float64, 3, 4)
 
-        @test TensorCrossInterpolation.localerror(A, ci) ≈ A
-        @test TensorCrossInterpolation.findnewpivot(A, ci) == ((3, 4), 48.0)
-        addpivot!(A, ci)
+        @test TensorCrossInterpolation.localerror(ci, A) ≈ A
+        @test TensorCrossInterpolation.findnewpivot(ci, A) == ((3, 4), 48.0)
+        addpivot!(ci, A)
 
         @test ci ≈ MatrixCI(A, (3, 4))
 
@@ -178,7 +178,7 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
         @test TensorCrossInterpolation.availablerows(ci) == [1, 2]
         @test TensorCrossInterpolation.availablecols(ci) == [1, 2, 3]
 
-        addpivot!(A, ci)
+        addpivot!(ci, A)
         @test length(ci.rowindices) == 2
         @test length(ci.colindices) == 2
         @test unique(ci.rowindices) == ci.rowindices
@@ -187,7 +187,7 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
         @test size(ci.pivotcols) == (3, 2)
         @test ci[:, :] ≈ A
 
-        addpivot!(A, ci)
+        addpivot!(ci, A)
         # From here, the ci will become singular; checking values is useless.
         @test length(ci.rowindices) == 3
         @test length(ci.colindices) == 3
@@ -196,8 +196,8 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
         @test size(ci.pivotrows) == (3, 4)
         @test size(ci.pivotcols) == (3, 3)
 
-        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(A, ci)
-        @test_throws ArgumentError addpivot!(A, ci)
+        @test_throws ArgumentError TensorCrossInterpolation.findnewpivot(ci, A)
+        @test_throws ArgumentError addpivot!(ci, A)
     end
 
     @testset "Cross interpolate smooth functions" begin
