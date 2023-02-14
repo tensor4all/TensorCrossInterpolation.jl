@@ -107,7 +107,7 @@ function submatrix(
     aca::MatrixACA{T},
     rows::Union{AbstractVector{Int},Colon,Int},
     cols::Union{AbstractVector{Int},Colon,Int}
-) where {T}
+)::Matrix{T} where {T}
     if isempty(aca)
         return zeros(
             T,
@@ -116,13 +116,7 @@ function submatrix(
     else
         r = rank(aca)
         newaxis = [CartesianIndex()]
-        res =  aca.u[rows, 1:r] * (aca.alpha[1:r, newaxis] .* aca.v[1:r, cols])
-        # FIXME: make this type stable
-        if length(res) == 1
-            return res[1]
-        else
-            return res
-        end
+        return aca.u[rows, 1:r] * (aca.alpha[1:r, newaxis] .* aca.v[1:r, cols])
     end
 end
 
@@ -135,7 +129,7 @@ function evaluate(aca::MatrixACA{T})::Matrix{T} where {T}
 end
 
 function evaluate(aca::MatrixACA{T}, i::Int, j::Int)::T where {T}
-    return submatrix(aca, i, j)
+    return submatrix(aca, i, j)[1]
 end
 
 function setcols!(
