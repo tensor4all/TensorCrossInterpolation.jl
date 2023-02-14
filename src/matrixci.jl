@@ -303,7 +303,7 @@ function addpivotcol!(
             $(nrows(ci)) * $(ncols(ci)) matrix."))
     elseif colindex in ci.colindices
         throw(ArgumentError(
-            "Cannot add a pivot at indices ($i, $j) because col $j already has a pivot."))
+            "Cannot add column $colindex because it already has a pivot."))
     end
     col = a[:, colindex]
     ci.pivotcols = hcat(ci.pivotcols, col)

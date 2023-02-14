@@ -88,6 +88,11 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         @test rank(tci) == 3
         @test evaluate(tci, globalpivot) ≈ f(globalpivot)
 
+        addglobalpivot!(tci, f, globalpivot, 1e-12)
+        @test linkdims(tci) == fill(3, n - 1)
+        @test rank(tci) == 3
+        @test evaluate(tci, globalpivot) ≈ f(globalpivot)
+
         for iter in 4:8
             for p in 1:n-1
                 addpivot!(tci, p, f, 1e-8)
@@ -112,7 +117,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         tci3, ranks, errors = crossinterpolate(
             ValueType,
             f,
-            fill(3, n),
+            fill(10, n),
             ones(Int, n);
             tolerance=1e-12,
             maxiter=200
@@ -121,6 +126,25 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         @test all(tci3.pivoterrors .<= 1e-12)
         @test all(linkdims(tci3) .<= 200)
         @test rank(tci3) <= 200
+
+        tci4, ranks, errors = crossinterpolate(
+            ValueType,
+            f,
+            fill(10, n),
+            ones(Int, n);
+            tolerance=1e-12,
+            maxiter=200,
+            additionalpivots=[
+                [10, 8, 10, 4, 4],
+                [5, 4, 8, 9, 3],
+                [7, 7, 10, 5, 9],
+                [7, 7, 10, 5, 9]
+            ]
+        )
+
+        @test all(tci4.pivoterrors .<= 1e-12)
+        @test all(linkdims(tci4) .<= 200)
+        @test rank(tci4) <= 200
 
         tt3 = tensortrain(tci3)
 

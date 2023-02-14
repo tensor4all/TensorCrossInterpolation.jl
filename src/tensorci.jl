@@ -348,6 +348,10 @@ function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 
     end
 
     bondindex = length(x)
+    if x in tci.Iset[bondindex+1] || y in tci.Jset[bondindex]
+        return 0.0
+    end
+
     if (isempty(tci.Jset[bondindex]))
         return abs(f(vcat(x, y)))
     end
@@ -357,25 +361,33 @@ function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 
     return abs(first(AtimesBinv(transpose(fx), tci.P[bondindex]) * fy) - f(vcat(x, y)))
 end
 
-function proposepivotI(
+function updateIproposal(
     tci::TensorCI{T},
     f,
     newpivot::Vector{Int},
+    newI::Vector{MultiIndex},
     newJ::Vector{MultiIndex},
     abstol::Float64
 ) where {T}
-    newI = fill(MultiIndex(), length(tci))
     error = Inf
     for bondindex in 1:length(tci)-1
+        if isempty(newI[bondindex+1])
+            error = 0.0
+            continue
+        end
+
         if error > abstol
             newI[bondindex+1] = vcat(newI[bondindex], newpivot[bondindex])
+            error = crosserror(tci, f, newI[bondindex+1], newJ[bondindex])
+        elseif newpivot[1:bondindex] in tci.Iset[bondindex]
+            newI[bondindex+1] = newpivot[1:bondindex+1]
             error = crosserror(tci, f, newI[bondindex+1], newJ[bondindex])
         else
             xset = [vcat(i, newpivot[bondindex]) for i in tci.Iset[bondindex]]
             errors = [crosserror(tci, f, x, newJ[bondindex]) for x in xset]
             maxindex = argmax(errors)
             newI[bondindex+1] = xset[maxindex]
-            error = error[maxindex]
+            error = errors[maxindex]
         end
 
         if error < abstol
@@ -385,18 +397,26 @@ function proposepivotI(
     return newI
 end
 
-function proposepivotJ(
+function updateJproposal(
     tci::TensorCI{T},
     f,
     newpivot::Vector{Int},
     newI::Vector{MultiIndex},
+    newJ::Vector{MultiIndex},
     abstol::Float64
 ) where {T}
-    newJ = fill(MultiIndex(), length(tci))
     error = Inf
     for bondindex in length(tci)-1:-1:1
+        if isempty(newJ[bondindex])
+            error = 0.0
+            continue
+        end
+
         if error > abstol
             newJ[bondindex] = vcat(newpivot[bondindex+1], newJ[bondindex+1])
+            error = crosserror(tci, f, newI[bondindex+1], newJ[bondindex])
+        elseif newpivot[bondindex+2:end] in tci.Jset[bondindex+1]
+            newJ[bondindex] = newpivot[bondindex+1:end]
             error = crosserror(tci, f, newI[bondindex+1], newJ[bondindex])
         else
             yset = [vcat(newpivot[bondindex+1], j) for j in tci.Jset[bondindex+1]]
@@ -419,9 +439,23 @@ function addglobalpivot!(
     newpivot::Vector{Int},
     abstol::Float64
 ) where {T}
-    newJ = [newpivot[p+1:end] for p in 1:length(tci)-1]
-    newI = proposepivotI(tci, f, newpivot, newJ, abstol)
-    newJ = proposepivotJ(tci, f, newpivot, newI, abstol)
+    if length(newpivot) != length(tci)
+        throw(DimensionMismatch(
+            "New global pivot $newpivot should have the same length as the TCI, i.e.
+            exactly $(length(tci)) entries."))
+    end
+
+    newI = [newpivot[1:p-1] for p in 1:length(tci)]
+    newJ = [newpivot[p+1:end] for p in 1:length(tci)]
+    newI = updateIproposal(tci, f, newpivot, newI, newJ, abstol)
+
+    for iter in 1:length(tci)
+        newJ = updateJproposal(tci, f, newpivot, newI, newJ, abstol)
+        newI = updateIproposal(tci, f, newpivot, newI, newJ, abstol)
+        if isempty.(newI[2:end]) == isempty.(newJ[1:length(tci)-1])
+            break
+        end
+    end
 
     for p in 1:length(newI)-1
         if !isempty(newI[p+1])
@@ -472,7 +506,8 @@ function crossinterpolate(
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
     pivottolerance::Float64=1e-12,
     errornormalization::Union{Nothing,Float64}=nothing,
-    verbosity::Int=0
+    verbosity::Int=0,
+    additionalpivots::Vector{MultiIndex}=MultiIndex[]
 ) where {ValueType}
     tci = TensorCI{ValueType}(f, localdims, firstpivot)
     n = length(tci)
@@ -480,8 +515,11 @@ function crossinterpolate(
     ranks = Int[]
     N::Float64 = isnothing(errornormalization) ? abs(f(firstpivot)) : abs(errornormalization)
 
-    # Start at two, because the constructor already added a pivot everywhere.
-    for iter in 2:maxiter
+    for pivot in additionalpivots
+        addglobalpivot!(tci, f, pivot, tolerance)
+    end
+
+    for iter in rank(tci)+1:maxiter
         foward_sweep = (
             sweepstrategy == SweepStrategies.forward ||
             (sweepstrategy != SweepStrategies.backward && isodd(iter))
