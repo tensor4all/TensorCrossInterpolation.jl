@@ -45,6 +45,11 @@ mutable struct TensorCI{ValueType}
     P::Vector{Matrix{ValueType}}
 
     """
+    Adaptive cross approximation objects, to be updated as new pivots are added.
+    """
+    aca::Vector{MatrixACA{ValueType}}
+
+    """
     The 4-leg ``\\Pi`` matrices from the TCI paper, who are decomposed to
     obtain ``T`` and ``P``. Have to be kept in memory for efficient updates.
     """
@@ -62,15 +67,16 @@ mutable struct TensorCI{ValueType}
     ) where {ValueType}
         n = length(localdims)
         new{ValueType}(
-            [IndexSet{MultiIndex}() for _ in 1:n],
-            [IndexSet{MultiIndex}() for _ in 1:n],
-            [collect(1:d) for d in localdims],
-            [zeros(0, d, 0) for d in localdims],
-            [zeros(0, 0) for _ in 1:n],
-            [zeros(0, 0) for _ in 1:n],
-            [IndexSet{MultiIndex}() for _ in 1:n],
-            [IndexSet{MultiIndex}() for _ in 1:n],
-            fill(Inf, n - 1)
+            [IndexSet{MultiIndex}() for _ in 1:n],  # Iset
+            [IndexSet{MultiIndex}() for _ in 1:n],  # Jset
+            [collect(1:d) for d in localdims],      # localset
+            [zeros(0, d, 0) for d in localdims],    # T
+            [zeros(0, 0) for _ in 1:n],             # P
+            [MatrixACA(ValueType, 0, 0) for _ in 1:n],  # aca
+            [zeros(0, 0) for _ in 1:n],             # Pi
+            [IndexSet{MultiIndex}() for _ in 1:n],  # PiIset
+            [IndexSet{MultiIndex}() for _ in 1:n],  # PiJset
+            fill(Inf, n - 1)                        # pivoterrors
         )
     end
 end
@@ -111,15 +117,15 @@ function TensorCI{ValueType}(
     tci.Pi = [getPi(tci, p, f) for p in 1:n-1]
 
     for p in 1:n-1
-        cross = MatrixCI(
-            tci.Pi[p],
-            (pos(tci.PiIset[p], tci.Iset[p+1][1]),
-                pos(tci.PiJset[p+1], tci.Jset[p][1])))
+        localpivot = (
+            pos(tci.PiIset[p], tci.Iset[p+1][1]),
+            pos(tci.PiJset[p+1], tci.Jset[p][1]))
+        tci.aca[p] = MatrixACA(tci.Pi[p], localpivot)
         if p == 1
-            updateT!(tci, 1, cross.pivotcols)
+            updateT!(tci, 1, tci.Pi[p][:, [localpivot[2]]])
         end
-        updateT!(tci, p + 1, cross.pivotrows)
-        tci.P[p] = pivotmatrix(cross)
+        updateT!(tci, p + 1, tci.Pi[p][[localpivot[2]], :])
+        tci.P[p] = tci.Pi[p][[localpivot[1]], [localpivot[2]]]
     end
     tci.P[end] = ones(ValueType, 1, 1)
 
@@ -245,32 +251,41 @@ function updatePirows!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     newIset = getPiIset(tci, p)
     diffIset = setdiff(newIset.fromint, tci.PiIset[p].fromint)
     newPi = Matrix{V}(undef, length(newIset), size(tci.Pi[p], 2))
-    for (oldi, imulti) in enumerate(tci.PiIset[p].fromint)
-        newi = pos(newIset, imulti)
-        newPi[newi, :] = tci.Pi[p][oldi, :]
-    end
+
+    permutation = [pos(newIset, imulti) for imulti in tci.PiIset[p].fromint]
+    newPi[permutation, :] = tci.Pi[p]
+
     for imulti in diffIset
         newi = pos(newIset, imulti)
         newPi[newi, :] = [f([imulti..., js...]) for js in tci.PiJset[p+1].fromint]
     end
     tci.Pi[p] = newPi
     tci.PiIset[p] = newIset
+
+    Tshape = size(tci.T[p])
+    Tp = reshape(tci.T[p], (Tshape[1] * Tshape[2], Tshape[3]))
+    setrows!(tci.aca[p], Tp, permutation)
 end
 
 function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     newJset = getPiJset(tci, p + 1)
     diffJset = setdiff(newJset.fromint, tci.PiJset[p+1].fromint)
     newPi = Matrix{V}(undef, size(tci.Pi[p], 1), length(newJset))
-    for (oldj, jmulti) in enumerate(tci.PiJset[p+1].fromint)
-        newj = pos(newJset, jmulti)
-        newPi[:, newj] = tci.Pi[p][:, oldj]
-    end
+
+    permutation = [pos(newJset, jmulti) for jmulti in tci.PiJset[p+1].fromint]
+    newPi[:, permutation] = tci.Pi[p]
+
     for jmulti in diffJset
         newj = pos(newJset, jmulti)
         newPi[:, newj] = [f([is..., jmulti...]) for is in tci.PiIset[p].fromint]
     end
+
     tci.Pi[p] = newPi
     tci.PiJset[p+1] = newJset
+
+    Tshape = size(tci.T[p+1])
+    Tp = reshape(tci.T[p+1], (Tshape[1], Tshape[2] * Tshape[3]))
+    setcols!(tci.aca[p], Tp, permutation)
 end
 
 """
@@ -284,19 +299,21 @@ function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::T=T()) where {V,T<
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))
     end
 
-    cross = getcross(tci, p)
-
-    if rank(cross) >= minimum(size(tci.Pi[p]))
+    if rank(tci.aca[p]) >= minimum(size(tci.Pi[p]))
         tci.pivoterrors[p] = 0.0
         return
     end
 
-    newpivot, newerror = findnewpivot(tci.Pi[p], cross)
+    newpivot, newerror = findnewpivot(tci.Pi[p], tci.aca[p])
+
     tci.pivoterrors[p] = newerror
     if newerror < tolerance
         return
     end
 
+    addpivot!(tci.Pi[p], tci.aca[p], newpivot)
+
+    cross = getcross(tci, p)
     # Update T, P, T that formed Pi
     addpivot!(tci.Pi[p], cross, newpivot)
     push!(tci.Iset[p+1], tci.PiIset[p][newpivot[1]])
@@ -418,4 +435,3 @@ function optfirstpivot(
 
     return pivot
 end
-

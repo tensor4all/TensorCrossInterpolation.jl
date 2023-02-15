@@ -12,6 +12,7 @@ export optfirstpivot, tensortrain
 export SweepStrategies
 
 include("matrixci.jl")
+include("matrixaca.jl")
 include("indexset.jl")
 include("cachedfunction.jl")
 include("tensorci.jl")

@@ -26,6 +26,8 @@ function AinvtimesB(A::AbstractMatrix, B::AbstractMatrix)
     return AtimesBinv(B', A')'
 end
 
+abstract type AbstractMatrixCI{T} end
+
 """
     mutable struct MatrixCrossInterpolation{T}
 
@@ -34,7 +36,7 @@ necessary to evaluate a cross interpolation. This data can be fed into various
 methods such as evaluate(c, i, j) to get interpolated values, and be improved by
 dynamically adding pivots.
 """
-mutable struct MatrixCI{T}
+mutable struct MatrixCI{T} <: AbstractMatrixCI{T}
     "Same as `CrossData.Iset` in xfac code, or ``\\mathcal{I}`` in TCI paper."
     rowindices::Vector{Int}
     "Same as `CrossData.Jset` in xfac code, or ``\\mathcal{J}`` in TCI paper."
@@ -44,7 +46,8 @@ mutable struct MatrixCI{T}
     "Same as `CrossData.R` in xfac code, or ``A(\\mathcal{I}, \\mathbb{J})`` in TCI paper."
     pivotrows::Matrix{T}
 
-    function MatrixCI{T}(
+    function MatrixCI(
+        ::Type{T},
         nrows::Int, ncols::Int
     ) where {T<:Number}
         return new{T}([], [], zeros(nrows, 0), zeros(0, ncols))
@@ -75,15 +78,15 @@ function Jset(ci::MatrixCI{T}) where {T}
     return ci.colindices
 end
 
-function nrows(ci::MatrixCI{T}) where {T}
+function nrows(ci::MatrixCI)
     return size(ci.pivotcols, 1)
 end
 
-function ncols(ci::MatrixCI{T}) where {T}
+function ncols(ci::MatrixCI)
     return size(ci.pivotrows, 2)
 end
 
-function Base.size(ci::MatrixCI{T}) where {T}
+function Base.size(ci::AbstractMatrixCI)
     return nrows(ci), ncols(ci)
 end
 
@@ -107,12 +110,12 @@ function availablecols(ci::MatrixCI{T}) where {T}
     return setdiff(1:ncols(ci), ci.colindices)
 end
 
-function rank(ci::MatrixCI{T}) where {T}
+function rank(ci::AbstractMatrixCI{T}) where {T}
     return length(ci.rowindices)
 end
 
-function Base.isempty(ci::MatrixCI{T}) where {T}
-    return Base.isempty(ci.pivotcols)
+function Base.isempty(ci::AbstractMatrixCI)
+    return Base.isempty(ci.colindices)
 end
 
 function firstpivotvalue(ci::MatrixCI{T}) where {T}
@@ -151,41 +154,46 @@ function submatrix(
 end
 
 function row(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     i::Int;
-    cols::Union{AbstractVector{Int},Colon}=Colon()) where {T}
+    cols::Union{AbstractVector{Int},Colon}=Colon()
+) where {T}
     return submatrix(ci, [i], cols)[:]
 end
 
 function col(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     j::Int;
-    rows::Union{AbstractVector{Int},Colon}=Colon()) where {T}
+    rows::Union{AbstractVector{Int},Colon}=Colon()
+) where {T}
     return submatrix(ci, rows, [j])[:]
 end
 
 function Base.getindex(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     rows::Union{AbstractVector{Int},Colon},
-    cols::Union{AbstractVector{Int},Colon}) where {T}
+    cols::Union{AbstractVector{Int},Colon}
+) where {T}
     return submatrix(ci, rows, cols)
 end
 
 function Base.getindex(
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     i::Int,
-    cols::Union{AbstractVector{Int},Colon}) where {T}
+    cols::Union{AbstractVector{Int},Colon}
+) where {T}
     return row(ci, i; cols=cols)
 end
 
-function Base.getindex(ci::MatrixCI{T},
+function Base.getindex(
+    ci::AbstractMatrixCI{T},
     rows::Union{AbstractVector{Int},Colon},
-    j::Int) where {T}
+    j::Int
+) where {T}
     return col(ci, j; rows=rows)
 end
 
-function Base.getindex(
-    ci::MatrixCI{T}, i::Int, j::Int) where {T}
+function Base.getindex(ci::AbstractMatrixCI{T}, i::Int, j::Int) where {T}
     return evaluate(ci, i, j)
 end
 
@@ -214,7 +222,7 @@ local errors on a submatrix, specify row_indices or col_indices.
 """
 function localerror(
     a::AbstractMatrix{T},
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     rowindices::Union{AbstractVector{Int},Colon,Int}=Colon(),
     colindices::Union{AbstractVector{Int},Colon,Int}=Colon()
 ) where {T}
@@ -234,7 +242,7 @@ will be considered.
 """
 function findnewpivot(
     a::AbstractMatrix{T},
-    ci::MatrixCI{T},
+    ci::AbstractMatrixCI{T},
     rowindices::Union{Vector{Int},Colon}=availablerows(ci),
     colindices::Union{Vector{Int},Colon}=availablecols(ci)
 ) where {T}
