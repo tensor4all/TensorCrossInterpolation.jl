@@ -129,7 +129,7 @@ function evaluate(aca::MatrixACA{T})::Matrix{T} where {T}
 end
 
 function evaluate(aca::MatrixACA{T}, i::Int, j::Int)::T where {T}
-    return submatrix(aca, i, j)[1]
+    return sum(aca.u[i, :] .* aca.alpha .* aca.v[:, j])
 end
 
 function setcols!(

@@ -36,7 +36,9 @@ import TensorCrossInterpolation as TCI
         @test aca.colindices == [1, 3]
 
         @test aca[2, 3] ≈ A[2, 3]
+        @test evaluate(aca, 2, 3) ≈ A[2, 3]
         @test aca[[1, 2], [1, 3]] ≈ A[[1, 2], [1, 3]]
+        @test TCI.submatrix(aca, [1, 2], [1, 3]) ≈ A[[1, 2], [1, 3]]
 
         TCI.addpivot!(A, aca)
 
