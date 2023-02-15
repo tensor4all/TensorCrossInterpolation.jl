@@ -105,8 +105,8 @@ end
 
 function submatrix(
     aca::MatrixACA{T},
-    rows::Union{AbstractVector{Int},Colon,Int},
-    cols::Union{AbstractVector{Int},Colon,Int}
+    rows::Union{AbstractVector{Int},Colon},
+    cols::Union{AbstractVector{Int},Colon}
 )::Matrix{T} where {T}
     if isempty(aca)
         return zeros(
