@@ -74,6 +74,7 @@ end
 function addpivotrow!(aca::MatrixACA{T}, a::AbstractMatrix{T}, xk::Int) where {T}
     push!(aca.rowindices, xk)
     aca.v = vcat(aca.v, transpose(vk(aca, a)))
+    push!(aca.alpha, 1 / aca.u[xk, end])
 end
 
 """
@@ -82,16 +83,15 @@ end
 Find and add a new pivot according to the ACA algorithm in Kumar 2016 ()
 """
 function addpivot!(
-    a::AbstractMatrix{T},
     aca::MatrixACA{T},
+    a::AbstractMatrix{T},
     pivotindices::Union{CartesianIndex{2},Tuple{Int,Int},Pair{Int,Int}}
 ) where {T}
     addpivotcol!(aca, a, pivotindices[2])
     addpivotrow!(aca, a, pivotindices[1])
-    push!(aca.alpha, 1 / aca.u[pivotindices[1], end])
 end
 
-function addpivot!(a::AbstractMatrix{T}, aca::MatrixACA{T}) where {T}
+function addpivot!(aca::MatrixACA{T}, a::AbstractMatrix{T}) where {T}
     availcols = availablecols(aca)
     yk = availcols[argmax(abs.(aca.v[end, availcols]))]
     addpivotcol!(aca, a, yk)
@@ -99,8 +99,6 @@ function addpivot!(a::AbstractMatrix{T}, aca::MatrixACA{T}) where {T}
     availrows = availablerows(aca)
     xk = availrows[argmax(abs.(aca.u[availrows, end]))]
     addpivotrow!(aca, a, xk)
-
-    push!(aca.alpha, 1 / aca.u[xk, end])
 end
 
 function submatrix(

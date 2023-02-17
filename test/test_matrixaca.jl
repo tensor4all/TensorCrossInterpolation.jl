@@ -29,7 +29,7 @@ import TensorCrossInterpolation as TCI
         @test TCI.col(aca, 1) ≈ A[:, 1]
         @test aca[:, 1] ≈ A[:, 1]
 
-        TCI.addpivot!(A, aca, (2, 3))
+        TCI.addpivot!(aca, A, (2, 3))
 
         @test TCI.npivots(aca) == 2
         @test aca.rowindices == [1, 2]
@@ -40,7 +40,7 @@ import TensorCrossInterpolation as TCI
         @test aca[[1, 2], [1, 3]] ≈ A[[1, 2], [1, 3]]
         @test TCI.submatrix(aca, [1, 2], [1, 3]) ≈ A[[1, 2], [1, 3]]
 
-        TCI.addpivot!(A, aca)
+        TCI.addpivot!(aca, A)
 
         @test TCI.npivots(aca) == 3
         @test aca.rowindices == [1, 2, 3]
@@ -66,8 +66,8 @@ import TensorCrossInterpolation as TCI
         @test aca.rowindices == [1]
         @test aca.colindices == [1]
 
-        TCI.addpivot!(A, aca)
-        TCI.addpivot!(A, aca)
+        TCI.addpivot!(aca, A)
+        TCI.addpivot!(aca, A)
 
         @test TCI.evaluate(aca) ≈ A
         @test aca[:, :] ≈ A

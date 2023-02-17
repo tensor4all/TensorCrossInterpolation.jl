@@ -6,7 +6,7 @@ Calculates the matrix product ``A B^{-1}``, given a rectangular matrix ``A``
 and a square matrix ``B`` in a numerically stable way using QR
 decomposition. This is useful in case ``B^{-1}`` is ill-conditioned.
 """
-function AtimesBinv(A::AbstractMatrix, B::AbstractMatrix)
+function AtimesBinv(A::AbstractVecOrMat, B::AbstractMatrix)
     m, n = size(A)
     AB = vcat(A, B)
     decomposition = LinearAlgebra.qr(AB)
@@ -22,7 +22,7 @@ Calculates the matrix product ``A^{-1} B``, given a square matrix ``A``
 and a rectangular matrix ``B`` in a numerically stable way using QR
 decomposition. This is useful in case ``A^{-1}`` is ill-conditioned.
 """
-function AinvtimesB(A::AbstractMatrix, B::AbstractMatrix)
+function AinvtimesB(A::AbstractMatrix, B::AbstractVecOrMat)
     return AtimesBinv(B', A')'
 end
 
@@ -221,8 +221,8 @@ Returns all local errors of the cross interpolation ci with respect to matrix a.
 local errors on a submatrix, specify row_indices or col_indices.
 """
 function localerror(
-    a::AbstractMatrix{T},
     ci::AbstractMatrixCI{T},
+    a::AbstractMatrix{T},
     rowindices::Union{AbstractVector{Int},Colon,Int}=Colon(),
     colindices::Union{AbstractVector{Int},Colon,Int}=Colon()
 ) where {T}
@@ -241,8 +241,8 @@ the subset given by `rowindices` and `colindices`. By default, all avalable rows
 will be considered.
 """
 function findnewpivot(
-    a::AbstractMatrix{T},
     ci::AbstractMatrixCI{T},
+    a::AbstractMatrix{T},
     rowindices::Union{Vector{Int},Colon}=availablerows(ci),
     colindices::Union{Vector{Int},Colon}=availablecols(ci)
 ) where {T}
@@ -260,9 +260,54 @@ function findnewpivot(
         ))
     end
 
-    localerrors = localerror(a, ci, rowindices, colindices)
+    localerrors = localerror(ci, a, rowindices, colindices)
     ijraw = argmax(localerrors)
     return (rowindices[ijraw[1]], colindices[ijraw[2]]), localerrors[ijraw]
+end
+
+function addpivotrow!(
+    ci::MatrixCI{T},
+    a::AbstractMatrix{T},
+    rowindex::Int
+) where {T}
+    if size(a) != size(ci)
+        throw(DimensionMismatch(
+            "This matrix doesn't match the MatrixCrossInterpolation object. Their sizes
+            mismatch: $(size(a)) != $(size(ci))."))
+    elseif (rowindex < 0) || (rowindex > nrows(ci))
+        throw(BoundsError(
+            "Cannot add row at row index $rowindex: it's out of bounds for a
+            $(nrows(ci)) * $(ncols(ci)) matrix."))
+    elseif rowindex in ci.rowindices
+        throw(ArgumentError(
+            "Cannot add row $rowindex: it already has a pivot."))
+    end
+
+    row = transpose(a[rowindex, :])
+    ci.pivotrows = vcat(ci.pivotrows, row)
+    push!(ci.rowindices, rowindex)
+end
+
+function addpivotcol!(
+    ci::MatrixCI{T},
+    a::AbstractMatrix{T},
+    colindex::Int
+) where {T}
+    if size(a) != size(ci)
+        throw(DimensionMismatch(
+            "This matrix doesn't match the MatrixCrossInterpolation object. Their sizes
+            mismatch: $(size(a)) != $(size(ci))."))
+    elseif (colindex < 0) || (colindex > ncols(ci))
+        throw(BoundsError(
+            "Cannot add col at col index $colindex: it's out of bounds for a
+            $(nrows(ci)) * $(ncols(ci)) matrix."))
+    elseif colindex in ci.colindices
+        throw(ArgumentError(
+            "Cannot add column $colindex because it already has a pivot."))
+    end
+    col = a[:, colindex]
+    ci.pivotcols = hcat(ci.pivotcols, col)
+    push!(ci.colindices, colindex)
 end
 
 """
@@ -274,8 +319,8 @@ end
 Add a new pivot given by `pivotindices` to the cross interpolation `ci` of the matrix `a`.
 """
 function addpivot!(
-    a::AbstractMatrix{T},
     ci::MatrixCI{T},
+    a::AbstractMatrix{T},
     pivotindices::Union{CartesianIndex{2},Tuple{Int,Int},Pair{Int,Int}}
 ) where {T}
     i = pivotindices[1]
@@ -297,12 +342,9 @@ function addpivot!(
             "Cannot add a pivot at indices ($i, $j) because col $j already has a pivot."))
     end
 
-    row = transpose(a[i, :])
-    ci.pivotrows = vcat(ci.pivotrows, row)
-    push!(ci.rowindices, i)
-    col = a[:, j]
-    ci.pivotcols = hcat(ci.pivotcols, col)
-    push!(ci.colindices, j)
+
+    addpivotrow!(ci, a, pivotindices[1])
+    addpivotcol!(ci, a, pivotindices[2])
 end
 
 """
@@ -313,10 +355,10 @@ end
 Add a new pivot that maximizes the error to the cross interpolation `ci` of the matrix `a`.
 """
 function addpivot!(
-    a::AbstractMatrix{T},
-    ci::MatrixCI{T}
+    ci::MatrixCI{T},
+    a::AbstractMatrix{T}
 ) where {T}
-    return addpivot!(a, ci, findnewpivot(a, ci)[1])
+    addpivot!(ci, a, findnewpivot(ci, a)[1])
 end
 
 """
@@ -339,11 +381,11 @@ function crossinterpolate(
 ) where {T}
     ci = MatrixCI(a, firstpivot)
     for iter in 1:maxiter
-        pivoterror, newpivot = findmax(localerror(a, ci))
+        pivoterror, newpivot = findmax(localerror(ci, a))
         if pivoterror < tolerance
             return ci
         end
-        addpivot!(a, ci, newpivot)
+        addpivot!(ci, a, newpivot)
     end
     return ci
 end

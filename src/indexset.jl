@@ -16,6 +16,14 @@ function Base.getindex(is::IndexSet{T}, i::Int) where {T}
     return is.fromint[i]
 end
 
+function Base.iterate(is::IndexSet{T}) where {T}
+    return iterate(is.fromint)
+end
+
+function Base.iterate(is::IndexSet{T}, state) where {T}
+    return iterate(is.fromint, state)
+end
+
 function pos(is::IndexSet{T}, indices::T) where {T}
     return is.toint[indices]
 end
