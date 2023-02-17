@@ -103,20 +103,18 @@ end
 
 function submatrix(
     aca::MatrixACA{T},
-    rows::Union{AbstractVector{Int},Colon,Int},
-    cols::Union{AbstractVector{Int},Colon,Int}
-) where {T}
+    rows::Union{AbstractVector{Int},Colon},
+    cols::Union{AbstractVector{Int},Colon}
+)::Matrix{T} where {T}
     if isempty(aca)
         return zeros(
             T,
             _lengthordefault(rows, nrows(aca)),
             _lengthordefault(cols, ncols(aca)))
     else
-        # The obvious way with Diagonal(aca.alpha) runs into bug
-        # https://github.com/JuliaLang/julia/issues/33143
-        # Hence this workaround.
-        return sum(
-            aca.u[rows, i] * aca.alpha[i] * transpose(aca.v[i, cols]) for i in 1:rank(aca))
+        r = rank(aca)
+        newaxis = [CartesianIndex()]
+        return aca.u[rows, 1:r] * (aca.alpha[1:r, newaxis] .* aca.v[1:r, cols])
     end
 end
 
@@ -129,7 +127,7 @@ function evaluate(aca::MatrixACA{T})::Matrix{T} where {T}
 end
 
 function evaluate(aca::MatrixACA{T}, i::Int, j::Int)::T where {T}
-    return submatrix(aca, i, j)
+    return sum(aca.u[i, :] .* aca.alpha .* aca.v[:, j])
 end
 
 function setcols!(

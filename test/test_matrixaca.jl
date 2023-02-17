@@ -24,12 +24,21 @@ import TensorCrossInterpolation as TCI
 
         @test TCI.evaluate(aca, 1, 1) ≈ A[1, 1]
         @test aca[1, 1] ≈ A[1, 1]
+        @test TCI.row(aca, 1) ≈ A[1, :]
+        @test aca[1, :] ≈ A[1, :]
+        @test TCI.col(aca, 1) ≈ A[:, 1]
+        @test aca[:, 1] ≈ A[:, 1]
 
         TCI.addpivot!(aca, A, (2, 3))
 
         @test TCI.npivots(aca) == 2
         @test aca.rowindices == [1, 2]
         @test aca.colindices == [1, 3]
+
+        @test aca[2, 3] ≈ A[2, 3]
+        @test evaluate(aca, 2, 3) ≈ A[2, 3]
+        @test aca[[1, 2], [1, 3]] ≈ A[[1, 2], [1, 3]]
+        @test TCI.submatrix(aca, [1, 2], [1, 3]) ≈ A[[1, 2], [1, 3]]
 
         TCI.addpivot!(aca, A)
 
