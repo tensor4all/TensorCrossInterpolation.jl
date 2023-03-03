@@ -20,6 +20,8 @@ function Base.show(io::IO, f::CachedFunction{ValueType}) where {ValueType}
     print(io, "$(typeof(f)) with $(length(f)) entries")
 end
 
+Base.broadcastable(x::CachedFunction) = Ref(x)
+
 function CachedFunction{ValueType}(
     f::Function,
     dims::Vector{Int}
