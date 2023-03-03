@@ -24,9 +24,25 @@ mutable struct MatrixACA{T} <: AbstractMatrixCI{T}
     end
 end
 
-nrows(aca::MatrixACA) = size(aca.u, 1)
-ncols(aca::MatrixACA) = size(aca.v, 2)
-npivots(aca::MatrixACA) = size(aca.u, 2)
+function nrows(aca::MatrixACA)
+    return size(aca.u, 1)
+end
+
+function ncols(aca::MatrixACA)
+    return size(aca.v, 2)
+end
+
+function npivots(aca::MatrixACA)
+    return size(aca.u, 2)
+end
+
+function rank(ci::MatrixACA{T}) where {T}
+    return length(ci.rowindices)
+end
+
+function Base.isempty(ci::MatrixACA{T}) where {T}
+    return Base.isempty(ci.colindices)
+end
 
 function availablerows(aca::MatrixACA{T}) where {T}
     return setdiff(1:nrows(aca), aca.rowindices)

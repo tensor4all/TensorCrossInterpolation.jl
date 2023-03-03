@@ -11,6 +11,7 @@ export crossinterpolate
 export optfirstpivot, tensortrain
 export SweepStrategies
 
+include("abstractmatrixci.jl")
 include("matrixci.jl")
 include("matrixaca.jl")
 include("indexset.jl")
