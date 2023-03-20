@@ -61,6 +61,7 @@ mutable struct TensorCI{ValueType}
     Pivot errors at each site index ``p``.
     """
     pivoterrors::Vector{Float64}
+    maxsamplevalue::Float64
 
     function TensorCI{ValueType}(
         localdims::Vector{Int}
@@ -76,7 +77,8 @@ mutable struct TensorCI{ValueType}
             [zeros(0, 0) for _ in 1:n],             # Pi
             [IndexSet{MultiIndex}() for _ in 1:n],  # PiIset
             [IndexSet{MultiIndex}() for _ in 1:n],  # PiJset
-            fill(Inf, n - 1)                        # pivoterrors
+            fill(Inf, n - 1),                       # pivoterrors
+            0.0                                     # maxsample
         )
     end
 end
@@ -100,8 +102,8 @@ function TensorCI{ValueType}(
     tci = TensorCI{ValueType}(localdims)
     f = x -> convert(ValueType, func(x)) # Avoid type instability
 
-    firstpivotval = f(firstpivot)
-    if firstpivotval == 0
+    tci.maxsamplevalue = f(firstpivot)
+    if tci.maxsamplevalue == 0
         throw(ArgumentError("Please provide a first pivot where f(pivot) != 0."))
     end
     if length(localdims) != length(firstpivot)
@@ -163,6 +165,14 @@ function lastsweeppivoterror(tci::TensorCI{V}) where {V}
     return maximum(tci.pivoterrors)
 end
 
+function updatemaxsample!(tci::TensorCI{V}, samples::Array{V}) where {V}
+    for s in abs.(samples)
+        if s > tci.maxsamplevalue
+            tci.maxsamplevalue = s
+        end
+    end
+end
+
 function TtimesPinv(tci::TensorCI{V}, p::Int) where {V}
     T = tci.T[p]
     shape = size(T)
@@ -221,7 +231,9 @@ Build a 4-legged ``\\Pi`` tensor at site `p`. Indices are in the order
 function getPi(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     iset = tci.PiIset[p]
     jset = tci.PiJset[p+1]
-    return [f([is..., js...]) for is in iset.fromint, js in jset.fromint]
+    res = [f([is..., js...]) for is in iset.fromint, js in jset.fromint]
+    updatemaxsample!(tci, res)
+    return res
 end
 
 function getcross(tci::TensorCI{V}, p::Int) where {V}
@@ -257,7 +269,9 @@ function updatePirows!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
 
     for imulti in diffIset
         newi = pos(newIset, imulti)
-        newPi[newi, :] = [f([imulti..., js...]) for js in tci.PiJset[p+1].fromint]
+        row = [f([imulti..., js...]) for js in tci.PiJset[p+1].fromint]
+        newPi[newi, :] = row
+        updatemaxsample!(tci, row)
     end
     tci.Pi[p] = newPi
     tci.PiIset[p] = newIset
@@ -277,7 +291,9 @@ function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
 
     for jmulti in diffJset
         newj = pos(newJset, jmulti)
-        newPi[:, newj] = [f([is..., jmulti...]) for is in tci.PiIset[p].fromint]
+        col = [f([is..., jmulti...]) for is in tci.PiIset[p].fromint]
+        newPi[:, newj] = col
+        updatemaxsample!(tci, col)
     end
 
     tci.Pi[p] = newPi
@@ -358,6 +374,8 @@ function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 
 
     fx = [f(vcat(x, j)) for j in tci.Jset[bondindex]]
     fy = [f(vcat(i, y)) for i in tci.Iset[bondindex+1]]
+    updatemaxsample!(tci, fx)
+    updatemaxsample!(tci, fy)
     return abs(first(AtimesBinv(transpose(fx), tci.P[bondindex]) * fy) - f(vcat(x, y)))
 end
 
@@ -505,15 +523,14 @@ function crossinterpolate(
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
     pivottolerance::Float64=1e-12,
-    errornormalization::Union{Nothing,Float64}=nothing,
     verbosity::Int=0,
-    additionalpivots::Vector{MultiIndex}=MultiIndex[]
+    additionalpivots::Vector{MultiIndex}=MultiIndex[],
+    normalizeerror=true
 ) where {ValueType}
     tci = TensorCI{ValueType}(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
-    N::Float64 = isnothing(errornormalization) ? abs(f(firstpivot)) : abs(errornormalization)
 
     for pivot in additionalpivots
         addglobalpivot!(tci, f, pivot, tolerance)
@@ -531,17 +548,19 @@ function crossinterpolate(
             addpivot!.(tci, (n-1):-1:1, f, pivottolerance)
         end
 
-        push!(errors, lastsweeppivoterror(tci) / N)
+        errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+        push!(errors, lastsweeppivoterror(tci))
         push!(ranks, maximum(rank(tci)))
         if verbosity > 0 && mod(iter, 10) == 0
             println("rank= $(last(ranks)) , error= $(last(errors))")
         end
-        if last(errors) < tolerance
+        if last(errors) < tolerance * errornormalization
             break
         end
     end
 
-    return tci, ranks, errors
+    errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+    return tci, ranks, errors ./ errornormalization
 end
 
 
