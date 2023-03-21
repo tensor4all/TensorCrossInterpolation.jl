@@ -102,7 +102,7 @@ function TensorCI{ValueType}(
     tci = TensorCI{ValueType}(localdims)
     f = x -> convert(ValueType, func(x)) # Avoid type instability
 
-    tci.maxsamplevalue = f(firstpivot)
+    tci.maxsamplevalue = abs(f(firstpivot))
     if tci.maxsamplevalue == 0
         throw(ArgumentError("Please provide a first pivot where f(pivot) != 0."))
     end
