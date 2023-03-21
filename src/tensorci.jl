@@ -304,7 +304,7 @@ function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     setcols!(tci.aca[p], Tp, permutation)
 end
 
-function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V,T<:Real}
+function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
     addpivotrow!(tci.aca[p], tci.Pi[p], newi)
     addpivotrow!(cross, tci.Pi[p], newi)
     push!(tci.Iset[p+1], tci.PiIset[p][newi])
@@ -317,7 +317,7 @@ function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f
     end
 end
 
-function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V,T<:Real}
+function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
     addpivotcol!(tci.aca[p], tci.Pi[p], newj)
     addpivotcol!(cross, tci.Pi[p], newj)
     push!(tci.Jset[p], tci.PiJset[p+1][newj])
