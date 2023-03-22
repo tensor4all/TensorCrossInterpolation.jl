@@ -18,5 +18,6 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Implementation of TCI" => "implementation.md"
     ],
 )
