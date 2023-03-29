@@ -84,7 +84,7 @@ mutable struct TensorCI{ValueType}
 end
 
 function Base.show(io::IO, tci::TensorCI{ValueType}) where {ValueType}
-    print(io, "$(typeof(tci)) with ranks $(rank(tci))")
+    print(io, "$(typeof(tci)) with rank $(rank(tci))")
 end
 
 function TensorCI{ValueType}(

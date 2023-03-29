@@ -1,4 +1,4 @@
-# Implementation of the TCI algorithm
+# Implementation
 
 This document gives an overview to this implementation of the TCI algorithm.
 First, we will show how the high-level components work together to produce a
@@ -33,7 +33,7 @@ TODO.
 Sweeps are done by applying `addpivot!` to each link $\ell = 1\ldots\mathscr{L}$ in ascending order for forward sweeps and descending order for backward sweeps.
 
 ```@docs
-TensorCrossInterpolation.addpivot!
+TensorCrossInterpolation.addpivot!(::TensorCrossInterpolation.TensorCI{V}, ::Int, ::T) where {V, T<:Real}
 ```
 This function adds one pivot at bond $\ell$ (in the code, we use `p` instead of $\ell$). This is done as follows:
 
