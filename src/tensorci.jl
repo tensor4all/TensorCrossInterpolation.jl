@@ -64,8 +64,8 @@ mutable struct TensorCI{ValueType}
     maxsamplevalue::Float64
 
     function TensorCI{ValueType}(
-        localdims::Vector{Int}
-    ) where {ValueType}
+        localdims::Union{Vector{Int},NTuple{N,Int}}
+    ) where {ValueType,N}
         n = length(localdims)
         new{ValueType}(
             [IndexSet{MultiIndex}() for _ in 1:n],  # Iset
@@ -96,9 +96,9 @@ end
 
 function TensorCI{ValueType}(
     func::F,
-    localdims::Vector{Int},
+    localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::Vector{Int}
-) where {F,ValueType}
+) where {F,ValueType,N}
     tci = TensorCI{ValueType}(localdims)
     f = x -> convert(ValueType, func(x)) # Avoid type instability
 
@@ -188,26 +188,22 @@ function PinvtimesT(tci::TensorCI{V}, p::Int) where {V}
 end
 
 """
-    function tensortrain(tci::TensorCI{V}) where {V}
-
-Convert the TCI object into a tensor train, i.e. an MPS. Returns an Array of 3-leg tensors,
-where the first and last leg connect to neighboring tensors and the second leg is the local
-site index.
-"""
-function tensortrain(tci::TensorCI{V}) where {V}
-    return TtimesPinv.(tci, 1:length(tci))
-end
-
-"""
     function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
 
 Evaluate the TCI at a specific set of indices. This method is inefficient; to evaluate
 many points, first convert the TCI object into a tensor train using `tensortrain(tci)`.
 """
-function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
+function evaluate(
+    tci::TensorCI{V},
+    indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
+)::V where {N, V}
     return prod(
         AtimesBinv(tci.T[p][:, indexset[p], :], tci.P[p])
         for p in 1:length(tci))[1, 1]
+end
+
+function evaluate(tci::TensorCI{V}, indexset::CartesianIndex) where {V}
+    return evaluate(tci, Tuple(indexset))
 end
 
 function getPiIset(tci::TensorCI{V}, p::Int) where {V}
@@ -517,7 +513,7 @@ Arguments:
 function crossinterpolate(
     ::Type{ValueType},
     f,
-    localdims::Vector{Int},
+    localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
@@ -526,7 +522,7 @@ function crossinterpolate(
     verbosity::Int=0,
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
     normalizeerror=true
-) where {ValueType}
+) where {ValueType,N}
     tci = TensorCI{ValueType}(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
@@ -569,10 +565,10 @@ Optimize firstpivot by a simple deterministic algorithm
 """
 function optfirstpivot(
     f,
-    localdims::Vector{Int},
+    localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::MultiIndex=ones(Int, length(localdims));
     maxsweep=1000
-)
+) where {N}
     n = length(localdims)
     valf = abs(f(firstpivot))
     pivot = copy(firstpivot)
