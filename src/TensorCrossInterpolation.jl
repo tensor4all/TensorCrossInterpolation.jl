@@ -7,7 +7,7 @@ import LinearAlgebra: rank
 # To define equality of IndexSet
 import Base: ==
 # To define iterators and element access for MCI, TCI and TT objects
-import Base: isempty, iterate, length, getindex, lastindex, broadcastable
+import Base: isempty, iterate, length, getindex, lastindex, broadcastable, sum
 
 export crossinterpolate, optfirstpivot, SweepStrategies
 export tensortrain

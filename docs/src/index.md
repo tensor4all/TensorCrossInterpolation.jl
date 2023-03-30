@@ -17,8 +17,8 @@ import TensorCrossInterpolation as TCI
 f(v) = 1/(1 + v' * v)
 localdims = fill(10, 8)    # There are 8 tensor indices, each with values 1...10
 tolerance = 1e-8
-tci, ranks, errors = TCI.crossinterpolate(Float64, f, localdims; tolerance=tolerance)
-println(tci)
+constructtime = @elapsed tci, ranks, errors = TCI.crossinterpolate(Float64, f, localdims; tolerance=tolerance)
+println("$tci constructed in $constructtime s.")
 ```
 (Note that the return type of `f` has to be stated explicitly in the call to [crossinterpolate](@ref).)
 
@@ -26,13 +26,21 @@ Most users will want to evaluate the tensor cross interpolation of their functio
 ```@example simple
 tt = TCI.TensorTrain(tci)
 println("Original function: $(f([1, 2, 3, 4, 5, 6, 7, 8]))")
-println("TCI approximation: $(TCI.evaluate(tt, [1, 2, 3, 4, 5, 6, 7, 8]))")
+println("TCI approximation: $(tt([1, 2, 3, 4, 5, 6, 7, 8]))")
 ```
 For easy integration into tensor network algorithms, the tensor train can be converted to ITensors MPS format using [TCIITensorConversion.jl](https://gitlab.com/quanticstci/tciitensorconversion.jl).
 
-## Summation and integration
+## Sums
 
-TODO.
+Tensor trains are a way to efficiently obtain sums over all lattice sites, since this sum can be factorized:
+```@example simple
+allindices = [getindex.(Ref(i), 1:8) for i in CartesianIndices(Tuple(localdims))]
+timeoriginal = @elapsed sumorig = sum(f.(allindices))
+timett = @elapsed sumtt = sum(tt)
+println("Sum of original function: $sumorig; took $timeoriginal s.")
+println("Sum of tensor train: $sumtt; took $timett s.")
+```
+For further information, see [sum](@ref).
 
 ## Properties of the TCI object
 

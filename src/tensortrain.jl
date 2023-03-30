@@ -102,3 +102,25 @@ Evaluates the tensor train `tt` at indices given by `indexset`.
 function evaluate(tt::TensorTrain{V}, indexset::CartesianIndex) where {V}
     return evaluate(tt, Tuple(indexset))
 end
+
+"""
+    function (tt::TensorTrain{V})(indexset) where {V}
+
+Evaluates the tensor train `tt` at indices given by `indexset`.
+"""
+function (tt::TensorTrain{V})(indexset) where {V}
+    return evaluate(tt, indexset)
+end
+
+"""
+    function sum(tt::TensorTrain{V}) where {V}
+
+Evaluates the sum of the tensor train approximation over all lattice sites in efficient factorized manner.
+"""
+function sum(tt::TensorTrain{V}) where {V}
+    v = sum(tt[1], dims=(1, 2))[1, 1, :]'
+    for T in tt[2:end]
+        v *= sum(T, dims=2)[:, 1, :]
+    end
+    return only(v)
+end

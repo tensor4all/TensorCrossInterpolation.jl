@@ -8,8 +8,13 @@ import TensorCrossInterpolation as TCI
     tt = TCI.TensorTrain(tci)
     @test rank(tci) == rank(tt)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
+    gsum = 0.0
     for i in CartesianIndices(localdims)
         @test TCI.evaluate(tci, i) ≈ TCI.evaluate(tt, i)
-        @test abs(TCI.evaluate(tt, i) - g(Tuple(i))) < tolerance
+        @test tt(i) == TCI.evaluate(tt, i)
+        functionvalue = g(Tuple(i))
+        @test abs(TCI.evaluate(tt, i) - functionvalue) < tolerance
+        gsum += functionvalue
     end
+    @test gsum ≈ TCI.sum(tt)
 end
