@@ -10,8 +10,8 @@ With the user manual and usage examples below, users should be able to use this 
 
 ## Interpolating functions
 
-The most convenient way to create a TCI is [`crossinterpolate`](@ref). For example, consider the lorentzian in 8 dimensions, i.e. $f(\mathbf v) = 1/(1 + \mathbf v^2)$, where $\mathbf{v} \in \{1, 2, ..., 10\}^8$.
-We can interpolate it on a mesh with $10$ points in each dimension as follows:
+The most convenient way to create a TCI is [`crossinterpolate`](@ref). For example, consider the lorentzian in 8 dimensions, i.e. $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on a mesh $\mathbf{v} \in \{1, 2, ..., 10\}^8$.
+$f$ can be interpolated as follows:
 ```@example simple
 import TensorCrossInterpolation as TCI
 f(v) = 1/(1 + v' * v)
@@ -20,7 +20,7 @@ tolerance = 1e-8
 constructtime = @elapsed tci, ranks, errors = TCI.crossinterpolate(Float64, f, localdims; tolerance=tolerance)
 println("$tci constructed in $constructtime s.")
 ```
-(Note that the return type of `f` has to be stated explicitly in the call to [crossinterpolate](@ref).)
+(Note that the return type of `f` has to be stated explicitly in the call to [`crossinterpolate`](@ref).)
 
 Most users will want to evaluate the tensor cross interpolation of their function. Though there is a method to evaluate [`TensorCI`](@ref) objects, this leads to repeated effort if more than a single evaluation is performed. The proper way to do this is to convert the [`TensorCI`](@ref) into a [`TensorTrain`](@ref) first, and then evaluate the tensor train. For example, to evaluate it at $(1, 2, 3, 4, 5, 6, 7, 8)^T$, use:
 ```@example simple
@@ -40,7 +40,7 @@ timett = @elapsed sumtt = sum(tt)
 println("Sum of original function: $sumorig; took $timeoriginal s.")
 println("Sum of tensor train: $sumtt; took $timett s.")
 ```
-For further information, see [sum](@ref).
+For further information, see [`sum`](@ref).
 
 ## Properties of the TCI object
 

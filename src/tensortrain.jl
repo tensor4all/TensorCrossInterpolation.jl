@@ -2,6 +2,17 @@
     struct TensorTrain{ValueType}
 
 Represents a tensor train, also known as MPS.
+
+The tensor train can be evaluated using standard function call notation:
+```julia
+    tt = TensorTrain(...)
+    value = tt([1, 2, 3, 4])
+```
+The corresponding function is:
+
+    function (tt::TensorTrain{V})(indexset) where {V}
+
+Evaluates the tensor train `tt` at indices given by `indexset`.
 """
 struct TensorTrain{ValueType}
     M::Vector{Array{ValueType, 3}}
@@ -34,6 +45,8 @@ end
     function TensorTrain(tci::TensorCI{V}) where {V}
 
 Convert the TCI object into a tensor train, also known as an MPS.
+
+See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
 """
 function TensorTrain(tci::TensorCI{V})::TensorTrain{V} where {V}
     return TensorTrain{V}(TtimesPinv.(tci, 1:length(tci)))
@@ -103,11 +116,6 @@ function evaluate(tt::TensorTrain{V}, indexset::CartesianIndex) where {V}
     return evaluate(tt, Tuple(indexset))
 end
 
-"""
-    function (tt::TensorTrain{V})(indexset) where {V}
-
-Evaluates the tensor train `tt` at indices given by `indexset`.
-"""
 function (tt::TensorTrain{V})(indexset) where {V}
     return evaluate(tt, indexset)
 end
@@ -115,7 +123,8 @@ end
 """
     function sum(tt::TensorTrain{V}) where {V}
 
-Evaluates the sum of the tensor train approximation over all lattice sites in efficient factorized manner.
+Evaluates the sum of the tensor train approximation over all lattice sites in an efficient
+factorized manner.
 """
 function sum(tt::TensorTrain{V}) where {V}
     v = sum(tt[1], dims=(1, 2))[1, 1, :]'

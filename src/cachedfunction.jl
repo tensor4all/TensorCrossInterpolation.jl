@@ -1,6 +1,7 @@
 """
 Represents a function that maps ArgType -> ValueType and automatically caches
-function values.
+function values. A `CachedFunction` object can be called in the same way as the original
+function using the usual function call syntax.
 """
 struct CachedFunction{ValueType}
     f::Function
@@ -22,6 +23,20 @@ end
 
 Base.broadcastable(x::CachedFunction) = Ref(x)
 
+"""
+    function CachedFunction{ValueType}(
+        f::Function,
+        dims::Vector{Int}
+    ) where {ValueType}
+
+Constructor for a cached function that avoids repeated evaluation of the same values.
+
+Arguments:
+- `ValueType` is the return type of `f`.
+- `f` is the function to be wrapped. It should take a vector of integers as its sole
+argument, and return a value of type `ValueType`.
+- `dims` is a Vector that describes the local dimensions of each argument of `f`.
+"""
 function CachedFunction{ValueType}(
     f::Function,
     dims::Vector{Int}
