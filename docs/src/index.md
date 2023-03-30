@@ -10,7 +10,7 @@ With the user manual and usage examples below, users should be able to use this 
 
 ## Interpolating functions
 
-The most convenient way to create a TCI is [`crossinterpolate`](@ref). For example, consider the lorentzian in 8 dimensions, i.e. $f(\mathbf v) = 1/(1 + \mathbf v^2)$, where $\mathbf{v} \in \mathbb{R}^8$.
+The most convenient way to create a TCI is [`crossinterpolate`](@ref). For example, consider the lorentzian in 8 dimensions, i.e. $f(\mathbf v) = 1/(1 + \mathbf v^2)$, where $\mathbf{v} \in \{1, 2, ..., 10\}^8$.
 We can interpolate it on a mesh with $10$ points in each dimension as follows:
 ```@example simple
 import TensorCrossInterpolation as TCI
