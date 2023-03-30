@@ -9,8 +9,11 @@ const MultiIndex = Vector{LocalIndex}
 """
     module SweepStrategies
 
-Wraps the enum SweepStrategy, such that sweep strategies are available as
-`SweepStrategies.forward`, etc.
+Wraps the enum `SweepStrategy` that represents different ways to perform sweeps during TCI
+optimization. The enum has the following entries:
+- `SweepStrategy.back_and_forth`
+- `SweepStrategy.forward`
+- `SweepStrategy.backward`
 """
 module SweepStrategies
 @enum SweepStrategy begin
@@ -23,8 +26,7 @@ end
 """
     mutable struct TensorCI{ValueType}
 
-An object that represents a tensor cross interpolation. Users may want to create these using
-`crossinterpolate(...)` rather than calling a constructor directly.
+An object that represents a tensor cross interpolation. Users may want to create these using `crossinterpolate(...)` rather than calling a constructor directly.
 """
 mutable struct TensorCI{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
@@ -32,10 +34,7 @@ mutable struct TensorCI{ValueType}
     localset::Vector{Vector{Int}}
 
     """
-    The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to
-    adjacent ``P^{-1}`` matrices, and the second leg is the local index. The
-    outermost vector iterates over the site index ``p``, such that
-    `T[p]` is the ``p``-th site tensor.
+    The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to adjacent ``P^{-1}`` matrices, and the second leg is the local index. The outermost vector iterates over the site index ``p``, such that `T[p]` is the ``p``-th site tensor.
     """
     T::Vector{Array{ValueType,3}}
 
@@ -50,8 +49,7 @@ mutable struct TensorCI{ValueType}
     aca::Vector{MatrixACA{ValueType}}
 
     """
-    The 4-leg ``\\Pi`` matrices from the TCI paper, who are decomposed to
-    obtain ``T`` and ``P``. Have to be kept in memory for efficient updates.
+    The 4-leg ``\\Pi`` matrices from the TCI paper, who are decomposed to obtain ``T`` and ``P``. Have to be kept in memory for efficient updates.
     """
     Pi::Vector{Matrix{ValueType}}
     PiIset::Vector{IndexSet{MultiIndex}}
@@ -64,8 +62,8 @@ mutable struct TensorCI{ValueType}
     maxsamplevalue::Float64
 
     function TensorCI{ValueType}(
-        localdims::Vector{Int}
-    ) where {ValueType}
+        localdims::Union{Vector{Int},NTuple{N,Int}}
+    ) where {ValueType,N}
         n = length(localdims)
         new{ValueType}(
             [IndexSet{MultiIndex}() for _ in 1:n],  # Iset
@@ -84,7 +82,7 @@ mutable struct TensorCI{ValueType}
 end
 
 function Base.show(io::IO, tci::TensorCI{ValueType}) where {ValueType}
-    print(io, "$(typeof(tci)) with ranks $(rank(tci))")
+    print(io, "$(typeof(tci)) with rank $(rank(tci))")
 end
 
 function TensorCI{ValueType}(
@@ -96,9 +94,9 @@ end
 
 function TensorCI{ValueType}(
     func::F,
-    localdims::Vector{Int},
+    localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::Vector{Int}
-) where {F,ValueType}
+) where {F,ValueType,N}
     tci = TensorCI{ValueType}(localdims)
     f = x -> convert(ValueType, func(x)) # Avoid type instability
 
@@ -188,26 +186,21 @@ function PinvtimesT(tci::TensorCI{V}, p::Int) where {V}
 end
 
 """
-    function tensortrain(tci::TensorCI{V}) where {V}
-
-Convert the TCI object into a tensor train, i.e. an MPS. Returns an Array of 3-leg tensors,
-where the first and last leg connect to neighboring tensors and the second leg is the local
-site index.
-"""
-function tensortrain(tci::TensorCI{V}) where {V}
-    return TtimesPinv.(tci, 1:length(tci))
-end
-
-"""
     function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
 
-Evaluate the TCI at a specific set of indices. This method is inefficient; to evaluate
-many points, first convert the TCI object into a tensor train using `tensortrain(tci)`.
+Evaluate the TCI at a specific set of indices. This method is inefficient; to evaluate many points, first convert the TCI object into a tensor train using `tensortrain(tci)`.
 """
-function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
+function evaluate(
+    tci::TensorCI{V},
+    indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}}
+)::V where {N,V}
     return prod(
         AtimesBinv(tci.T[p][:, indexset[p], :], tci.P[p])
         for p in 1:length(tci))[1, 1]
+end
+
+function evaluate(tci::TensorCI{V}, indexset::CartesianIndex) where {V}
+    return evaluate(tci, Tuple(indexset))
 end
 
 function getPiIset(tci::TensorCI{V}, p::Int) where {V}
@@ -225,8 +218,7 @@ end
 """
     buildPiAt(tci::TensorCrossInterpolation{V}, p::Int)
 
-Build a 4-legged ``\\Pi`` tensor at site `p`. Indices are in the order
-``i, u_p, u_{p + 1}, j``, as in the TCI paper.
+Build a 4-legged ``\\Pi`` tensor at site `p`. Indices are in the order ``i, u_p, u_{p + 1}, j``, as in the TCI paper.
 """
 function getPi(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     iset = tci.PiIset[p]
@@ -304,6 +296,11 @@ function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     setcols!(tci.aca[p], Tp, permutation)
 end
 
+"""
+    function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
+
+Add the row with index `newi` as a pivot row to bond `p`.
+"""
 function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
     addpivotrow!(tci.aca[p], tci.Pi[p], newi)
     addpivotrow!(cross, tci.Pi[p], newi)
@@ -317,6 +314,11 @@ function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f
     end
 end
 
+"""
+    function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
+
+Add the column with index `newj` as a pivot row to bond `p`.
+"""
 function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
     addpivotcol!(tci.aca[p], tci.Pi[p], newj)
     addpivotcol!(cross, tci.Pi[p], newj)
@@ -489,35 +491,46 @@ function addglobalpivot!(
 end
 
 
-"""
+@doc raw"""
     function crossinterpolate(
         ::Type{ValueType},
         f,
-        localdims::Vector{Int},
+        localdims::Union{Vector{Int},NTuple{N,Int}},
         firstpivot::MultiIndex=ones(Int, length(localdims));
         tolerance::Float64=1e-8,
         maxiter::Int=200,
-        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth
-    ) where {ValueType}
+        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
+        pivottolerance::Float64=1e-12,
+        verbosity::Int=0,
+        additionalpivots::Vector{MultiIndex}=MultiIndex[],
+        normalizeerror::Bool=true
+    ) where {ValueType, N}
 
-Cross interpolate a function `f`, which can be called with a single argument `u`, where `u`
-is an array of the same length as `localdims` and `firstpivot` with each component `u[p]`
-between 1 and `localdims[p]`.
+Cross interpolate a function ``f(\mathbf{u})``, where ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
 
 Arguments:
 - `ValueType` is the value type of a TensorCI object to be constructed.
-- `f` is the function to be interpolated. The return type must be `ValueType`
-- `localdims::Vector{Int}` is a Vector that contains the local dimension of each external leg.
+- `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
+- `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
+- `firstpivot::MultiIndex` is the first pivot, used by the TCI algorithm for initialization. Default: `[1, 1, ...]`.
 - `tolerance::Float64` is a float specifying the tolerance for the interpolation. Default: `1e-8`.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
 - `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
 - `pivottolerance::Float64` specifies the tolerance below which no new pivot will be added to each tensor. Default: `1e-12`.
-- `errornormalization::Float64` is the value by which the error will be normalized. Set this to `1.0` to get a pure absolute error; set this to `f(firstpivot)` to get the same behaviour as in the C++ library *xfac*. Default: `f(firstpivot)`.
+- `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
+- `additionalpivots::Vector{MultiIndex}` is a vector of additional pivots that the algorithm should add to the initial pivot before starting optimization. This is not necessary in most cases.
+- `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
+
+Notes:
+- Convergence may depend on the choice of first pivot. A good rule of thumb is to choose `firstpivot` close to the largest structure in `f`, or on a maximum of `f`. If the structure of `f` is not known in advance, [`optfirstpivot`](@ref) may be helpful.
+- By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
+
+See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref)
 """
 function crossinterpolate(
     ::Type{ValueType},
     f,
-    localdims::Vector{Int},
+    localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
@@ -525,8 +538,8 @@ function crossinterpolate(
     pivottolerance::Float64=1e-12,
     verbosity::Int=0,
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
-    normalizeerror=true
-) where {ValueType}
+    normalizeerror::Bool=true
+) where {ValueType, N}
     tci = TensorCI{ValueType}(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
@@ -565,14 +578,29 @@ end
 
 
 """
-Optimize firstpivot by a simple deterministic algorithm
+    function optfirstpivot(
+        f,
+        localdims::Union{Vector{Int},NTuple{N,Int}},
+        firstpivot::MultiIndex=ones(Int, length(localdims));
+        maxsweep=1000
+    ) where {N}
+
+Optimize the first pivot for a tensor cross interpolation.
+
+Arguments:
+- `f` is function to be interpolated.
+- `localdims::Union{Vector{Int},NTuple{N,Int}}` determines the local dimensions of the function parameters (see [`crossinterpolate`](@ref)).
+- `fistpivot::MultiIndex=ones(Int, length(localdims))` is the starting point for the optimization. It is advantageous to choose it close to a global maximum of the function.
+- `maxsweep` is the maximum number of optimization sweeps. Default: `1000`.
+
+See also: [`crossinterpolate`](@ref)
 """
 function optfirstpivot(
     f,
-    localdims::Vector{Int},
+    localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::MultiIndex=ones(Int, length(localdims));
     maxsweep=1000
-)
+) where {N}
     n = length(localdims)
     valf = abs(f(firstpivot))
     pivot = copy(firstpivot)
