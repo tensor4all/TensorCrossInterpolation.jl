@@ -8,6 +8,10 @@ This is the documentation for [TensorCrossInterpolation](https://gitlab.com/marc
 
 With the user manual and usage examples below, users should be able to use this library as a "black box" in most cases. Detailed documentation of (almost) all methods can be found in the [Documentation](@ref) section, and [Implementation](@ref) contains a detailed explanation of this implementation of TCI.
 
+```@contents
+Pages = ["index.md", "documentation.md", "implementation.md"]
+```
+
 ## Interpolating functions
 
 The most convenient way to create a TCI is [`crossinterpolate`](@ref). For example, consider the lorentzian in 5 dimensions, i.e. $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on a mesh $\mathbf{v} \in \{1, 2, ..., 10\}^5$.
@@ -15,7 +19,7 @@ $f$ can be interpolated as follows:
 ```@example simple
 import TensorCrossInterpolation as TCI
 f(v) = 1/(1 + v' * v)
-localdims = fill(10, 5)    # There are 8 tensor indices, each with values 1...10
+localdims = fill(10, 5)    # There are 5 tensor indices, each with values 1...10
 tolerance = 1e-8
 tci, ranks, errors = TCI.crossinterpolate(Float64, f, localdims; tolerance=tolerance)
 println(tci)
