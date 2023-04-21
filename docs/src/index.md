@@ -24,8 +24,7 @@ tolerance = 1e-8
 tci, ranks, errors = TCI.crossinterpolate(Float64, f, localdims; tolerance=tolerance)
 println(tci)
 ```
-(Note that the return type of `f` has to be stated explicitly in the call to [`crossinterpolate`](@ref).)
-
+Note that the return type of `f` has to be stated explicitly; inferring it automatically is too error-prone.
 Most users will want to evaluate the tensor cross interpolation of their function. Though there is a method to evaluate [`TensorCI`](@ref) objects, this leads to repeated effort if more than a single evaluation is performed. The proper way to do this is to convert the [`TensorCI`](@ref) into a [`TensorTrain`](@ref) first, and then evaluate the tensor train. For example, to evaluate it at $(1, 2, 3, 4, 5)^T$, use:
 ```@example simple
 tt = TCI.TensorTrain(tci)
