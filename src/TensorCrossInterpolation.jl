@@ -7,7 +7,8 @@ import LinearAlgebra: rank
 # To define equality of IndexSet
 import Base: ==
 # To define iterators and element access for MCI, TCI and TT objects
-import Base: isempty, iterate, length, getindex, lastindex, broadcastable, sum
+import Base: isempty, iterate, getindex, lastindex, broadcastable
+import Base: length, size, sum
 
 export crossinterpolate, optfirstpivot, SweepStrategies
 export tensortrain
@@ -15,6 +16,7 @@ export tensortrain
 include("abstractmatrixci.jl")
 include("matrixci.jl")
 include("matrixaca.jl")
+include("matrixlu.jl")
 include("indexset.jl")
 include("cachedfunction.jl")
 include("tensorci.jl")
