@@ -19,7 +19,9 @@ include("matrixaca.jl")
 include("matrixlu.jl")
 include("indexset.jl")
 include("cachedfunction.jl")
+include("abstracttensortrain.jl")
 include("tensorci.jl")
+include("tensorci2.jl")
 include("tensortrain.jl")
 
 end

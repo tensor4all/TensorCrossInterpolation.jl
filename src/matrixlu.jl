@@ -59,7 +59,7 @@ function rrlu(
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     leftorthogonal::Bool=true
-) where {T}
+)::rrLU{T} where {T}
     maxrank = min(maxrank, size(A)...)
     lu = rrLU{T}(copy(A), leftorthogonal=leftorthogonal)
 
@@ -123,4 +123,12 @@ function right(lu::rrLU{T}; permute=true) where {T}
         u[:, lu.colpermutation] = u
     end
     return u
+end
+
+function pivotrows(lu::rrLU{T}) where {T}
+    return lu.rowpermutation[1:npivots]
+end
+
+function pivotcols(lu::rrLU{T}) where {T}
+    return lu.colpermutation[1:npivots]
 end

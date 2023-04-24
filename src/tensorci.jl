@@ -1,11 +1,3 @@
-# It is necessary to nest vectors here, as these vectors will frequently grow
-# by adding elements. Using matrices, the entire matrix would have to be copied.
-# These type definitions are mostly to make the code below more readable, as
-# Vector{Vector{Vector{...}}} constructions make it difficult to understand
-# the meaning of each dimension.
-const LocalIndex = Int
-const MultiIndex = Vector{LocalIndex}
-
 """
     module SweepStrategies
 
@@ -28,10 +20,10 @@ end
 
 An object that represents a tensor cross interpolation. Users may want to create these using `crossinterpolate(...)` rather than calling a constructor directly.
 """
-mutable struct TensorCI{ValueType}
+mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
     Jset::Vector{IndexSet{MultiIndex}}
-    localset::Vector{Vector{Int}}
+    localset::Vector{Vector{LocalIndex}}
 
     """
     The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to adjacent ``P^{-1}`` matrices, and the second leg is the local index. The outermost vector iterates over the site index ``p``, such that `T[p]` is the ``p``-th site tensor.
@@ -81,10 +73,6 @@ mutable struct TensorCI{ValueType}
     end
 end
 
-function Base.show(io::IO, tci::TensorCI{ValueType}) where {ValueType}
-    print(io, "$(typeof(tci)) with rank $(rank(tci))")
-end
-
 function TensorCI{ValueType}(
     localdim::Int,
     length::Int
@@ -109,7 +97,6 @@ function TensorCI{ValueType}(
     end
 
     n = length(localdims)
-    tci.localset = [collect(1:localdim) for localdim in localdims]
     tci.Iset = [IndexSet([firstpivot[1:p-1]]) for p in 1:n]
     tci.Jset = [IndexSet([firstpivot[p+1:end]]) for p in 1:n]
     tci.PiIset = [getPiIset(tci, p) for p in 1:n]
@@ -132,31 +119,8 @@ function TensorCI{ValueType}(
     return tci
 end
 
-function Base.length(tci::TensorCI{V}) where {V}
-    return length(tci.localset)
-end
-
 function Base.broadcastable(tci::TensorCI{V}) where {V}
     return Ref(tci)
-end
-
-"""
-    function linkdims(tci::TensorCI{V}) where {V}
-
-Bond dimensions along the links between ``T`` and ``P`` matrices in the TCI.
-"""
-function linkdims(tci::TensorCI{V}) where {V}
-    return [size(t, 1) for t in tci.T[2:end]]
-end
-
-"""
-    function rank(tci::TensorCI{V}) where {V}
-
-Maximum link dimension, which is approximately the rank of the tensor being cross
-interpolated.
-"""
-function rank(tci::TensorCI{V}) where {V}
-    return maximum(linkdims(tci))
 end
 
 function lastsweeppivoterror(tci::TensorCI{V}) where {V}
@@ -197,10 +161,6 @@ function evaluate(
     return prod(
         AtimesBinv(tci.T[p][:, indexset[p], :], tci.P[p])
         for p in 1:length(tci))[1, 1]
-end
-
-function evaluate(tci::TensorCI{V}, indexset::CartesianIndex) where {V}
-    return evaluate(tci, Tuple(indexset))
 end
 
 function getPiIset(tci::TensorCI{V}, p::Int) where {V}
