@@ -103,6 +103,10 @@ function size(lu::rrLU{T}) where {T}
     return size(lu.buffer)
 end
 
+function size(lu::rrLU{T}, dim) where {T}
+    return size(lu.buffer, dim)
+end
+
 function left(lu::rrLU{T}; permute=true) where {T}
     l = tril(lu.buffer[:, 1:lu.npivot])
     if lu.leftorthogonal
@@ -125,10 +129,14 @@ function right(lu::rrLU{T}; permute=true) where {T}
     return u
 end
 
-function pivotrows(lu::rrLU{T}) where {T}
-    return lu.rowpermutation[1:npivots]
+function rowindices(lu::rrLU{T}) where {T}
+    return lu.rowpermutation[1:lu.npivot]
 end
 
-function pivotcols(lu::rrLU{T}) where {T}
-    return lu.colpermutation[1:npivots]
+function colindices(lu::rrLU{T}) where {T}
+    return lu.colpermutation[1:lu.npivot]
+end
+
+function npivots(lu::rrLU{T}) where {T}
+    return lu.npivot
 end
