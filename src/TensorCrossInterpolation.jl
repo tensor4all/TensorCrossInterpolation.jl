@@ -13,6 +13,8 @@ import Base: length, size, sum
 export crossinterpolate, optfirstpivot, SweepStrategies
 export tensortrain
 
+include("util.jl")
+include("sweepstrategies.jl")
 include("abstractmatrixci.jl")
 include("matrixci.jl")
 include("matrixaca.jl")

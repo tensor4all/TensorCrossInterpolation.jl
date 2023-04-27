@@ -1,21 +1,4 @@
 """
-    module SweepStrategies
-
-Wraps the enum `SweepStrategy` that represents different ways to perform sweeps during TCI
-optimization. The enum has the following entries:
-- `SweepStrategy.back_and_forth`
-- `SweepStrategy.forward`
-- `SweepStrategy.backward`
-"""
-module SweepStrategies
-@enum SweepStrategy begin
-    back_and_forth
-    forward
-    backward
-end
-end
-
-"""
     mutable struct TensorCI{ValueType}
 
 An object that represents a tensor cross interpolation. Users may want to create these using `crossinterpolate(...)` rather than calling a constructor directly.
@@ -128,11 +111,7 @@ function lastsweeppivoterror(tci::TensorCI{V}) where {V}
 end
 
 function updatemaxsample!(tci::TensorCI{V}, samples::Array{V}) where {V}
-    for s in abs.(samples)
-        if s > tci.maxsamplevalue
-            tci.maxsamplevalue = s
-        end
-    end
+    tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
 function TtimesPinv(tci::TensorCI{V}, p::Int) where {V}
@@ -534,54 +513,4 @@ function crossinterpolate(
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
     return tci, ranks, errors ./ errornormalization
-end
-
-
-"""
-    function optfirstpivot(
-        f,
-        localdims::Union{Vector{Int},NTuple{N,Int}},
-        firstpivot::MultiIndex=ones(Int, length(localdims));
-        maxsweep=1000
-    ) where {N}
-
-Optimize the first pivot for a tensor cross interpolation.
-
-Arguments:
-- `f` is function to be interpolated.
-- `localdims::Union{Vector{Int},NTuple{N,Int}}` determines the local dimensions of the function parameters (see [`crossinterpolate`](@ref)).
-- `fistpivot::MultiIndex=ones(Int, length(localdims))` is the starting point for the optimization. It is advantageous to choose it close to a global maximum of the function.
-- `maxsweep` is the maximum number of optimization sweeps. Default: `1000`.
-
-See also: [`crossinterpolate`](@ref)
-"""
-function optfirstpivot(
-    f,
-    localdims::Union{Vector{Int},NTuple{N,Int}},
-    firstpivot::MultiIndex=ones(Int, length(localdims));
-    maxsweep=1000
-) where {N}
-    n = length(localdims)
-    valf = abs(f(firstpivot))
-    pivot = copy(firstpivot)
-
-    for _ in 1:maxsweep
-        valf_prev = valf
-        for i in 1:n
-            for d in 1:localdims[i]
-                bak = pivot[i]
-                pivot[i] = d
-                if abs(f(pivot)) > valf
-                    valf = abs(f(pivot))
-                else
-                    pivot[i] = bak
-                end
-            end
-        end
-        if valf_prev == valf
-            break
-        end
-    end
-
-    return pivot
 end

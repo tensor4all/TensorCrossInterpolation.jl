@@ -2,6 +2,8 @@ using TensorCrossInterpolation
 using Test
 using LinearAlgebra
 
+include("test_util.jl")
+include("test_sweepstrategies.jl")
 include("test_indexset.jl")
 include("test_cachedfunction.jl")
 include("test_matrixci.jl")
