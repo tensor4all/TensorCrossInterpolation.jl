@@ -1,10 +1,10 @@
 function maxabs(
     maxval::T,
-    updates::AbstractArray{T}
-) where {T}
+    updates::AbstractArray{U}
+) where {T, U}
     return reduce(
         (x, y) -> max(abs(x), abs(y)),
-        updates,
+        updates[:],
         init=maxval
     )
 end

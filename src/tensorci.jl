@@ -473,7 +473,7 @@ function crossinterpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
     pivottolerance::Float64=1e-12,
     verbosity::Int=0,
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
@@ -489,12 +489,7 @@ function crossinterpolate(
     end
 
     for iter in rank(tci)+1:maxiter
-        foward_sweep = (
-            sweepstrategy == SweepStrategies.forward ||
-            (sweepstrategy != SweepStrategies.backward && isodd(iter))
-        )
-
-        if foward_sweep
+        if forwardsweep(sweepstrategy, iter)
             addpivot!.(tci, 1:n-1, f, pivottolerance)
         else
             addpivot!.(tci, (n-1):-1:1, f, pivottolerance)
@@ -502,9 +497,9 @@ function crossinterpolate(
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         push!(errors, lastsweeppivoterror(tci))
-        push!(ranks, maximum(rank(tci)))
+        push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, 10) == 0
-            println("rank= $(last(ranks)) , error= $(last(errors))")
+            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors))")
         end
         if last(errors) < tolerance * errornormalization
             break

@@ -2,7 +2,7 @@ using Test
 import TensorCrossInterpolation as TCI
 import TensorCrossInterpolation: rank, linkdims
 
-@testset "TensorCrossInterpolation2" begin
+@testset "TensorCI2" begin
     @testset "kronecker util function" begin
         multiset = [collect(1:5) for _ in 1:5]
         localset = collect(10:14)
@@ -34,14 +34,10 @@ import TensorCrossInterpolation: rank, linkdims
             @test isempty(tci.Jset[i])
         end
 
-        tci = TCI.TensorCI2{Float64}(f, fill(2, n))
+        tci = TCI.TensorCI2{Float64}(f, fill(2, n), [fill(1, n)])
         @test length(tci) == n
-        @test rank(tci) == 0
-        @test linkdims(tci) == fill(0, n)
+        @test rank(tci) == 1
+        @test linkdims(tci) == fill(1, n-1)
         @test tci.localset == fill([1, 2], n)
-        for i in 1:n
-            @test tci.Iset[i].fromint == [fill(1, i - 1)]
-            @test tci.Jset[i].fromint == [fill(1, n - i)]
-        end
     end
 end

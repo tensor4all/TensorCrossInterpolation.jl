@@ -140,3 +140,7 @@ end
 function npivots(lu::rrLU{T}) where {T}
     return lu.npivot
 end
+
+function pivoterrors(lu::rrLU{T}) where {T}
+    return diag(lu.buffer[1:lu.npivot, 1:lu.npivot])
+end

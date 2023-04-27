@@ -77,3 +77,7 @@ function right(luci::MatrixLUCI{T}) where {T}
         return pivotinvtimesrows(luci)
     end
 end
+
+function pivoterrors(luci::MatrixLUCI{T}) where {T}
+    return pivoterrors(luci.lu)
+end
