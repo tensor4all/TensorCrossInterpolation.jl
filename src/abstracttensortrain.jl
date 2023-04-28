@@ -46,6 +46,24 @@ function Base.lastindex(tt::AbstractTensorTrain{V}) where {V}
 end
 
 """
+    function evaluate(
+        tt::TensorTrain{V},
+        indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
+    )::V where {N, V}
+
+Evaluates the tensor train `tt` at indices given by `indexset`.
+"""
+function evaluate(
+    tt::AbstractTensorTrain{V},
+    indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
+)::V where {N, V}
+    if length(indexset) != length(tt)
+        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
+    end
+    return only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
+end
+
+"""
     function evaluate(tt::TensorTrain{V}, indexset::CartesianIndex) where {V}
 
 Evaluates the tensor train `tt` at indices given by `indexset`.
@@ -56,4 +74,18 @@ end
 
 function (tt::AbstractTensorTrain{V})(indexset) where {V}
     return evaluate(tt, indexset)
+end
+
+"""
+    function sum(tt::TensorTrain{V}) where {V}
+
+Evaluates the sum of the tensor train approximation over all lattice sites in an efficient
+factorized manner.
+"""
+function sum(tt::AbstractTensorTrain{V}) where {V}
+    v = sum(tt[1], dims=(1, 2))[1, 1, :]'
+    for T in tt[2:end]
+        v *= sum(T, dims=2)[:, 1, :]
+    end
+    return only(v)
 end

@@ -35,9 +35,11 @@ function TensorCI2{ValueType}(
 end
 
 function updatepivoterror!(tci::TensorCI2{T}, errors::AbstractVector{Float64}) where {T}
-    nerrors = length(tci.pivoterrors)
-    tci.pivoterrors = max.(tci.pivoterrors, abs.(errors[1:nerrors]))
-    append!(tci.pivoterrors, abs.(errors[nerrors+1:end]))
+    erroriter = Iterators.map(max, padzero(tci.pivoterrors), padzero(errors))
+    tci.pivoterrors = Iterators.take(
+        erroriter,
+        max(length(tci.pivoterrors), length(errors))
+    ) |> collect
 end
 
 function pivoterror(tci::TensorCI2{T}) where {T}
@@ -57,8 +59,8 @@ function addglobalpivots!(
 
     for pivot in pivots
         for b in 1:length(tci)
-            push!(tci.Iset[b], pivot[1:b])
-            push!(tci.Jset[b], pivot[b+1:end])
+            pushunique!(tci.Iset[b], pivot[1:b-1])
+            pushunique!(tci.Jset[b], pivot[b+1:end])
         end
     end
 
@@ -179,7 +181,7 @@ function updatepivots!(
     tci.Jset[b] = Jcombined[colindices(luci)]
     setT!(tci, b, left(luci))
     setT!(tci, b+1, right(luci))
-    updatepivoterror!(tci, pivoterror(luci))
+    updatepivoterror!(tci, pivoterrors(luci))
 end
 
 function crossinterpolate2(
@@ -201,10 +203,10 @@ function crossinterpolate2(
     ranks = Int[]
 
     for iter in rank(tci)+1:maxiter
-        if forwardsweep(sweepstrategy, iter)
-            updatepivots!.(tci, 1:n-1, f, true; reltol=tolerance, maxbonddim=maxbonddim)
-        else
-            updatepivots!.(tci, (n-1):-1:1, f, true; reltol=tolerance, maxbonddim=maxbonddim)
+        if forwardsweep(sweepstrategy, iter) # forward sweep
+            updatepivots!.(tuple(tci), 1:n-1, f, true; reltol=tolerance, maxbonddim=maxbonddim)
+        else # backward sweep
+            updatepivots!.(tuple(tci), (n-1):-1:1, f, false; reltol=tolerance, maxbonddim=maxbonddim)
         end
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0

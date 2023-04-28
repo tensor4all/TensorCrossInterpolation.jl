@@ -1,12 +1,28 @@
 function maxabs(
     maxval::T,
     updates::AbstractArray{U}
-) where {T, U}
+) where {T,U}
     return reduce(
         (x, y) -> max(abs(x), abs(y)),
         updates[:],
         init=maxval
     )
+end
+
+function padzero(a::AbstractVector{T}) where {T}
+    return Iterators.flatten((a, Iterators.repeated(0)))
+end
+
+function pushunique!(collection, item)
+    if !(item in collection)
+        push!(collection, item)
+    end
+end
+
+function pushunique!(collection, items...)
+    for item in items
+        pushunique!(collection, item)
+    end
 end
 
 """

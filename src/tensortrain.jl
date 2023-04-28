@@ -53,42 +53,16 @@ function TensorTrain(tci::TensorCI{V})::TensorTrain{V} where {V}
 end
 
 """
-    function tensortrain(tci::TensorCI{V}) where {V}
+    function TensorTrain(tci::TensorCI2{V}) where {V}
 
-Convert the TCI object into a tensor train, also known as an MPS.
+Convert the TCI2 object into a tensor train, also known as an MPS.
+
+See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
 """
-function tensortrain(tci::TensorCI{V})::TensorTrain{V} where {V}
+function TensorTrain(tci::TensorCI2{V})::TensorTrain{V} where {V}
+    return TensorTrain(tci.T)
+end
+
+function tensortrain(tci)
     return TensorTrain(tci)
-end
-
-"""
-    function evaluate(
-        tt::TensorTrain{V},
-        indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
-    )::V where {N, V}
-
-Evaluates the tensor train `tt` at indices given by `indexset`.
-"""
-function evaluate(
-    tt::TensorTrain{V},
-    indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
-)::V where {N, V}
-    if length(indexset) != length(tt)
-        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
-    end
-    return only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
-end
-
-"""
-    function sum(tt::TensorTrain{V}) where {V}
-
-Evaluates the sum of the tensor train approximation over all lattice sites in an efficient
-factorized manner.
-"""
-function sum(tt::TensorTrain{V}) where {V}
-    v = sum(tt[1], dims=(1, 2))[1, 1, :]'
-    for T in tt[2:end]
-        v *= sum(T, dims=2)[:, 1, :]
-    end
-    return only(v)
 end
