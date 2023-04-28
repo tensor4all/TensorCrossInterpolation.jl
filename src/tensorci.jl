@@ -1,37 +1,12 @@
-# It is necessary to nest vectors here, as these vectors will frequently grow
-# by adding elements. Using matrices, the entire matrix would have to be copied.
-# These type definitions are mostly to make the code below more readable, as
-# Vector{Vector{Vector{...}}} constructions make it difficult to understand
-# the meaning of each dimension.
-const LocalIndex = Int
-const MultiIndex = Vector{LocalIndex}
-
-"""
-    module SweepStrategies
-
-Wraps the enum `SweepStrategy` that represents different ways to perform sweeps during TCI
-optimization. The enum has the following entries:
-- `SweepStrategy.back_and_forth`
-- `SweepStrategy.forward`
-- `SweepStrategy.backward`
-"""
-module SweepStrategies
-@enum SweepStrategy begin
-    back_and_forth
-    forward
-    backward
-end
-end
-
 """
     mutable struct TensorCI{ValueType}
 
 An object that represents a tensor cross interpolation. Users may want to create these using `crossinterpolate(...)` rather than calling a constructor directly.
 """
-mutable struct TensorCI{ValueType}
+mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
     Jset::Vector{IndexSet{MultiIndex}}
-    localset::Vector{Vector{Int}}
+    localset::Vector{Vector{LocalIndex}}
 
     """
     The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to adjacent ``P^{-1}`` matrices, and the second leg is the local index. The outermost vector iterates over the site index ``p``, such that `T[p]` is the ``p``-th site tensor.
@@ -81,10 +56,6 @@ mutable struct TensorCI{ValueType}
     end
 end
 
-function Base.show(io::IO, tci::TensorCI{ValueType}) where {ValueType}
-    print(io, "$(typeof(tci)) with rank $(rank(tci))")
-end
-
 function TensorCI{ValueType}(
     localdim::Int,
     length::Int
@@ -109,7 +80,6 @@ function TensorCI{ValueType}(
     end
 
     n = length(localdims)
-    tci.localset = [collect(1:localdim) for localdim in localdims]
     tci.Iset = [IndexSet([firstpivot[1:p-1]]) for p in 1:n]
     tci.Jset = [IndexSet([firstpivot[p+1:end]]) for p in 1:n]
     tci.PiIset = [getPiIset(tci, p) for p in 1:n]
@@ -132,31 +102,8 @@ function TensorCI{ValueType}(
     return tci
 end
 
-function Base.length(tci::TensorCI{V}) where {V}
-    return length(tci.localset)
-end
-
 function Base.broadcastable(tci::TensorCI{V}) where {V}
     return Ref(tci)
-end
-
-"""
-    function linkdims(tci::TensorCI{V}) where {V}
-
-Bond dimensions along the links between ``T`` and ``P`` matrices in the TCI.
-"""
-function linkdims(tci::TensorCI{V}) where {V}
-    return [size(t, 1) for t in tci.T[2:end]]
-end
-
-"""
-    function rank(tci::TensorCI{V}) where {V}
-
-Maximum link dimension, which is approximately the rank of the tensor being cross
-interpolated.
-"""
-function rank(tci::TensorCI{V}) where {V}
-    return maximum(linkdims(tci))
 end
 
 function lastsweeppivoterror(tci::TensorCI{V}) where {V}
@@ -164,11 +111,7 @@ function lastsweeppivoterror(tci::TensorCI{V}) where {V}
 end
 
 function updatemaxsample!(tci::TensorCI{V}, samples::Array{V}) where {V}
-    for s in abs.(samples)
-        if s > tci.maxsamplevalue
-            tci.maxsamplevalue = s
-        end
-    end
+    tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
 function TtimesPinv(tci::TensorCI{V}, p::Int) where {V}
@@ -197,10 +140,6 @@ function evaluate(
     return prod(
         AtimesBinv(tci.T[p][:, indexset[p], :], tci.P[p])
         for p in 1:length(tci))[1, 1]
-end
-
-function evaluate(tci::TensorCI{V}, indexset::CartesianIndex) where {V}
-    return evaluate(tci, Tuple(indexset))
 end
 
 function getPiIset(tci::TensorCI{V}, p::Int) where {V}
@@ -509,7 +448,7 @@ end
 Cross interpolate a function ``f(\mathbf{u})``, where ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
 
 Arguments:
-- `ValueType` is the value type of a TensorCI object to be constructed.
+- `ValueType` is the return type of `f`. Automatic inference is too error-prone.
 - `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
 - `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
 - `firstpivot::MultiIndex` is the first pivot, used by the TCI algorithm for initialization. Default: `[1, 1, ...]`.
@@ -525,7 +464,7 @@ Notes:
 - Convergence may depend on the choice of first pivot. A good rule of thumb is to choose `firstpivot` close to the largest structure in `f`, or on a maximum of `f`. If the structure of `f` is not known in advance, [`optfirstpivot`](@ref) may be helpful.
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
-See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref)
+See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate2`](@ref)
 """
 function crossinterpolate(
     ::Type{ValueType},
@@ -534,7 +473,7 @@ function crossinterpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
     pivottolerance::Float64=1e-12,
     verbosity::Int=0,
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
@@ -550,12 +489,7 @@ function crossinterpolate(
     end
 
     for iter in rank(tci)+1:maxiter
-        foward_sweep = (
-            sweepstrategy == SweepStrategies.forward ||
-            (sweepstrategy != SweepStrategies.backward && isodd(iter))
-        )
-
-        if foward_sweep
+        if forwardsweep(sweepstrategy, iter)
             addpivot!.(tci, 1:n-1, f, pivottolerance)
         else
             addpivot!.(tci, (n-1):-1:1, f, pivottolerance)
@@ -563,9 +497,9 @@ function crossinterpolate(
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         push!(errors, lastsweeppivoterror(tci))
-        push!(ranks, maximum(rank(tci)))
+        push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, 10) == 0
-            println("rank= $(last(ranks)) , error= $(last(errors))")
+            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors))")
         end
         if last(errors) < tolerance * errornormalization
             break
@@ -574,54 +508,4 @@ function crossinterpolate(
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
     return tci, ranks, errors ./ errornormalization
-end
-
-
-"""
-    function optfirstpivot(
-        f,
-        localdims::Union{Vector{Int},NTuple{N,Int}},
-        firstpivot::MultiIndex=ones(Int, length(localdims));
-        maxsweep=1000
-    ) where {N}
-
-Optimize the first pivot for a tensor cross interpolation.
-
-Arguments:
-- `f` is function to be interpolated.
-- `localdims::Union{Vector{Int},NTuple{N,Int}}` determines the local dimensions of the function parameters (see [`crossinterpolate`](@ref)).
-- `fistpivot::MultiIndex=ones(Int, length(localdims))` is the starting point for the optimization. It is advantageous to choose it close to a global maximum of the function.
-- `maxsweep` is the maximum number of optimization sweeps. Default: `1000`.
-
-See also: [`crossinterpolate`](@ref)
-"""
-function optfirstpivot(
-    f,
-    localdims::Union{Vector{Int},NTuple{N,Int}},
-    firstpivot::MultiIndex=ones(Int, length(localdims));
-    maxsweep=1000
-) where {N}
-    n = length(localdims)
-    valf = abs(f(firstpivot))
-    pivot = copy(firstpivot)
-
-    for _ in 1:maxsweep
-        valf_prev = valf
-        for i in 1:n
-            for d in 1:localdims[i]
-                bak = pivot[i]
-                pivot[i] = d
-                if abs(f(pivot)) > valf
-                    valf = abs(f(pivot))
-                else
-                    pivot[i] = bak
-                end
-            end
-        end
-        if valf_prev == valf
-            break
-        end
-    end
-
-    return pivot
 end

@@ -18,7 +18,7 @@ Pages = ["abstractmatrixci.jl"]
 
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["matrixci.jl"]
+Pages = ["abstractmatrixci.jl", "matrixci.jl"]
 ```
 
 ### Adaptive cross approximation (ACA)
@@ -28,24 +28,37 @@ Modules = [TensorCrossInterpolation]
 Pages = ["matrixaca.jl"]
 ```
 
+### Rank-revealing LU decomposition (rrLU)
+```@autodocs
+Modules = [TensorCrossInterpolation]
+Pages = ["matrixlu.jl", "matrixluci.jl"]
+```
+
 ## Tensor cross interpolation (TCI)
 
 ```@autodocs
 Modules = [TensorCrossInterpolation, TensorCrossInterpolation.SweepStrategies]
-Pages = ["tensorci.jl", "indexset.jl"]
+Pages = ["tensorci.jl", "indexset.jl", "sweepstrategies.jl"]
+```
+
+## Tensor cross interpolation 2 (TCI2)
+
+```@autodocs
+Modules = [TensorCrossInterpolation, TensorCrossInterpolation.SweepStrategies]
+Pages = ["tensorci2.jl"]
 ```
 
 ## Tensor train (TT)
 
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["tensortrain.jl"]
+Pages = ["abstracttensortrain.jl", "tensortrain.jl"]
 ```
 
 ## Helpers and utility methods
 
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["cachedfunction.jl"]
+Pages = ["cachedfunction.jl", "util.jl"]
 ```
 

@@ -154,14 +154,4 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test value ≈ f(v)
         end
     end
-
-    @testset "optfirstpivot" begin
-        f(v) = 2^2 * (v[3] - 1) + 2^1 * (v[2] - 1) + 2^0 * (v[1] - 1)
-        localdims = [2, 2, 2]
-        firstpivot = [1, 1, 1]
-
-        pivot = optfirstpivot(f, localdims, firstpivot)
-
-        @test pivot == [2, 2, 2]
-    end
 end
