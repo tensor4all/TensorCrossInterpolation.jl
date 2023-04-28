@@ -448,7 +448,7 @@ end
 Cross interpolate a function ``f(\mathbf{u})``, where ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
 
 Arguments:
-- `ValueType` is the value type of a TensorCI object to be constructed.
+- `ValueType` is the return type of `f`. Automatic inference is too error-prone.
 - `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
 - `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
 - `firstpivot::MultiIndex` is the first pivot, used by the TCI algorithm for initialization. Default: `[1, 1, ...]`.
@@ -464,7 +464,7 @@ Notes:
 - Convergence may depend on the choice of first pivot. A good rule of thumb is to choose `firstpivot` close to the largest structure in `f`, or on a maximum of `f`. If the structure of `f` is not known in advance, [`optfirstpivot`](@ref) may be helpful.
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
-See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref)
+See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate2`](@ref)
 """
 function crossinterpolate(
     ::Type{ValueType},

@@ -184,16 +184,50 @@ function updatepivots!(
     updatepivoterror!(tci, pivoterrors(luci))
 end
 
+@doc raw"""
+    function crossinterpolate2(
+        ::Type{ValueType},
+        f,
+        localdims::Union{Vector{Int},NTuple{N,Int}},
+        initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+        tolerance::Float64=1e-8,
+        maxbonddim::Int=typemax(Int),
+        maxiter::Int=200,
+        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+        verbosity::Int=0,
+        normalizeerror::Bool=true
+    ) where {ValueType, N}
+
+Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
+
+Arguments:
+- `ValueType` is the return type of `f`. Automatic inference is too error-prone.
+- `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
+- `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
+- `initialpivots::Vector{MultiIndex}` is a vector of pivots to be used for initialization. Default: `[1, 1, ...]`.
+- `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
+- `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
+- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
+- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
+- `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
+
+Notes:
+- Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
+- By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
+
+
+See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+"""
 function crossinterpolate2(
     ::Type{ValueType},
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
     tolerance::Float64=1e-8,
+    maxbonddim::Int=typemax(Int),
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
-    pivottolerance::Float64=1e-12,
-    maxbonddim::Int=typemax(Int),
     verbosity::Int=0,
     normalizeerror::Bool=true
 ) where {ValueType, N}
@@ -201,6 +235,11 @@ function crossinterpolate2(
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
+
+    if maxbonddim >= typemax(Int) && tolerance <= 0
+        throw(ArgumentError(
+            "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"))
+    end
 
     for iter in rank(tci)+1:maxiter
         if forwardsweep(sweepstrategy, iter) # forward sweep
@@ -213,8 +252,7 @@ function crossinterpolate2(
         push!(errors, pivoterror(tci))
         push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, 10) == 0
-            println(
-                "iteration = $iter, rank = $(last(ranks))), error= $(last(errors))")
+            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors))")
         end
         if last(errors) < tolerance * errornormalization
             break
