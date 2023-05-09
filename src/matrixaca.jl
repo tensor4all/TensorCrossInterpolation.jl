@@ -154,7 +154,7 @@ function setcols!(
     aca.colindices = permutation[aca.colindices]
 
     # Permute old elements
-    tempv = Matrix{T}(undef, size(newpivotrows))
+    tempv = CuMatrix{T}(undef, size(newpivotrows))
     tempv[:, permutation] = aca.v
     aca.v = tempv
 
@@ -163,7 +163,7 @@ function setcols!(
     for k in 1:size(newpivotrows, 1)
         aca.v[k, newindices] = newpivotrows[k, newindices]
         for l in 1:k-1
-            aca.v[k, newindices] -= aca.v[l, newindices] *
+            CUDA.@allowscalar aca.v[k, newindices] -= aca.v[l, newindices] *
                                     (aca.u[aca.rowindices[k], l] * aca.alpha[l])
         end
     end
@@ -177,7 +177,7 @@ function setrows!(
     aca.rowindices = permutation[aca.rowindices]
 
     # Permute old elements
-    tempu = Matrix{T}(undef, size(newpivotcols))
+    tempu = CuMatrix{T}(undef, size(newpivotcols))
     tempu[permutation, :] = aca.u
     aca.u = tempu
 
@@ -186,7 +186,7 @@ function setrows!(
     for k in 1:size(newpivotcols, 2)
         aca.u[newindices, k] = newpivotcols[newindices, k]
         for l in 1:k-1
-            aca.u[newindices, k] -= aca.u[newindices, l] *
+            CUDA.@allowscalar aca.u[newindices, k] -= aca.u[newindices, l] *
                                     (aca.v[l, aca.colindices[k]] * aca.alpha[l])
         end
     end

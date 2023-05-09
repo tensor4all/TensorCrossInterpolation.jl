@@ -11,12 +11,12 @@ mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     """
     The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to adjacent ``P^{-1}`` matrices, and the second leg is the local index. The outermost vector iterates over the site index ``p``, such that `T[p]` is the ``p``-th site tensor.
     """
-    T::Vector{Array{ValueType,3}}
+    T::Vector{CuArray{ValueType,3}}
 
     """
     The 2-leg ``P`` tensors from the TCI paper.
     """
-    P::Vector{Matrix{ValueType}}
+    P::Vector{CuMatrix{ValueType}}
 
     """
     Adaptive cross approximation objects, to be updated as new pivots are added.
@@ -26,7 +26,7 @@ mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     """
     The 4-leg ``\\Pi`` matrices from the TCI paper, who are decomposed to obtain ``T`` and ``P``. Have to be kept in memory for efficient updates.
     """
-    Pi::Vector{Matrix{ValueType}}
+    Pi::Vector{CuMatrix{ValueType}}
     PiIset::Vector{IndexSet{MultiIndex}}
     PiJset::Vector{IndexSet{MultiIndex}}
 
@@ -110,7 +110,7 @@ function lastsweeppivoterror(tci::TensorCI{V}) where {V}
     return maximum(tci.pivoterrors)
 end
 
-function updatemaxsample!(tci::TensorCI{V}, samples::Array{V}) where {V}
+function updatemaxsample!(tci::TensorCI{V}, samples::AbstractArray{V}) where {V}
     tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
@@ -137,9 +137,9 @@ function evaluate(
     tci::TensorCI{V},
     indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}}
 )::V where {N,V}
-    return prod(
+    CUDA.@allowscalar return prod(
         AtimesBinv(tci.T[p][:, indexset[p], :], tci.P[p])
-        for p in 1:length(tci))[1, 1]
+        for p in 1:length(tci))[1]
 end
 
 function getPiIset(tci::TensorCI{V}, p::Int) where {V}
@@ -193,7 +193,7 @@ end
 function updatePirows!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     newIset = getPiIset(tci, p)
     diffIset = setdiff(newIset.fromint, tci.PiIset[p].fromint)
-    newPi = Matrix{V}(undef, length(newIset), size(tci.Pi[p], 2))
+    newPi = CuMatrix{V}(undef, length(newIset), size(tci.Pi[p], 2))
 
     permutation = [pos(newIset, imulti) for imulti in tci.PiIset[p].fromint]
     newPi[permutation, :] = tci.Pi[p]
@@ -215,7 +215,7 @@ end
 function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     newJset = getPiJset(tci, p + 1)
     diffJset = setdiff(newJset.fromint, tci.PiJset[p+1].fromint)
-    newPi = Matrix{V}(undef, size(tci.Pi[p], 1), length(newJset))
+    newPi = CuMatrix{V}(undef, size(tci.Pi[p], 1), length(newJset))
 
     permutation = [pos(newJset, jmulti) for jmulti in tci.PiJset[p+1].fromint]
     newPi[:, permutation] = tci.Pi[p]
@@ -313,11 +313,11 @@ function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 
         return abs(f(vcat(x, y)))
     end
 
-    fx = [f(vcat(x, j)) for j in tci.Jset[bondindex]]
-    fy = [f(vcat(i, y)) for i in tci.Iset[bondindex+1]]
+    fx = CuArray([f(vcat(x, j)) for j in tci.Jset[bondindex]])
+    fy = CuArray([f(vcat(i, y)) for i in tci.Iset[bondindex+1]])
     updatemaxsample!(tci, fx)
     updatemaxsample!(tci, fy)
-    return abs(first(AtimesBinv(transpose(fx), tci.P[bondindex]) * fy) - f(vcat(x, y)))
+    CUDA.@allowscalar return abs(first(AtimesBinv(transpose(fx), tci.P[bondindex]) * fy) - f(vcat(x, y)))
 end
 
 function updateIproposal(

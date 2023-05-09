@@ -99,6 +99,6 @@ function findnewpivot(
     end
 
     localerrors = localerror(ci, a, rowindices, colindices)
-    ij = argmax(localerrors)
-    CUDA.@allowscalar return (rowindices[ij[1]], colindices[ij[2]]), localerrors[ij]
+    maxerror, ij = findmax(localerrors)
+    return (rowindices[ij[1]], colindices[ij[2]]), maxerror
 end

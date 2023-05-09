@@ -49,7 +49,7 @@ Convert the TCI object into a tensor train, also known as an MPS.
 See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
 """
 function TensorTrain(tci::TensorCI{V})::TensorTrain{V} where {V}
-    return TensorTrain{V}(TtimesPinv.(tci, 1:length(tci)))
+    return TensorTrain{V}(Array{V,3}.(TtimesPinv.(tci, 1:length(tci))))
 end
 
 """

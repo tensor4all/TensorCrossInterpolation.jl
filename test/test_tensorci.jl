@@ -1,6 +1,7 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
+using CUDA
 import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims, addpivot!, addglobalpivot!, evaluate
 
 @testset "TensorCI" begin
@@ -14,14 +15,14 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test isempty(tci.Iset[i])
             @test isempty(tci.Jset[i])
             @test tci.localset[i] == [1, 2]
-            @test tci.T[i] == zeros(0, 2, 0)
-            @test tci.P[i] == zeros(0, 0)
+            @test tci.T[i] == CUDA.zeros(0, 2, 0)
+            @test tci.P[i] == CUDA.zeros(0, 0)
             @test isempty(tci.PiIset[i])
             @test isempty(tci.PiJset[i])
         end
 
         for i in 1:n-1
-            @test tci.Pi[i] == zeros(0, 0)
+            @test tci.Pi[i] == CUDA.zeros(0, 0)
             @test tci.pivoterrors[i] == Inf
         end
 
@@ -31,14 +32,14 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test tci.Iset[i].fromint == [fill(1, i - 1)]
             @test tci.Jset[i].fromint == [fill(1, n - i)]
             @test tci.localset[i] == [1, 2]
-            @test tci.T[i] == ones(1, 2, 1)
-            @test tci.P[i] == ones(1, 1)
+            @test tci.T[i] == CUDA.ones(1, 2, 1)
+            @test tci.P[i] == CUDA.ones(1, 1)
             @test tci.PiIset[i].fromint == [[fill(1, i - 1)..., k] for k in 1:2]
             @test tci.PiJset[i].fromint == [[k, fill(1, n - i)...] for k in 1:2]
         end
 
         for i in 1:n-1
-            @test tci.Pi[i] == ones(2, 2)
+            @test tci.Pi[i] == CUDA.ones(2, 2)
         end
 
         # Because the MPS is trivial, no new pivot should be added.
@@ -50,14 +51,14 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test length(tci.Iset[i]) == 1
             @test length(tci.Jset[i]) == 1
             @test tci.localset[i] == [1, 2]
-            @test tci.T[i] == ones(1, 2, 1)
-            @test tci.P[i] == ones(1, 1)
+            @test tci.T[i] == CUDA.ones(1, 2, 1)
+            @test tci.P[i] == CUDA.ones(1, 1)
             @test length(tci.PiIset[i]) == 2
             @test length(tci.PiJset[i]) == 2
         end
 
         for i in 1:n-1
-            @test tci.Pi[i] == ones(2, 2)
+            @test tci.Pi[i] == CUDA.ones(2, 2)
         end
     end
 
