@@ -27,5 +27,6 @@ include("abstracttensortrain.jl")
 include("tensorci.jl")
 include("tensorci2.jl")
 include("tensortrain.jl")
+include("tensortraincuda.jl")
 
 end

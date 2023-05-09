@@ -60,7 +60,12 @@ function evaluate(
     if length(indexset) != length(tt)
         throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
     end
-    return only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
+    result = prod(T[:, i, :] for (T, i) in zip(tt, indexset))
+    r = zero(V)
+    CUDA.allowscalar() do
+        r = only(result)
+    end
+    return r
 end
 
 """
@@ -72,7 +77,7 @@ function evaluate(tt::AbstractTensorTrain{V}, indexset::CartesianIndex) where {V
     return evaluate(tt, Tuple(indexset))
 end
 
-function (tt::AbstractTensorTrain{V})(indexset) where {V}
+function (tt::AbstractTensorTrain{V})(indexset...) where {V}
     return evaluate(tt, indexset)
 end
 
