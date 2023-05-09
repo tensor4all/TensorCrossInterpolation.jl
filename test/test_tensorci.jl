@@ -1,4 +1,4 @@
-using TensorCrossInterpolation
+import TensorCrossInterpolation as TCI
 using Test
 using LinearAlgebra
 using CUDA
@@ -102,20 +102,20 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test rank(tci) == iter
         end
 
-        tci2, ranks, errors = crossinterpolate(
+        tci2, ranks, errors = TCI.crossinterpolate(
             ValueType,
             f,
             fill(10, n),
             ones(Int, n);
             tolerance=1e-8,
             maxiter=8,
-            sweepstrategy=SweepStrategies.forward
+            sweepstrategy=TCI.SweepStrategies.forward
         )
 
         @test linkdims(tci) == linkdims(tci2)
         @test rank(tci) == rank(tci2)
 
-        tci3, ranks, errors = crossinterpolate(
+        tci3, ranks, errors = TCI.crossinterpolate(
             ValueType,
             f,
             fill(10, n),
@@ -128,7 +128,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         @test all(linkdims(tci3) .<= 200)
         @test rank(tci3) <= 200
 
-        tci4, ranks, errors = crossinterpolate(
+        tci4, ranks, errors = TCI.crossinterpolate(
             ValueType,
             f,
             fill(10, n),
@@ -147,12 +147,14 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         @test all(linkdims(tci4) .<= 200)
         @test rank(tci4) <= 200
 
-        tt3 = tensortrain(tci3)
+        tt3 = TCI.tensortrain(tci3)
+        ttgpu = TCI.TensorTrainCUDA(tci3)
 
         for v in Iterators.product([1:3 for p in 1:n]...)
             value = evaluate(tci3, [i for i in v])
             @test value ≈ prod([tt3[p][:, v[p], :] for p in eachindex(v)])[1]
             @test value ≈ f(v)
+            @test value ≈ evaluate(ttgpu, [i for i in v])
         end
     end
 end

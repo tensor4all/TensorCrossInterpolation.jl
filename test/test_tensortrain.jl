@@ -1,4 +1,5 @@
 import TensorCrossInterpolation as TCI
+using Test
 
 @testset "tensor train" begin
     g(v) = 1 / (sum(v .^ 2) + 1)
@@ -6,7 +7,7 @@ import TensorCrossInterpolation as TCI
     tolerance = 1e-8
     tci, ranks, errors = TCI.crossinterpolate(Float64, g, localdims; tolerance=tolerance)
     tt = TCI.TensorTrain(tci)
-    @test rank(tci) == rank(tt)
+    @test TCI.rank(tci) == TCI.rank(tt)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
     gsum = 0.0
     for i in CartesianIndices(localdims)

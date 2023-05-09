@@ -16,18 +16,18 @@ Evaluates the tensor train `tt` at indices given by `indexset`.
 """
 struct TensorTrainCUDA{ValueType} <: AbstractTensorTrain{ValueType}
     T::Vector{CuArray{ValueType, 3}}
+end
 
-    function TensorTrainCUDA{ValueType}(T::Vector{Array{ValueType, 3}}) where {ValueType}
-        for i in 1:length(T)-1
-            if (size(T[i], 3) != size(T[i+1], 1))
-                throw(ArgumentError(
-                    "The tensors at $i and $(i+1) must have consistent dimensions for a tensor train."
-                ))
-            end
+function TensorTrainCUDA(T::AbstractVector{CuArray{ValueType, 3}}) where {ValueType}
+    for i in 1:length(T)-1
+        if (size(T[i], 3) != size(T[i+1], 1))
+            throw(ArgumentError(
+                "The tensors at $i and $(i+1) must have consistent dimensions for a tensor train."
+            ))
         end
-
-        new{ValueType}(T)
     end
+
+    new{ValueType}(T)
 end
 
 """
@@ -37,8 +37,8 @@ Create a tensor train out of a vector of tensors. Each tensor should have links 
 previous and next tensor as dimension 1 and 3, respectively; the local index ("physical
 index" for MPS in physics) is dimension 2.
 """
-function TensorTrainCUDA(T::Vector{Array{V, 3}}) where {V}
-    return TensorTrainCUDA{V}(T)
+function TensorTrainCUDA(T::AbstractVector{Array{V, 3}}) where {V}
+    return TensorTrainCUDA{V}(CuArray.(T))
 end
 
 """
@@ -60,9 +60,5 @@ Convert the TCI2 object into a tensor train, also known as an MPS.
 See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
 """
 function TensorTrainCUDA(tci::TensorCI2{V})::TensorTrainCUDA{V} where {V}
-    return TensorTrainCUDA(tci.T)
-end
-
-function tensortraincuda(tci)
-    return TensorTrainCUDA(tci)
+    return TensorTrainCUDA{V}(tci.T)
 end

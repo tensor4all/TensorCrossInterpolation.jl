@@ -81,6 +81,10 @@ function (tt::AbstractTensorTrain{V})(indexset...) where {V}
     return evaluate(tt, indexset)
 end
 
+function (tt::AbstractTensorTrain{V})(indexset::CartesianIndex) where {V}
+    return evaluate(tt, indexset)
+end
+
 """
     function sum(tt::TensorTrain{V}) where {V}
 
