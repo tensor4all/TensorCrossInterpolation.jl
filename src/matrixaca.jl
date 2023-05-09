@@ -2,9 +2,9 @@ mutable struct MatrixACA{T} <: AbstractMatrixCI{T}
     rowindices::Vector{Int}
     colindices::Vector{Int}
 
-    u::Matrix{T} # u_k(x): (nrows, npivot)
-    v::Matrix{T} # v_k(y): (npivot, ncols)
-    alpha::Vector{T} # α = 1/δ: (npivot)
+    u::CuMatrix{T} # u_k(x): (nrows, npivot)
+    v::CuMatrix{T} # v_k(y): (npivot, ncols)
+    alpha::CuVector{T} # α = 1/δ: (npivot)
 
     function MatrixACA(
         ::Type{T},
@@ -17,7 +17,7 @@ mutable struct MatrixACA{T} <: AbstractMatrixCI{T}
         A::AbstractMatrix{T},
         firstpivot::Union{CartesianIndex{2},Tuple{Int,Int},Pair{Int,Int}}
     ) where {T<:Number}
-        return new{T}(
+        CUDA.@allowscalar return new{T}(
             [firstpivot[1]], [firstpivot[2]],
             A[:, [firstpivot[2]]], A[[firstpivot[1]], :],
             [1 / A[firstpivot[1], firstpivot[2]]])
@@ -62,7 +62,7 @@ function uk(aca::MatrixACA{T}, A) where {T}
     u, v = aca.u, aca.v
     for l in 1:k-1
         xl = aca.rowindices[l]
-        result -= (v[l, yk] / u[xl, l]) * u[:, l]
+        CUDA.@allowscalar result -= (v[l, yk] / u[xl, l]) * u[:, l]
     end
     return result
 end
@@ -82,7 +82,7 @@ function vk(aca::MatrixACA{T}, A) where {T}
     u, v = aca.u, aca.v
     for l in 1:k-1
         xl = aca.rowindices[l]
-        result -= (u[xk, l] / u[xl, l]) * v[l, :]
+        CUDA.@allowscalar result -= (u[xk, l] / u[xl, l]) * v[l, :]
     end
     return result
 end
@@ -90,7 +90,7 @@ end
 function addpivotrow!(aca::MatrixACA{T}, a::AbstractMatrix{T}, xk::Int) where {T}
     push!(aca.rowindices, xk)
     aca.v = vcat(aca.v, transpose(vk(aca, a)))
-    push!(aca.alpha, 1 / aca.u[xk, end])
+    CUDA.@allowscalar push!(aca.alpha, 1 / aca.u[xk, end])
 end
 
 """
@@ -121,7 +121,7 @@ function submatrix(
     aca::MatrixACA{T},
     rows::Union{AbstractVector{Int},Colon},
     cols::Union{AbstractVector{Int},Colon}
-)::Matrix{T} where {T}
+) where {T}
     if isempty(aca)
         return zeros(
             T,
@@ -134,11 +134,11 @@ function submatrix(
     end
 end
 
-function Base.Matrix(aca::MatrixACA{T})::Matrix{T} where {T}
+function Base.Matrix(aca::MatrixACA{T}) where {T}
     return submatrix(aca, :, :)
 end
 
-function evaluate(aca::MatrixACA{T})::Matrix{T} where {T}
+function evaluate(aca::MatrixACA{T}) where {T}
     return submatrix(aca, :, :)
 end
 
