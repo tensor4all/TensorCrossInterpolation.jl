@@ -1,8 +1,9 @@
 using Test
 
 import TensorCrossInterpolation as TCI
-using LinearAlgebra
 import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
+using LinearAlgebra
+using CUDA
 
 @testset "MatrixCI" begin
     @testset "Matrix util" begin
@@ -14,8 +15,8 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
             0.371653 0.810275 0.75838
         ]
         eye(n) = Matrix(LinearAlgebra.I, n, n)
-        @test A ≈ TCI.AtimesBinv(A, eye(3))
-        @test A ≈ TCI.AinvtimesB(eye(5), A)
+        @test A ≈ Matrix(TCI.AtimesBinv(A, eye(3)))
+        @test A ≈ Matrix(TCI.AinvtimesB(eye(5), A))
 
         B = [
             0.852891 0.945401 0.585575
@@ -30,13 +31,13 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
             0.244107 0.0669144 0.347337 0.947754 0.76624
         ]
 
-        @test eye(3) ≈ TCI.AtimesBinv(B, B)
-        @test eye(3) ≈ TCI.AinvtimesB(B, B)
-        @test eye(5) ≈ TCI.AtimesBinv(C, C)
-        @test eye(5) ≈ TCI.AinvtimesB(C, C)
+        @test eye(3) ≈ Matrix(TCI.AtimesBinv(B, B))
+        @test eye(3) ≈ Matrix(TCI.AinvtimesB(B, B))
+        @test eye(5) ≈ Matrix(TCI.AtimesBinv(C, C))
+        @test eye(5) ≈ Matrix(TCI.AinvtimesB(C, C))
 
-        @test A * inv(B) ≈ TCI.AtimesBinv(A, B)
-        @test inv(C) * A ≈ TCI.AinvtimesB(C, A)
+        @test A / B ≈ Matrix(TCI.AtimesBinv(A, B))
+        @test C \ A ≈ Matrix(TCI.AinvtimesB(C, A))
     end
 
     @testset "Empty constructor" begin
@@ -44,25 +45,25 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
 
         @test ci.rowindices == []
         @test ci.colindices == []
-        @test ci.pivotcols == zeros(10, 0)
-        @test ci.pivotrows == zeros(0, 25)
+        @test ci.pivotcols == CUDA.zeros(10, 0)
+        @test ci.pivotrows == CUDA.zeros(0, 25)
         @test nrows(ci) == 10
         @test ncols(ci) == 25
         @test size(ci) == (10, 25)
         @test rank(ci) == 0
-        @test ci[:, :] ≈ zeros(size(ci))
+        @test ci[:, :] ≈ CUDA.zeros(size(ci))
         for i in 1:10
-            @test TCI.row(ci, i) ≈ zeros(25)
-            @test ci[i, :] ≈ zeros(25)
+            @test TCI.row(ci, i) ≈ CUDA.zeros(25)
+            @test ci[i, :] ≈ CUDA.zeros(25)
         end
         for j in 1:25
-            @test TCI.col(ci, j) ≈ zeros(10)
-            @test ci[:, j] ≈ zeros(10)
+            @test TCI.col(ci, j) ≈ CUDA.zeros(10)
+            @test ci[:, j] ≈ CUDA.zeros(10)
         end
     end
 
     @testset "Full constructor" begin
-        A = [
+        A = CuMatrix([
             0.735188 0.718229 0.206528 0.89223 0.23432
             0.58692 0.383284 0.906576 0.3389 0.24915
             0.0866507 0.812134 0.683979 0.798798 0.63418
@@ -71,7 +72,7 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
             0.748823 0.653965 0.47961 0.909719 0.037413
             0.902325 0.743668 0.193464 0.380086 0.91558
             0.0614368 0.0709293 0.343843 0.197515 0.45067
-        ]
+        ])
 
         rowindices = [8, 2, 3]
         colindices = [1, 5, 4]
@@ -92,15 +93,15 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
 
         Apivot = A[rowindices, colindices]
         @test TCI.pivotmatrix(ci) == Apivot
-        @test TCI.leftmatrix(ci) ≈ A[:, colindices] * inv(Apivot)
-        @test TCI.rightmatrix(ci) ≈ inv(Apivot) * A[rowindices, :]
+        @test all(abs.(TCI.leftmatrix(ci) .- A[:, colindices] / Apivot) .< 1e-15)
+        @test all(abs.(TCI.rightmatrix(ci) .- Apivot \ A[rowindices, :]) .< 1e-15)
 
         @test TCI.availablerows(ci) == [1, 4, 5, 6, 7]
         @test TCI.availablecols(ci) == [2, 3]
 
         for i in rowindices, j in colindices
-            @test TCI.evaluate(ci, i, j) ≈ A[i, j]
-            ci[i, j] ≈ A[i, j]
+            @test CUDA.@allowscalar TCI.evaluate(ci, i, j) ≈ A[i, j]
+            CUDA.@allowscalar ci[i, j] ≈ A[i, j]
         end
 
         for i in rowindices
@@ -120,11 +121,11 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
     end
 
     @testset "Finding pivots, trivial case" begin
-        A = fill(1.0, 5, 3)
+        A = CUDA.ones(Float64, 5, 3)
 
         ci = MatrixCI(Float64, size(A)...)
 
-        @test_throws DimensionMismatch addpivot!(ci, zeros(6, 6))
+        @test_throws DimensionMismatch addpivot!(ci, CUDA.zeros(Float64, 6, 6))
         @test_throws BoundsError addpivot!(ci, A, (6, 3))
         @test_throws BoundsError addpivot!(ci, A, (5, 4))
         @test_throws BoundsError addpivot!(ci, A, (-1, 2))
@@ -137,22 +138,22 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
         addpivot!(ci, A, (2, 3))
         @test ci.rowindices == [2]
         @test ci.colindices == [3]
-        @test ci.pivotrows == fill(1.0, 1, 3)
-        @test ci.pivotcols == fill(1.0, 5, 1)
+        @test ci.pivotrows == CUDA.ones(1, 3)
+        @test ci.pivotcols == CUDA.ones(5, 1)
         @test rank(ci) == 1
         for i in 1:5, j in 1:3
             @test evaluate(ci, i, j) ≈ 1.0
             @test ci[i, j] ≈ 1.0
         end
         addpivot!(ci, A)
-        @test ci.pivotrows == fill(1.0, 2, 3)
-        @test ci.pivotcols == fill(1.0, 5, 2)
+        @test ci.pivotrows == CUDA.ones(2, 3)
+        @test ci.pivotcols == CUDA.ones(5, 2)
         @test length(ci.rowindices) == 2
         @test length(ci.colindices) == 2
         @test rank(ci) == 2
         addpivot!(ci, A, (TCI.availablerows(ci)[1], TCI.availablecols(ci)[1]))
-        @test ci.pivotrows == fill(1.0, 3, 3)
-        @test ci.pivotcols == fill(1.0, 5, 3)
+        @test ci.pivotrows == CUDA.ones(3, 3)
+        @test ci.pivotcols == CUDA.ones(5, 3)
         @test length(ci.rowindices) == 3
         @test length(ci.colindices) == 3
         @test rank(ci) == 3
@@ -160,7 +161,7 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
 
 
     @testset "Finding pivots, rank-1 case" begin
-        A = [1.0; 2.0; 3.0] * [2.0 4.0 8.0 16.0]
+        A = CuArray([1.0; 2.0; 3.0] * [2.0 4.0 8.0 16.0])
         ci = MatrixCI(Float64, 3, 4)
 
         @test TCI.localerror(ci, A) ≈ A
@@ -171,8 +172,8 @@ import TensorCrossInterpolation: nrows, ncols, addpivot!, MatrixCI, evaluate
 
         @test ci.rowindices == [3]
         @test ci.colindices == [4]
-        @test ci.pivotrows ≈ 3.0 .* [2.0 4.0 8.0 16.0]
-        @test ci.pivotcols ≈ 16.0 .* [1.0; 2.0; 3.0]
+        @test ci.pivotrows ≈ 3.0 .* CuArray([2.0 4.0 8.0 16.0])
+        @test ci.pivotcols ≈ 16.0 .* CuArray([1.0; 2.0; 3.0])
         @test ci[:, :] ≈ A
         @test TCI.availablerows(ci) == [1, 2]
         @test TCI.availablecols(ci) == [1, 2, 3]

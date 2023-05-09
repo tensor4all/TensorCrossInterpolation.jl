@@ -10,9 +10,11 @@ function AtimesBinv(A::AbstractVecOrMat, B::AbstractMatrix)
     m, n = size(A)
     AB = vcat(A, B)
     decomposition = LinearAlgebra.qr(AB)
-    QA = decomposition.Q[1:m, 1:n]
-    QB = decomposition.Q[(m+1):end, 1:n]
-    return QA * inv(QB)
+    Q = CuMatrix(decomposition.Q * I)
+    QA = Q[1:m, 1:n]
+    QB = Q[(m+1):end, 1:n]
+    # return QA * inv(QB)
+    return QA / QB
 end
 
 """
@@ -40,9 +42,9 @@ mutable struct MatrixCI{T} <: AbstractMatrixCI{T}
     "Same as `CrossData.Jset` in xfac code, or ``\\mathcal{J}`` in TCI paper."
     colindices::Vector{Int}
     "Same as `CrossData.C` in xfac code, or ``A(\\mathbb{I}, \\mathcal{J})`` in TCI paper."
-    pivotcols::Matrix{T}
+    pivotcols::CuMatrix{T}
     "Same as `CrossData.R` in xfac code, or ``A(\\mathcal{I}, \\mathbb{J})`` in TCI paper."
-    pivotrows::Matrix{T}
+    pivotrows::CuMatrix{T}
 
     function MatrixCI(
         ::Type{T},
@@ -138,7 +140,7 @@ function submatrix(
     cols::Union{AbstractVector{Int},Colon,Int}
 ) where {T}
     if isempty(ci)
-        return zeros(
+        return CUDA.zeros(
             T,
             _lengthordefault(rows, nrows(ci)),
             _lengthordefault(cols, ncols(ci)))
@@ -269,7 +271,7 @@ such that
 ``a(1\\ldots m, 1\\ldots n) \\approx a(1\\ldots m, I) (a(I, J))^{-1} a(J, 1\\ldots m)``.
 """
 function crossinterpolate(
-    a::AbstractMatrix{T};
+    a::CuMatrix{T};
     tolerance=1e-6,
     maxiter=200,
     firstpivot=argmax(abs.(a))
@@ -283,4 +285,13 @@ function crossinterpolate(
         addpivot!(ci, a, newpivot)
     end
     return ci
+end
+
+function  crossinterpolate(
+    a::AbstractMatrix{T};
+    tolerance=1e-6,
+    maxiter=200,
+    firstpivot=argmax(abs.(a))
+) where {T}
+    return crossinterpolate(CuMatrix(a), tolerance=tolerance, maxiter=maxiter, firstpivot=firstpivot)
 end

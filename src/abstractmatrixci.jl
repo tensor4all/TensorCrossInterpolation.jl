@@ -60,7 +60,7 @@ local errors on a submatrix, specify row_indices or col_indices.
 """
 function localerror(
     ci::AbstractMatrixCI{T},
-    a::AbstractMatrix{T},
+    a::CUDA.CuMatrix{T},
     rowindices::Union{AbstractVector{Int},Colon,Int}=Colon(),
     colindices::Union{AbstractVector{Int},Colon,Int}=Colon()
 ) where {T}
@@ -99,6 +99,6 @@ function findnewpivot(
     end
 
     localerrors = localerror(ci, a, rowindices, colindices)
-    ijraw = argmax(localerrors)
-    return (rowindices[ijraw[1]], colindices[ijraw[2]]), localerrors[ijraw]
+    ij = argmax(localerrors)
+    CUDA.@allowscalar return (rowindices[ij[1]], colindices[ij[2]]), localerrors[ij]
 end

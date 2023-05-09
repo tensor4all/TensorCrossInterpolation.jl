@@ -1,6 +1,7 @@
 module TensorCrossInterpolation
 
 using LinearAlgebra
+using CUDA
 
 # To add a method for rank(tci)
 import LinearAlgebra: rank
