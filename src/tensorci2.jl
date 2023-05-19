@@ -5,6 +5,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
 
     T::Vector{Array{ValueType,3}}
 
+    # first half is for forward sweeps, second half is for backward sweeps
     pivoterrors::Vector{Float64}
     maxsamplevalue::Float64
 
@@ -17,7 +18,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [Vector{MultiIndex}() for _ in 1:n],  # Jset
             [collect(1:d) for d in localdims],      # localset
             [zeros(0, d, 0) for d in localdims],    # T
-            [],                                     # pivoterrors
+            fill(0.0, 2*(length(localdims)-1)),    # max truncated pivoterrors
             0.0                                     # maxsample
         )
     end
@@ -34,16 +35,17 @@ function TensorCI2{ValueType}(
     return tci
 end
 
-function updatepivoterror!(tci::TensorCI2{T}, errors::AbstractVector{Float64}) where {T}
-    erroriter = Iterators.map(max, padzero(tci.pivoterrors), padzero(errors))
-    tci.pivoterrors = Iterators.take(
-        erroriter,
-        max(length(tci.pivoterrors), length(errors))
-    ) |> collect
+function updatepivoterror!(tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64) where {T}
+    if sweepdirection == :forward
+        tci.pivoterrors[b] = error
+    elseif sweepdirection == :backward
+        tci.pivoterrors[b + length(tci) - 1] = error
+    end
+    nothing
 end
 
 function pivoterror(tci::TensorCI2{T}) where {T}
-    return last(tci.pivoterrors)
+    return maximum(tci.pivoterrors)
 end
 
 function addglobalpivots!(
@@ -124,7 +126,7 @@ function makecanonical!(
             leftorthogonal=true
         )
         tci.Iset[b+1] = Icombined[rowindices(ludecomp)]
-        updatepivoterror!(tci, pivoterrors(ludecomp))
+        updatepivoterror!(tci, b, :forward, estimatedtruncationerror(ludecomp))
     end
 
     for b in L:-1:2
@@ -138,7 +140,7 @@ function makecanonical!(
             leftorthogonal=false
         )
         tci.Jset[b-1] = Jcombined[colindices(ludecomp)]
-        updatepivoterror!(tci, pivoterrors(ludecomp))
+        updatepivoterror!(tci, b-1, :backward, estimatedtruncationerror(ludecomp))
     end
 
     for b in 1:L-1
@@ -154,7 +156,7 @@ function makecanonical!(
         tci.Iset[b+1] = Icombined[rowindices(luci)]
         tci.Jset[b] = tci.Jset[b][colindices(luci)]
         tci.T[b] = setT!(tci, b, left(luci))
-        updatepivoterror!(tci, pivoterrors(luci))
+        updatepivoterror!(tci, b, :forward, estimatedtruncationerror(luci))
     end
     setT!(tci, L, getPi(ValueType, f, tci.Iset[end], [[i] for i in tci.localset[end]]))
 end
@@ -165,7 +167,8 @@ function updatepivots!(
     f::F,
     leftorthogonal::Bool;
     reltol::Float64=1e-14,
-    maxbonddim::Int=typemax(Int)
+    maxbonddim::Int=typemax(Int),
+    sweepdirection::Symbol=:forward
 ) where {F, ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
@@ -181,7 +184,7 @@ function updatepivots!(
     tci.Jset[b] = Jcombined[colindices(luci)]
     setT!(tci, b, left(luci))
     setT!(tci, b+1, right(luci))
-    updatepivoterror!(tci, pivoterrors(luci))
+    updatepivoterror!(tci, b, sweepdirection, estimatedtruncationerror(luci))
 end
 
 @doc raw"""
@@ -211,6 +214,7 @@ Arguments:
 - `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
+- `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -229,7 +233,8 @@ function crossinterpolate2(
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
     verbosity::Int=0,
-    normalizeerror::Bool=true
+    normalizeerror::Bool=true,
+    ncheckhistory = 3
 ) where {ValueType, N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
     n = length(tci)
@@ -243,9 +248,9 @@ function crossinterpolate2(
 
     for iter in rank(tci)+1:maxiter
         if forwardsweep(sweepstrategy, iter) # forward sweep
-            updatepivots!.(tuple(tci), 1:n-1, f, true; reltol=tolerance, maxbonddim=maxbonddim)
+            updatepivots!.(tuple(tci), 1:n-1, f, true; reltol=tolerance, maxbonddim=maxbonddim, sweepdirection=:forward)
         else # backward sweep
-            updatepivots!.(tuple(tci), (n-1):-1:1, f, false; reltol=tolerance, maxbonddim=maxbonddim)
+            updatepivots!.(tuple(tci), (n-1):-1:1, f, false; reltol=tolerance, maxbonddim=maxbonddim, sweepdirection=:backward)
         end
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
@@ -254,8 +259,12 @@ function crossinterpolate2(
         if verbosity > 0 && mod(iter, 10) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors))")
         end
-        if last(errors) < tolerance * errornormalization
-            break
+        if length(errors) > ncheckhistory
+            if minimum(errors[end-ncheckhistory+1:end-1]) >= last(errors) && # last error is smallest
+                maximum(errors[end-ncheckhistory+1:end]) < tolerance * errornormalization && # error criterion reached
+                length(unique(ranks[end-ncheckhistory+1:end])) == 1 # rank is constant
+                break
+            end
         end
     end
 

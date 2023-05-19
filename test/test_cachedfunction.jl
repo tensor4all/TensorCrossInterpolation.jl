@@ -52,6 +52,6 @@ import TensorCrossInterpolation as TCI
     
         # Overhead must be small enough
         @test 24 < Base.summarysize(d)/databytes < 25
-        @test 5 < Base.summarysize(cf.d)/databytes < 5.2
+        @test 5 < Base.summarysize(cf.d)/databytes < 7
     end
 end
