@@ -147,8 +147,6 @@ end
 
 """
 Estimated truncation error
-
-The upper bound is the last pivot error as we add one more pivot after the truncation criterion is met.
 """
 function estimatedtruncationerror(lu::rrLU{T})::Float64 where {T}
     if lu.npivot == min(size(lu.buffer, 1), size(lu.buffer, 2))
