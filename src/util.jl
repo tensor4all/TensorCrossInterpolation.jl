@@ -25,6 +25,14 @@ function pushunique!(collection, items...)
     end
 end
 
+function isconstant(collection)
+    if isempty(collection)
+        return true
+    end
+    c = first(collection)
+    return all(collection .== c)
+end
+
 """
     function optfirstpivot(
         f,
