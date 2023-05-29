@@ -272,6 +272,7 @@ function crossinterpolate2(
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
     tolerance::Float64=1e-8,
+    pivottolerance::Float64=1e-12,
     maxbonddim::Int=typemax(Int),
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
@@ -293,11 +294,11 @@ function crossinterpolate2(
         if forwardsweep(sweepstrategy, iter) # forward sweep
             updatepivots!.(
                 tuple(tci), 1:n-1, f, true;
-                reltol=tolerance, maxbonddim=maxbonddim, sweepdirection=:forward)
+                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:forward)
         else # backward sweep
             updatepivots!.(
                 tuple(tci), (n-1):-1:1, f, false;
-                reltol=tolerance, maxbonddim=maxbonddim, sweepdirection=:backward)
+                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:backward)
         end
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
