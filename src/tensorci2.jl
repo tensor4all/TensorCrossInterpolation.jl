@@ -228,8 +228,10 @@ function convergencecriterion(
         return false
     end
     lastranks = last(ranks, ncheckhistory)
-    return (all(last(errors, ncheckhistory) .< tolerance) && isconstant(lastranks)) ||
-           all(lastranks .== maxbonddim)
+    return (
+        all(last(errors, ncheckhistory) .< tolerance) &&
+        all(diff(lastranks) .<= 0)
+    ) || last(lastranks) >= maxbonddim
 end
 
 @doc raw"""
