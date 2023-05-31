@@ -82,6 +82,7 @@ import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addgl
             fill(10, n),
             [ones(Int, n)];
             tolerance=1e-8,
+            pivottolerance=1e-8,
             maxiter=8,
             sweepstrategy=SweepStrategies.forward
         )

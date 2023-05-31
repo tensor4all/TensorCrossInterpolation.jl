@@ -144,3 +144,14 @@ end
 function pivoterrors(lu::rrLU{T}) where {T}
     return abs.(diag(lu.buffer[1:lu.npivot, 1:lu.npivot]))
 end
+
+"""
+Estimated truncation error
+"""
+function estimatedtruncationerror(lu::rrLU{T})::Float64 where {T}
+    if lu.npivot == min(size(lu.buffer, 1), size(lu.buffer, 2))
+        return 0.0
+    else
+        return abs(lu.buffer[lu.npivot, lu.npivot])
+    end
+end

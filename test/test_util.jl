@@ -1,5 +1,5 @@
 using Test
-import TensorCrossInterpolation: maxabs, optfirstpivot, pushunique!
+import TensorCrossInterpolation: maxabs, optfirstpivot, pushunique!, isconstant
 
 @testset "Test updatemax" begin
     s = 1.0
@@ -45,4 +45,15 @@ end
     @test v == [9, 29, 4, 5, 10, 2, 3]
     pushunique!(v, 29, 8, 4, 5)
     @test v == [9, 29, 4, 5, 10, 2, 3, 8]
+end
+
+@testset "isconstant" begin
+    v = [
+        0.2925784784483926, 0.46371163262378456, 0.8705399558524782, 0.8906186678633707,
+        0.31339518781618236, 0.5340770167795297, 0.8908239232701285, 0.9880309208645528,
+        0.8254716317895107, 0.07517813257571271
+    ]
+    u = [3, 3, 3, 3]
+    @test !isconstant(v)
+    @test isconstant(u)
 end

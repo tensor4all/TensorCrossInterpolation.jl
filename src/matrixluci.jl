@@ -81,3 +81,7 @@ end
 function pivoterrors(luci::MatrixLUCI{T}) where {T}
     return pivoterrors(luci.lu)
 end
+
+function estimatedtruncationerror(luci::MatrixLUCI{T}) where {T}
+    return estimatedtruncationerror(luci.lu)
+end

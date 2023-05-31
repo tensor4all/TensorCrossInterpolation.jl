@@ -5,7 +5,13 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
 
     T::Vector{Array{ValueType,3}}
 
+    "Error estimate for backtruncation of bonds."
     pivoterrors::Vector{Float64}
+    "Error estimate per bond from last forward sweep."
+    bonderrorsforward::Vector{Float64}
+    "Error estimate per bond from last backward sweep."
+    bonderrorsbackward::Vector{Float64}
+    "Maximum sample for error normalization."
     maxsamplevalue::Float64
 
     function TensorCI2{ValueType}(
@@ -13,11 +19,13 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     ) where {ValueType,N}
         n = length(localdims)
         new{ValueType}(
-            [Vector{MultiIndex}() for _ in 1:n],  # Iset
-            [Vector{MultiIndex}() for _ in 1:n],  # Jset
+            [Vector{MultiIndex}() for _ in 1:n],    # Iset
+            [Vector{MultiIndex}() for _ in 1:n],    # Jset
             [collect(1:d) for d in localdims],      # localset
             [zeros(0, d, 0) for d in localdims],    # T
             [],                                     # pivoterrors
+            zeros(length(localdims) - 1),           # bonderrors, forward sweep
+            zeros(length(localdims) - 1),           # bonderrors, backward sweep
             0.0                                     # maxsample
         )
     end
@@ -26,12 +34,27 @@ end
 function TensorCI2{ValueType}(
     func::F,
     localdims::Union{Vector{Int},NTuple{N,Int}},
-    initialpivots::Vector{MultiIndex} = [ones(Int, length(localdims))]
-) where{F, ValueType,N}
+    initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))]
+) where {F,ValueType,N}
     tci = TensorCI2{ValueType}(localdims)
     f(x) = convert(ValueType, func(x))
     addglobalpivots!(tci, f, initialpivots)
     return tci
+end
+
+function updatebonderror!(
+    tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
+) where {T}
+    if sweepdirection == :forward
+        tci.bonderrorsforward[b] = error
+    elseif sweepdirection == :backward
+        tci.bonderrorsbackward[b] = error
+    end
+    nothing
+end
+
+function maxbonderror(tci::TensorCI2{T}) where {T}
+    return max(maximum(tci.bonderrorsforward), maximum(bonderrorsbackward))
 end
 
 function updatepivoterror!(tci::TensorCI2{T}, errors::AbstractVector{Float64}) where {T}
@@ -40,10 +63,19 @@ function updatepivoterror!(tci::TensorCI2{T}, errors::AbstractVector{Float64}) w
         erroriter,
         max(length(tci.pivoterrors), length(errors))
     ) |> collect
+    nothing
 end
 
 function pivoterror(tci::TensorCI2{T}) where {T}
     return last(tci.pivoterrors)
+end
+
+function updateerrors!(
+    tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, errors::AbstractVector{Float64}
+) where {T}
+    updatebonderror!(tci, b, sweepdirection, last(errors))
+    updatepivoterror!(tci, errors)
+    nothing
 end
 
 function addglobalpivots!(
@@ -52,7 +84,7 @@ function addglobalpivots!(
     pivots::Vector{MultiIndex};
     reltol=1e-14,
     maxbonddim=typemax(Int)
-) where {F, ValueType}
+) where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
     end
@@ -70,14 +102,14 @@ end
 function getPi(
     ::Type{ValueType},
     f,
-    Iset::Union{Vector{MultiIndex}, IndexSet{MultiIndex}},
-    Jset::Union{Vector{MultiIndex}, IndexSet{MultiIndex}}
+    Iset::Union{Vector{MultiIndex},IndexSet{MultiIndex}},
+    Jset::Union{Vector{MultiIndex},IndexSet{MultiIndex}}
 ) where {ValueType}
     return ValueType[f(vcat(i, j)) for i in Iset, j in Jset]
 end
 
 function kronecker(
-    Iset::Union{Vector{MultiIndex}, IndexSet{MultiIndex}},
+    Iset::Union{Vector{MultiIndex},IndexSet{MultiIndex}},
     localset::Vector{LocalIndex}
 )
     return MultiIndex[[is..., j] for is in Iset, j in localset][:]
@@ -85,7 +117,7 @@ end
 
 function kronecker(
     localset::Vector{LocalIndex},
-    Jset::Union{Vector{MultiIndex}, IndexSet{MultiIndex}}
+    Jset::Union{Vector{MultiIndex},IndexSet{MultiIndex}}
 )
     return MultiIndex[[i, js...] for i in localset, js in Jset][:]
 end
@@ -110,7 +142,7 @@ function makecanonical!(
     f::F;
     reltol::Float64=1e-14,
     maxbonddim::Int=typemax(Int)
-) where {F, ValueType}
+) where {F,ValueType}
     L = length(tci)
 
     for b in 1:L-1
@@ -124,7 +156,7 @@ function makecanonical!(
             leftorthogonal=true
         )
         tci.Iset[b+1] = Icombined[rowindices(ludecomp)]
-        updatepivoterror!(tci, pivoterrors(ludecomp))
+        updateerrors!(tci, b, :forward, pivoterrors(ludecomp))
     end
 
     for b in L:-1:2
@@ -138,7 +170,7 @@ function makecanonical!(
             leftorthogonal=false
         )
         tci.Jset[b-1] = Jcombined[colindices(ludecomp)]
-        updatepivoterror!(tci, pivoterrors(ludecomp))
+        updateerrors!(tci, b - 1, :backward, pivoterrors(ludecomp))
     end
 
     for b in 1:L-1
@@ -154,7 +186,7 @@ function makecanonical!(
         tci.Iset[b+1] = Icombined[rowindices(luci)]
         tci.Jset[b] = tci.Jset[b][colindices(luci)]
         tci.T[b] = setT!(tci, b, left(luci))
-        updatepivoterror!(tci, pivoterrors(luci))
+        updateerrors!(tci, b, :forward, pivoterrors(luci))
     end
     setT!(tci, L, getPi(ValueType, f, tci.Iset[end], [[i] for i in tci.localset[end]]))
 end
@@ -165,8 +197,9 @@ function updatepivots!(
     f::F,
     leftorthogonal::Bool;
     reltol::Float64=1e-14,
-    maxbonddim::Int=typemax(Int)
-) where {F, ValueType}
+    maxbonddim::Int=typemax(Int),
+    sweepdirection::Symbol=:forward
+) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
     Pi = getPi(ValueType, f, Icombined, Jcombined)
@@ -180,8 +213,25 @@ function updatepivots!(
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
     setT!(tci, b, left(luci))
-    setT!(tci, b+1, right(luci))
-    updatepivoterror!(tci, pivoterrors(luci))
+    setT!(tci, b + 1, right(luci))
+    updateerrors!(tci, b, sweepdirection, pivoterrors(luci))
+end
+
+function convergencecriterion(
+    ranks::AbstractVector{Int},
+    errors::AbstractVector{Float64},
+    tolerance::Float64,
+    maxbonddim::Int,
+    ncheckhistory::Int,
+)::Bool
+    if length(errors) < ncheckhistory
+        return false
+    end
+    lastranks = last(ranks, ncheckhistory)
+    return (
+        all(last(errors, ncheckhistory) .< tolerance) &&
+        all(diff(lastranks) .<= 0)
+    ) || last(lastranks) >= maxbonddim
 end
 
 @doc raw"""
@@ -211,6 +261,7 @@ Arguments:
 - `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
+- `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -225,12 +276,14 @@ function crossinterpolate2(
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
     tolerance::Float64=1e-8,
+    pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
     verbosity::Int=0,
-    normalizeerror::Bool=true
-) where {ValueType, N}
+    normalizeerror::Bool=true,
+    ncheckhistory=3
+) where {ValueType,N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
     n = length(tci)
     errors = Float64[]
@@ -238,14 +291,21 @@ function crossinterpolate2(
 
     if maxbonddim >= typemax(Int) && tolerance <= 0
         throw(ArgumentError(
-            "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"))
+            "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"
+        ))
     end
 
     for iter in rank(tci)+1:maxiter
         if forwardsweep(sweepstrategy, iter) # forward sweep
-            updatepivots!.(tuple(tci), 1:n-1, f, true; reltol=tolerance, maxbonddim=maxbonddim)
+            updatepivots!.(
+                tuple(tci), 1:n-1, f, true;
+                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:forward
+            )
         else # backward sweep
-            updatepivots!.(tuple(tci), (n-1):-1:1, f, false; reltol=tolerance, maxbonddim=maxbonddim)
+            updatepivots!.(
+                tuple(tci), (n-1):-1:1, f, false;
+                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:backward
+            )
         end
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
@@ -254,7 +314,9 @@ function crossinterpolate2(
         if verbosity > 0 && mod(iter, 10) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors))")
         end
-        if last(errors) < tolerance * errornormalization
+        if convergencecriterion(
+            ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
+        )
             break
         end
     end
