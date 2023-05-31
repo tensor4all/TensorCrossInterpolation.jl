@@ -5,10 +5,13 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
 
     T::Vector{Array{ValueType,3}}
 
-    # first half is for forward sweeps, second half is for backward sweeps
+    "Error estimate for backtruncation of bonds."
     pivoterrors::Vector{Float64}
+    "Error estimate per bond from last forward sweep."
     bonderrorsforward::Vector{Float64}
+    "Error estimate per bond from last backward sweep."
     bonderrorsbackward::Vector{Float64}
+    "Maximum sample for error normalization."
     maxsamplevalue::Float64
 
     function TensorCI2{ValueType}(
@@ -21,8 +24,8 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [collect(1:d) for d in localdims],      # localset
             [zeros(0, d, 0) for d in localdims],    # T
             [],                                     # pivoterrors
-            zeros(2*(length(localdims)-1)),         # bonderrors
-            zeros(2*(length(localdims)-1)),
+            zeros(length(localdims) - 1),           # bonderrors, forward sweep
+            zeros(length(localdims) - 1),           # bonderrors, backward sweep
             0.0                                     # maxsample
         )
     end
@@ -218,16 +221,15 @@ function convergencecriterion(
     ranks::AbstractVector{Int},
     errors::AbstractVector{Float64},
     tolerance::Float64,
+    maxbonddim::Int,
     ncheckhistory::Int,
-)::Bool where {T}
+)::Bool
     if length(errors) < ncheckhistory
         return false
     end
-    lasterrors = last(errors, ncheckhistory)
-    if argmin(lasterrors) != ncheckhistory || last(lasterrors) > tolerance
-        return false
-    end
-    return isconstant(last(ranks, ncheckhistory))
+    lastranks = last(ranks, ncheckhistory)
+    return (all(last(errors, ncheckhistory) .< tolerance) && isconstant(lastranks)) ||
+           all(lastranks .== maxbonddim)
 end
 
 @doc raw"""
@@ -272,7 +274,7 @@ function crossinterpolate2(
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
     tolerance::Float64=1e-8,
-    pivottolerance::Float64=1e-12,
+    pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
     maxiter::Int=200,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
@@ -287,18 +289,21 @@ function crossinterpolate2(
 
     if maxbonddim >= typemax(Int) && tolerance <= 0
         throw(ArgumentError(
-            "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"))
+            "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"
+        ))
     end
 
     for iter in rank(tci)+1:maxiter
         if forwardsweep(sweepstrategy, iter) # forward sweep
             updatepivots!.(
                 tuple(tci), 1:n-1, f, true;
-                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:forward)
+                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:forward
+            )
         else # backward sweep
             updatepivots!.(
                 tuple(tci), (n-1):-1:1, f, false;
-                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:backward)
+                reltol=pivottolerance, maxbonddim=maxbonddim, sweepdirection=:backward
+            )
         end
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
@@ -307,7 +312,9 @@ function crossinterpolate2(
         if verbosity > 0 && mod(iter, 10) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors))")
         end
-        if convergencecriterion(ranks, errors, tolerance * errornormalization, ncheckhistory)
+        if convergencecriterion(
+            ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
+        )
             break
         end
     end
