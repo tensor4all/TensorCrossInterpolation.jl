@@ -58,6 +58,7 @@ function rrlu(
     A::AbstractMatrix{T};
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
+    abstol::Number=0.0,
     leftorthogonal::Bool=true
 )::rrLU{T} where {T}
     maxrank = min(maxrank, size(A)...)
@@ -66,7 +67,8 @@ function rrlu(
     for k in 1:maxrank
         lu.npivot = k
         newpivot = submatrixargmax(abs.(lu.buffer), k)
-        if k > 1 && abs(lu.buffer[newpivot...]) < reltol * abs(lu.buffer[1])
+        if k >= 1 &&
+            (abs(lu.buffer[newpivot...]) < reltol * abs(lu.buffer[1]) || abs(lu.buffer[newpivot...]) < abstol)
             break
         end
         addpivot!(lu, newpivot)
@@ -146,9 +148,10 @@ function pivoterrors(lu::rrLU{T}) where {T}
 end
 
 """
-Estimated truncation error
+Correct estimate of the last pivot error
+A special care is taken for a full-rank matrix: the last pivot error is set to zero.
 """
-function estimatedtruncationerror(lu::rrLU{T})::Float64 where {T}
+function lastpivoterror(lu::rrLU{T})::Float64 where {T}
     if lu.npivot == min(size(lu.buffer, 1), size(lu.buffer, 2))
         return 0.0
     else

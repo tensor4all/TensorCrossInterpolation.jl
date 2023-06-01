@@ -85,4 +85,14 @@ using LinearAlgebra
 
         @test maximum(abs.(TCI.left(LU) * TCI.right(LU) .- A)) < 1e-2
     end
+
+    @testset "lastpivoterror for full-rank matrix" begin
+        A = [
+            1.0 0.0;
+            0.0 1.0
+        ]
+        LU1 = TCI.rrlu(A)
+        @test TCI.pivoterrors(LU1) == [1.0, 1.0]
+        @test TCI.lastpivoterror(LU1) == 0.0
+    end
 end

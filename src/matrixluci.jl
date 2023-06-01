@@ -6,9 +6,10 @@ mutable struct MatrixLUCI{T} <: AbstractMatrixCI{T}
         A::AbstractMatrix{T};
         maxrank::Int=typemax(Int),
         reltol::Number=1e-14,
+        abstol::Number=0.0,
         leftorthogonal::Bool=true
     ) where {T}
-        new{T}(A, rrlu(A, maxrank=maxrank, reltol=reltol, leftorthogonal=leftorthogonal))
+        new{T}(A, rrlu(A, maxrank=maxrank, reltol=reltol, abstol=abstol, leftorthogonal=leftorthogonal))
     end
 end
 
@@ -82,6 +83,6 @@ function pivoterrors(luci::MatrixLUCI{T}) where {T}
     return pivoterrors(luci.lu)
 end
 
-function estimatedtruncationerror(luci::MatrixLUCI{T}) where {T}
-    return estimatedtruncationerror(luci.lu)
+function lastpivoterror(luci::MatrixLUCI{T}) where {T}
+    return lastpivoterror(luci.lu)
 end
