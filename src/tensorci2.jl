@@ -244,8 +244,8 @@ function convergencecriterion(
     lastranks = last(ranks, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
-        all(diff(lastranks) .<= 0)
-    ) || last(lastranks) >= maxbonddim
+        maximum(lastranks) == lastranks[end]
+    ) || all(lastranks .>= maxbonddim)
     #return all(last(errors, ncheckhistory) .< tolerance) || all(diff(lastranks) .<= 0) || all(lastranks .>= maxbonddim)
 end
 
@@ -342,4 +342,50 @@ function crossinterpolate2(
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
     return tci, ranks, errors ./ errornormalization
+end
+
+@doc raw"""
+    function insert_global_pivots!(
+        tci::TensorCI2{ValueType}, f;
+        nsearch = 100,
+        tolerance::Float64=1e-8,
+        verbosity::Int=0,
+        normalizeerror::Bool=true)::Tuple{TensorCI2{ValueType},Int} where {ValueType}
+
+Insert global pivots where the error exeeds `tolerance` into a TCI2 object. This function is useful if `crossinterpolate2` fails to find pivots in some part of the domain.
+
+Arguments:
+- `nsearch` Number of global searches to perform. Default: `100`.
+
+The other paramters are the same as for [`crossinterpolate2`](@ref).
+"""
+function insert_global_pivots!(
+    tci::TensorCI2{ValueType}, f;
+    nsearch = 100,
+    tolerance::Float64=1e-8,
+    verbosity::Int=0,
+    normalizeerror::Bool=true)::Int where {ValueType}
+
+    localdims = [length(s) for s in tci.localset]
+
+    nnewpivot = 0
+    for _ in 1:nsearch
+        errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+
+        err(x) = abs(evaluate(tci, x) - f(x))
+        newpivot_ = optfirstpivot(
+            err, localdims, [rand(1:d) for d in localdims])
+
+        e = err(newpivot_)
+        if e > tolerance * errornormalization
+            nnewpivot += 1
+            addglobalpivots!(tci, f, [newpivot_])
+            if verbosity > 0
+                println("Inserting a global pivot $(newpivot_): error $e > $(tolerance * errornormalization)")
+                println("New linkdims is $(maximum(linkdims(tci))).")
+            end
+        end
+    end
+
+    return nnewpivot
 end

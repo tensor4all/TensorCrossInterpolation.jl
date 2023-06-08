@@ -2,6 +2,7 @@ using Test
 import TensorCrossInterpolation as TCI
 import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots!,
     evaluate, SweepStrategies, crossinterpolate2, pivoterror, tensortrain
+import Random
 
 @testset "TensorCI2" begin
     @testset "kronecker util function" begin
@@ -131,5 +132,30 @@ import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addgl
             @test value ≈ prod([tt3[p][:, v[p], :] for p in eachindex(v)])[1]
             @test value ≈ f(v)
         end
+    end
+
+    @testset "insert_global_pivots" begin
+        Random.seed!(1234)
+
+        n = 10
+        fx(x) = exp(-10*x) * sin(2 * pi * 100 * x^1.1) # Nasty function
+        index_to_x(i) = (i-1) / 2^n # x ∈ [0, 1)
+        f(bitlist) = bitlist |> quantics_to_index |> index_to_x |> fx
+
+        localdims = fill(2, n)
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            tolerance=1e-12,
+            maxiter=200
+        )
+
+        nglobalpivot = TCI.insert_global_pivots!(tci, f, verbosity=0)
+        @test nglobalpivot > 0
+
+        nglobalpivot = TCI.insert_global_pivots!(tci, f, verbosity=0)
+        @test nglobalpivot == 0
+
     end
 end
