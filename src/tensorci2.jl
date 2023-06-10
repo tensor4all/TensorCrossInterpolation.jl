@@ -42,6 +42,31 @@ function TensorCI2{ValueType}(
     return tci
 end
 
+function print_nesting_info(tci::TensorCI2{T}) where T
+    print_nesting_info(stdout, tci)
+end
+
+function print_nesting_info(io::IO, tci::TensorCI2{T}) where T
+    println(io, "Nesting info: Iset")
+    for i in 1:length(tci.Iset)-1
+        if isnested(tci.Iset[i], tci.Iset[i+1], :row)
+           println(io, "  Nested: $(i) < $(i+1)")
+        else
+           println(io, "  Not nested: $(i) !< $(i+1)")
+        end
+     end
+
+    println(io)
+    println(io, "Nesting info: Jset")
+    for i in 1:length(tci.Jset)-1
+        if isnested(tci.Jset[i+1], tci.Jset[i], :col)
+            println(io, "  Nested: $(i+1) < $i")
+        else
+            println(io, "  Not nested: ! $(i+1) < $i")
+        end
+     end
+end
+
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
 ) where {T}

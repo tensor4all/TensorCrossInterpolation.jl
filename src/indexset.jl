@@ -53,3 +53,23 @@ end
 function ==(a::IndexSet{T}, b::IndexSet{T}) where {T}
     return a.fromint == b.fromint
 end
+
+@doc raw"""
+Return if `a` is nested in `b` (``a < b``).
+If `row_or_col` is `:row`/`:col`, the last/first element of each index in `b` is ignored, respectively.
+"""
+function isnested(a::Vector{T}, b::Vector{T}, row_or_col::Symbol=:row)::Bool where {T}
+    aset = Set(a)
+    for b_ in b
+        if length(b_) == 0
+            return false
+        end
+        if row_or_col == :row && !(b_[1:end-1] ∈ aset)
+            return false
+        end
+        if row_or_col == :col && !(b_[2:end] ∈ aset)
+            return false
+        end
+    end
+    return true
+end
