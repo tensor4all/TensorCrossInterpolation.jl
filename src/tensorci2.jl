@@ -42,6 +42,41 @@ function TensorCI2{ValueType}(
     return tci
 end
 
+@doc raw"""
+    function printnestinginfo(tci::TensorCI2{T}) where {T}
+
+Print information about fulfillment of the nesting criterion (``I_\ell < I_{\ell+1}`` and ``J_\ell < J_{\ell+1}``) on each pair of bonds ``\ell, \ell+1`` of `tci` to stdout.
+"""
+function printnestinginfo(tci::TensorCI2{T}) where {T}
+    printnestinginfo(stdout, tci)
+end
+
+@doc raw"""
+    function printnestinginfo(io::IO, tci::TensorCI2{T}) where {T}
+
+Print information about fulfillment of the nesting criterion (``I_\ell < I_{\ell+1}`` and ``J_\ell < J_{\ell+1}``) on each pair of bonds ``\ell, \ell+1`` of `tci` to `io`.
+"""
+function printnestinginfo(io::IO, tci::TensorCI2{T}) where {T}
+    println(io, "Nesting info: Iset")
+    for i in 1:length(tci.Iset)-1
+        if isnested(tci.Iset[i], tci.Iset[i+1], :row)
+            println(io, "  Nested: $(i) < $(i+1)")
+        else
+            println(io, "  Not nested: $(i) !< $(i+1)")
+        end
+    end
+
+    println(io)
+    println(io, "Nesting info: Jset")
+    for i in 1:length(tci.Jset)-1
+        if isnested(tci.Jset[i+1], tci.Jset[i], :col)
+            println(io, "  Nested: $(i+1) < $i")
+        else
+            println(io, "  Not nested: ! $(i+1) < $i")
+        end
+    end
+end
+
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
 ) where {T}

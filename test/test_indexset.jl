@@ -1,10 +1,13 @@
+using Test
+import TensorCrossInterpolation as TCI
+
 @testset "IndexSet tests" begin
-    is = TensorCrossInterpolation.IndexSet{Vector{Int}}()
+    is = TCI.IndexSet{Vector{Int}}()
     @test is.toint == Dict{Vector{Int64},Int64}()
     @test is.fromint == []
     @test length(is) == 0
     @test isempty(is)
-    @test is == TensorCrossInterpolation.IndexSet{Vector{Int}}()
+    @test is == TCI.IndexSet{Vector{Int}}()
 
     L = [
         [6, 0, 9, 1, 0],
@@ -28,5 +31,17 @@
 
     @test length(is) == length(L)
     @test !isempty(is)
-    @test is == TensorCrossInterpolation.IndexSet(L)
+    @test is == TCI.IndexSet(L)
+end
+
+@testset "IndexSet nested" begin
+    is1 = [[1,], [2,]]
+
+    is2 = [[1, 4], [2, 3]]
+
+    @test TCI.isnested(is1, is2)
+
+    is3 = [[4, 1], [3, 2]]
+
+    @test TCI.isnested(is1, is3, :col)
 end
