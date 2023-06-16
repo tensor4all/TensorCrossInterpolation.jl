@@ -151,10 +151,10 @@ import Random
             maxiter=200
         )
 
-        nglobalpivot = TCI.insert_global_pivots!(tci, f, verbosity=0)
+        nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)
         @test nglobalpivot > 0
 
-        nglobalpivot = TCI.insert_global_pivots!(tci, f, verbosity=0)
+        nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)
         @test nglobalpivot == 0
 
     end

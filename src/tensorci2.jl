@@ -281,28 +281,28 @@ function convergencecriterion(
         all(last(errors, ncheckhistory) .< tolerance) &&
         maximum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
-    #return all(last(errors, ncheckhistory) .< tolerance) || all(diff(lastranks) .<= 0) || all(lastranks .>= maxbonddim)
 end
 
-@doc raw"""
-    function crossinterpolate2(
-        ::Type{ValueType},
-        f,
-        localdims::Union{Vector{Int},NTuple{N,Int}},
-        initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+"""
+    function optimize!(
+        tci::TensorCI2{ValueType},
+        f;
         tolerance::Float64=1e-8,
+        pivottolerance::Float64=tolerance,
         maxbonddim::Int=typemax(Int),
         maxiter::Int=200,
         sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
         verbosity::Int=0,
         loginterval::Int=10,
-        normalizeerror::Bool=true
-    ) where {ValueType, N}
+        normalizeerror::Bool=true,
+        ncheckhistory=3
+    ) where {ValueType}
 
-Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
+Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
 
 Arguments:
-- `ValueType` is the return type of `f`. Automatic inference is too error-prone.
+- `tci::TensorCI2{ValueType}`: The TCI to optimize.
+- `f`: The function to fit.
 - `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
 - `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
 - `initialpivots::Vector{MultiIndex}` is a vector of pivots to be used for initialization. Default: `[1, 1, ...]`.
@@ -320,13 +320,11 @@ Notes:
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
 
-See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+See also: [`crossinterpolate2`](@ref), [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
 """
-function crossinterpolate2(
-    ::Type{ValueType},
-    f,
-    localdims::Union{Vector{Int},NTuple{N,Int}},
-    initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+function optimize!(
+    tci::TensorCI2{ValueType},
+    f;
     tolerance::Float64=1e-8,
     pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
@@ -336,8 +334,7 @@ function crossinterpolate2(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory=3
-) where {ValueType,N}
-    tci = TensorCI2{ValueType}(f, localdims, initialpivots)
+) where {ValueType}
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
@@ -380,11 +377,77 @@ function crossinterpolate2(
     end
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-    return tci, ranks, errors ./ errornormalization
+    return ranks, errors ./ errornormalization
 end
 
 @doc raw"""
-    function insert_global_pivots!(
+    function crossinterpolate2(
+        ::Type{ValueType},
+        f,
+        localdims::Union{Vector{Int},NTuple{N,Int}},
+        initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+        tolerance::Float64=1e-8,
+        pivottolerance::Float64=tolerance,
+        maxbonddim::Int=typemax(Int),
+        maxiter::Int=200,
+        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+        verbosity::Int=0,
+        loginterval::Int=10,
+        normalizeerror::Bool=true,
+        ncheckhistory=3
+    ) where {ValueType,N}
+
+Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
+
+Arguments:
+- `ValueType` is the return type of `f`. Automatic inference is too error-prone.
+- `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
+- `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
+- `initialpivots::Vector{MultiIndex}` is a vector of pivots to be used for initialization. Default: `[1, 1, ...]`.
+- `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
+- `pivottolerance::Float64` is a float that specifies the tolerance for adding new pivots, i.e. the truncation of tensor train bonds. It should be <= tolerance, otherwise convergence may be impossible. Default: `tolerance`.
+- `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
+- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
+- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
+- `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
+- `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
+- `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
+
+Notes:
+- Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
+- By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
+
+
+See also: [`optimize!`](@ref), [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+"""
+function crossinterpolate2(
+    ::Type{ValueType},
+    f,
+    localdims::Union{Vector{Int},NTuple{N,Int}},
+    initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+    tolerance::Float64=1e-8,
+    pivottolerance::Float64=tolerance,
+    maxbonddim::Int=typemax(Int),
+    maxiter::Int=200,
+    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+    verbosity::Int=0,
+    loginterval::Int=10,
+    normalizeerror::Bool=true,
+    ncheckhistory=3
+) where {ValueType,N}
+    tci = TensorCI2{ValueType}(f, localdims, initialpivots)
+    ranks, errors = optimize!(
+        tci, f;
+        tolerance=tolerance, pivottolerance=pivottolerance, maxbonddim=maxbonddim,
+        maxiter=maxiter, sweepstrategy=sweepstrategy, verbosity=verbosity,
+        loginterval=loginterval, normalizeerror=normalizeerror, ncheckhistory=ncheckhistory
+    )
+    return tci, ranks, errors
+end
+
+@doc raw"""
+    function insertglobalpivots!(
         tci::TensorCI2{ValueType}, f;
         nsearch = 100,
         tolerance::Float64=1e-8,
@@ -398,7 +461,7 @@ Arguments:
 
 The other paramters are the same as for [`crossinterpolate2`](@ref).
 """
-function insert_global_pivots!(
+function insertglobalpivots!(
     tci::TensorCI2{ValueType}, f;
     nsearch=100,
     tolerance::Float64=1e-8,
