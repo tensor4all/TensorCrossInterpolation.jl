@@ -478,7 +478,7 @@ function crossinterpolate(
     verbosity::Int=0,
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
     normalizeerror::Bool=true
-) where {ValueType, N}
+) where {ValueType,N}
     tci = TensorCI{ValueType}(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
@@ -490,9 +490,13 @@ function crossinterpolate(
 
     for iter in rank(tci)+1:maxiter
         if forwardsweep(sweepstrategy, iter)
-            addpivot!.(tci, 1:n-1, f, pivottolerance)
+            for bondindex in 1:n-1
+                addpivot!(tci, bondindex, f, pivottolerance)
+            end
         else
-            addpivot!.(tci, (n-1):-1:1, f, pivottolerance)
+            for bondindex in (n-1):-1:1
+                addpivot!(tci, bondindex, f, pivottolerance)
+            end
         end
 
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0

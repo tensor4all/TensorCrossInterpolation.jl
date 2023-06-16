@@ -352,15 +352,19 @@ function crossinterpolate2(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
-            updatepivots!.(
-                tuple(tci), 1:n-1, f, true;
-                abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:forward
-            )
+            for bondindex in 1:n-1
+                updatepivots!(
+                    tci, bondindex, f, true;
+                    abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:forward
+                )
+            end
         else # backward sweep
-            updatepivots!.(
-                tuple(tci), (n-1):-1:1, f, false;
-                abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:backward
-            )
+            for bondindex in (n-1):-1:1
+                updatepivots!(
+                    tci, bondindex, f, false;
+                    abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:backward
+                )
+            end
         end
 
         push!(errors, pivoterror(tci))
@@ -396,7 +400,7 @@ The other paramters are the same as for [`crossinterpolate2`](@ref).
 """
 function insert_global_pivots!(
     tci::TensorCI2{ValueType}, f;
-    nsearch = 100,
+    nsearch=100,
     tolerance::Float64=1e-8,
     verbosity::Int=0,
     normalizeerror::Bool=true)::Int where {ValueType}
