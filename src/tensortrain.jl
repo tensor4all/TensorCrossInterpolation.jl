@@ -20,7 +20,7 @@ mutable struct TensorTrain{ValueType, N} <: CachedTensorTrain{ValueType}
 
     function TensorTrain{ValueType, N}(T::Vector{Array{ValueType, N}}) where {ValueType, N}
         for i in 1:length(T)-1
-            if (size(T[i], 3) != size(T[i+1], 1))
+            if (last(size(T[i])) != size(T[i+1], 1))
                 throw(ArgumentError(
                     "The tensors at $i and $(i+1) must have consistent dimensions for a tensor train."
                 ))
