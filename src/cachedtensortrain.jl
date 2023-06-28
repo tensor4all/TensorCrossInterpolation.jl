@@ -14,7 +14,7 @@ function evaluatepartial(
     end
 
     cache = ttcache(tt, ell)
-    key = indexset[1:ell]
+    key = collect(indexset[1:ell])
     if !(key in keys(cache))
         cache[key] = evaluatepartial(tt, indexset, ell-1) * tt[ell][:, indexset[ell], :]
     end
