@@ -14,10 +14,11 @@ The corresponding function is:
 
 Evaluates the tensor train `tt` at indices given by `indexset`.
 """
-struct TensorTrain{ValueType} <: AbstractTensorTrain{ValueType}
-    T::Vector{Array{ValueType, 3}}
+mutable struct TensorTrain{ValueType, N} <: CachedTensorTrain{ValueType}
+    T::Vector{Array{ValueType, N}}
+    cache::Vector{Dict{MultiIndex, Matrix{ValueType}}}
 
-    function TensorTrain{ValueType}(T::Vector{Array{ValueType, 3}}) where {ValueType}
+    function TensorTrain{ValueType, N}(T::Vector{Array{ValueType, N}}) where {ValueType, N}
         for i in 1:length(T)-1
             if (size(T[i], 3) != size(T[i+1], 1))
                 throw(ArgumentError(
@@ -26,7 +27,7 @@ struct TensorTrain{ValueType} <: AbstractTensorTrain{ValueType}
             end
         end
 
-        new{ValueType}(T)
+        new{ValueType, N}(T, [Dict{MultiIndex, Matrix{ValueType}}() for _ in 1:length(T)])
     end
 end
 
@@ -37,8 +38,8 @@ Create a tensor train out of a vector of tensors. Each tensor should have links 
 previous and next tensor as dimension 1 and 3, respectively; the local index ("physical
 index" for MPS in physics) is dimension 2.
 """
-function TensorTrain(T::Vector{Array{V, 3}}) where {V}
-    return TensorTrain{V}(T)
+function TensorTrain(T::Vector{Array{V, N}}) where {V, N}
+    return TensorTrain{V, N}(T)
 end
 
 """
@@ -48,8 +49,8 @@ Convert the TCI object into a tensor train, also known as an MPS.
 
 See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
 """
-function TensorTrain(tci::TensorCI{V})::TensorTrain{V} where {V}
-    return TensorTrain{V}(TtimesPinv.(tci, 1:length(tci)))
+function TensorTrain(tci::TensorCI{V})::TensorTrain{V, 3} where {V}
+    return TensorTrain{V, 3}(TtimesPinv.(tci, 1:length(tci)))
 end
 
 """
@@ -59,10 +60,21 @@ Convert the TCI2 object into a tensor train, also known as an MPS.
 
 See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
 """
-function TensorTrain(tci::TensorCI2{V})::TensorTrain{V} where {V}
+function TensorTrain(tci::TensorCI2{V})::TensorTrain{V, 3} where {V}
     return TensorTrain(tci.T)
 end
 
 function tensortrain(tci)
     return TensorTrain(tci)
+end
+
+function ttcache(tt::TensorTrain{V, N}, b::Int) where {V, N}
+    return tt.cache[b]
+end
+
+function emptycache!(tt::TensorTrain{V, N}) where {V, N}
+    for d in tt.cache
+        empty!(d)
+    end
+    nothing
 end
