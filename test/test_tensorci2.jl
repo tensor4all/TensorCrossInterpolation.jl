@@ -148,7 +148,8 @@ import Random
             f,
             localdims,
             tolerance=1e-12,
-            maxiter=200
+            maxbonddim=8,
+            maxiter=10
         )
 
         nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)

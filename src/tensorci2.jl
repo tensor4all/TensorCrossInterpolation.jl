@@ -279,7 +279,7 @@ function convergencecriterion(
     lastranks = last(ranks, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
-        maximum(lastranks) == lastranks[end]
+        minimum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
 end
 
