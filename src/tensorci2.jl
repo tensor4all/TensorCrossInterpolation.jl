@@ -155,14 +155,58 @@ function addglobalpivots!(
     makecanonical!(tci, f; reltol=reltol, maxbonddim=maxbonddim)
 end
 
-function getPi(
+
+# Default slow implementation
+function _batchevaluate_dispatch(
     ::Type{ValueType},
     f,
-    Iset::Union{Vector{MultiIndex},IndexSet{MultiIndex}},
-    Jset::Union{Vector{MultiIndex},IndexSet{MultiIndex}}
+    localset::Vector{Vector{LocalIndex}},
+    Iset::Vector{MultiIndex},
+    Jset::Vector{MultiIndex},
 ) where {ValueType}
-    return ValueType[f(vcat(i, j)) for i in Iset, j in Jset]
+    N = length(localset)
+    nl = length(first(Iset))
+    nr = length(first(Jset))
+    ncent = N - nl - nr
+    return ValueType[f(collect(Iterators.flatten(i))) for i in Iterators.product(Iset, localset[nl+1:nl+ncent]..., Jset)]
 end
+
+
+function _batchevaluate_dispatch(
+    ::Type{ValueType},
+    f::BatchEvaluator{ValueType},
+    localset::Vector{Vector{LocalIndex}},
+    Iset::Vector{MultiIndex},
+    Jset::Vector{MultiIndex},
+) where {ValueType}
+    N = length(localset)
+    nl = length(first(Iset))
+    nr = length(first(Jset))
+    ncent = N - nl - nr
+    return batchevaluate(f, Iset, Jset, Val(ncent))
+end
+
+
+function _batchevaluate(
+    ::Type{ValueType},
+    f,
+    localset::Vector{Vector{LocalIndex}},
+    Iset::Vector{Vector{MultiIndex}},
+    Jset::Vector{Vector{MultiIndex}},
+    ipos, jpos
+) where {ValueType}
+    Iset_ = Iset[ipos]
+    Jset_ = Jset[jpos]
+    N = length(localset)
+    nl = ipos - 1
+    nr = N - jpos 
+    ncent = N - nl - nr
+    result = _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos])
+    expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
+    size(result) == expected_size || throw(DimensionMismatch("Result has wrong size $(size(result)) != expected $(expected_size)"))
+    return result
+end
+
 
 function kronecker(
     Iset::Union{Vector{MultiIndex},IndexSet{MultiIndex}},
@@ -205,7 +249,7 @@ function makecanonical!(
     flushpivoterror!(tci)
     for b in 1:L-1
         Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = getPi(ValueType, f, Icombined, tci.Jset[b])
+        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(Icombined), length(tci.Jset[b]))
         updatemaxsample!(tci, Pi)
         ludecomp = rrlu(
             Pi,
@@ -221,7 +265,7 @@ function makecanonical!(
     flushpivoterror!(tci)
     for b in L:-1:2
         Jcombined = kronecker(tci.localset[b], tci.Jset[b])
-        Pi = getPi(ValueType, f, tci.Iset[b], Jcombined)
+        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b , b), length(tci.Iset[b]), length(Jcombined))
         updatemaxsample!(tci, Pi)
         ludecomp = rrlu(
             Pi,
@@ -237,7 +281,7 @@ function makecanonical!(
     flushpivoterror!(tci)
     for b in 1:L-1
         Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = getPi(ValueType, f, Icombined, tci.Jset[b])
+        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(Icombined), length(tci.Jset[b]))
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
             Pi,
@@ -251,7 +295,11 @@ function makecanonical!(
         tci.T[b] = setT!(tci, b, left(luci))
         updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
     end
-    setT!(tci, L, getPi(ValueType, f, tci.Iset[end], [[i] for i in tci.localset[end]]))
+    localtensor = reshape(
+        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
+        length(tci.Iset[end]), length(tci.localset[end])
+    )
+    setT!(tci, L, localtensor)
 end
 
 function updatepivots!(
@@ -267,7 +315,10 @@ function updatepivots!(
     emptycache!(tci)
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
-    Pi = getPi(ValueType, f, Icombined, Jcombined)
+    Pi = reshape(
+        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
+        length(Icombined), length(Jcombined)
+    )
     updatemaxsample!(tci, Pi)
     luci = MatrixLUCI(
         Pi,

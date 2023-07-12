@@ -86,7 +86,7 @@ end
 
 Represents a Matrix Product Operator / Tensor Train with N legs on each tensor.
 """
-struct TTCache{ValueType} <: CachedTensorTrain{ValueType}
+struct TTCache{ValueType} <: BatchEvaluator{ValueType}
     T::Vector{Array{ValueType}}
     cacheleft::Vector{Dict{MultiIndex,Vector{ValueType}}}
     cacheright::Vector{Dict{MultiIndex,Vector{ValueType}}}
@@ -98,6 +98,8 @@ struct TTCache{ValueType} <: CachedTensorTrain{ValueType}
             [Dict{MultiIndex,Vector{ValueType}}() for _ in T])
     end
 end
+
+Base.length(tt::TTCache{V}) where {V} = length(tt.T)
 
 function TTCache(TT::AbstractTensorTrain{ValueType}) where {ValueType}
     TTCache(TT.T)
@@ -125,13 +127,13 @@ function evaluateleft(
     if ell == 0
         return V[1]
     elseif ell == 1
-        return vec(tt[1][:, indexset[1], :])
+        return vec(tt.T[1][:, indexset[1], :])
     end
 
     cache = ttcache(tt, :left, ell)
     key = collect(indexset)
     if !(key in keys(cache))
-        cache[key] = vec(reshape(evaluateleft(tt, indexset[1:ell-1]), 1, :) * tt[ell][:, indexset[ell], :])
+        cache[key] = vec(reshape(evaluateleft(tt, indexset[1:ell-1]), 1, :) * tt.T[ell][:, indexset[ell], :])
     end
     return cache[key]
 end
@@ -147,16 +149,20 @@ function evaluateright(
     if length(indexset) == 0
         return V[1]
     elseif length(indexset) == 1
-        return vec(tt[end][:, indexset[1], :])
+        return vec(tt.T[end][:, indexset[1], :])
     end
     ell = length(tt) - length(indexset) + 1
 
     cache = ttcache(tt, :right, ell)
     key = collect(indexset)
     if !(key in keys(cache))
-        cache[key] = tt[ell][:, indexset[1], :] * evaluateright(tt, indexset[2:end])
+        cache[key] = tt.T[ell][:, indexset[1], :] * evaluateright(tt, indexset[2:end])
     end
     return cache[key]
+end
+
+function (tt::TTCache{V})(indexset::AbstractVector{Int}) where {V}
+    return evaluate(tt, indexset; usecache=true)
 end
 
 function evaluate(

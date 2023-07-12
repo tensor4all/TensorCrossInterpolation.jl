@@ -1,5 +1,7 @@
 abstract type CachedTensorTrain{V} <: AbstractTensorTrain{V} end
 
+abstract type BatchEvaluator{V} end
+
 function evaluatepartial(
     tt::CachedTensorTrain{V},
     indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}},
