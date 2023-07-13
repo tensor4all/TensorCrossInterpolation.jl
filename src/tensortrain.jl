@@ -84,7 +84,7 @@ end
 """
     struct TTCache{ValueType, N}
 
-Represents a Matrix Product Operator / Tensor Train with N legs on each tensor.
+Cached evalulation of TT
 """
 struct TTCache{ValueType} <: BatchEvaluator{ValueType}
     T::Vector{Array{ValueType}}
