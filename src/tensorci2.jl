@@ -1,4 +1,4 @@
-mutable struct TensorCI2{ValueType} <: CachedTensorTrain{ValueType}
+mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{Vector{MultiIndex}}
     Jset::Vector{Vector{MultiIndex}}
     localset::Vector{Vector{LocalIndex}}
@@ -28,8 +28,7 @@ mutable struct TensorCI2{ValueType} <: CachedTensorTrain{ValueType}
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors, forward sweep
             zeros(length(localdims) - 1),           # bonderrors, backward sweep
-            0.0,                                    # maxsample
-            [Dict{MultiIndex, Matrix{ValueType}}() for _ in 1:n]  # cache
+            0.0                                     # maxsample
         )
     end
 end
@@ -44,6 +43,7 @@ function TensorCI2{ValueType}(
     addglobalpivots!(tci, f, initialpivots)
     return tci
 end
+
 
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
@@ -80,16 +80,6 @@ function printnestinginfo(io::IO, tci::TensorCI2{T}) where {T}
     end
 end
 
-function ttcache(tt::TensorCI2{T}, b::Int)::Dict{Vector{Int}, Matrix{T}} where {T}
-    return tt.cache[b]
-end
-
-function emptycache!(tt::TensorCI2{T}) where {T}
-    for d in tt.cache
-        empty!(d)
-    end
-    nothing
-end
 
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
@@ -142,8 +132,6 @@ function addglobalpivots!(
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
     end
-
-    emptycache!(tci)
 
     for pivot in pivots
         for b in 1:length(tci)
@@ -312,7 +300,6 @@ function updatepivots!(
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward
 ) where {F,ValueType}
-    emptycache!(tci)
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
     Pi = reshape(
