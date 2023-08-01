@@ -160,3 +160,7 @@ function batchevaluate(
 
     return reshape(lenv, nleftindexset, localdim..., nrightindexset)
 end
+
+
+isbatchevaluable(f) = false
+isbatchevaluable(f::BatchEvaluator) = true
