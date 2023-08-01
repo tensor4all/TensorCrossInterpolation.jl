@@ -1,4 +1,4 @@
-abstract type BatchEvaluator{V} end
+abstract type BatchEvaluator{V} <: AbstractTensorTrain{V} end
 
 
 """
