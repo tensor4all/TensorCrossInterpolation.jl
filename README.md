@@ -22,14 +22,14 @@ Until then, use the following instructions.
 
 1. Clone the repository to some convenient path
 ```sh
-$ cd /convenient/path
+$ cd ./convenient/path
 $ git clone git@gitlab.com:quanticstci/tensorcrossinterpolation.jl.git
 ```
-2. In a julia REPL, tell julia where you put the downloaded repository.
-```julia
-julia> using Pkg; Pkg.dev("convenient/path/tensorcrossinterpolation.jl")
+2. In a julia REPL, press `]`. Your prompt shoud switch to `(@v1.7) pkg>` or similar (possibly with a different enviroment instead of `@v1.7`). Tell julia where you put the package by typing:
 ```
-3. You should now be able to import the module.
+(@v1.7) pkg> dev ./convenient/path/tensorcrossinterpolation.jl
+```
+3. Press backspace to return to the `julia>` prompt. You should now be able to import the module.
 ```julia
 julia> import TensorCrossInterpolation as TCI
 ```
@@ -39,38 +39,37 @@ julia> import TensorCrossInterpolation as TCI
 
 *This section only contains the bare minimum to get you started. An example with more explanation can be found in the [user manual](https://quanticstci.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).*
 
-Given a multivariate function `f`, the function `crossinterpolate` will generate a tensor cross interpolation for `f`. For example, to interpolate the 8d lorentzian $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on an 8-dimensional lattice of integers, $\mathbf{v} \in \{1, 2, ..., 10\}^8$:
+Given a multivariate function `f`, the function `crossinterpolate2` will generate a tensor cross interpolation for `f`. For example, to interpolate the 8d lorentzian $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on an 8-dimensional lattice of integers, $\mathbf{v} \in \{1, 2, ..., 10\}^8$:
 ```julia
 import TensorCrossInterpolation as TCI
 f(v) = 1/(1 + v' * v)
 # There are 8 tensor indices, each with values 1...10
 localdims = fill(10, 8)
 tolerance = 1e-8
-tci, ranks, errors = TCI.crossinterpolate(Float64, f, localdims; tolerance=tolerance)
+tci, ranks, errors = TCI.crossinterpolate2(Float64, f, localdims; tolerance=tolerance)
 ```
 Note:
-- `f` is defined as a function that takes a single `Vector` of integers
-- the return type of `f` (`Float64` in this case) must be stated explicitly in the call to `crossinterpolate`.
+- `f` is defined as a function that takes a single `Vector` of integers.
+- The return type of `f` (`Float64` in this case) must be stated explicitly in the call to `crossinterpolate2`.
 
-The resulting `TensorCI` object can be further manipulated, see [user manual](https://quanticstci.gitlab.io/tensorcrossinterpolation.jl/dev/index.html). If you're satisfied with the interpolation error, the `TensorCI` object can be converted into a `TensorTrain` for efficient evaluation.
-To evaluate the `TensorTrain`, simply call it like you would call the original function:
+The resulting `TensorCI2` object can be further manipulated, see [user manual](https://quanticstci.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
+To evaluate the TCI interpolation, simply call your `TensorCI` object like you would call the original function:
 ```julia
-tt = TCI.TensorTrain(tci)
 originalvalue = f([1, 2, 3, 4, 5, 6, 7, 8])
-interpolatedvalue = tt([1, 2, 3, 4, 5, 6, 7, 8])
+interpolatedvalue = tci([1, 2, 3, 4, 5, 6, 7, 8])
 ```
 The sum of all function values on the lattice can be obtained very efficiently from a tensor train:
 ```julia
-sumvalue = sum(tt)
+sumvalue = sum(tci)
 ```
 
 ## Related modules
 
 ### [TCIITensorConversion.jl](https://gitlab.com/quanticstci/tciitensorconversion.jl)
-A small helper module for easy conversion of `TensorTrain` objects into ITensors `MPS` objects. This should be helpful for those integrating TCI into a larger tensor network algorithm.
-For this conversion, simply call the `MPS` constructor on the `TensorTrain`:
+A small helper module for easy conversion of `TensorCI`, `TensorCI2` and `TensorTrain` objects into ITensors `MPS` objects. This should be helpful for those integrating TCI into a larger tensor network algorithm.
+For this conversion, simply call the `MPS` constructor on the object:
 ```julia
-mps = MPS(tt)
+mps = MPS(tci)
 ```
 
 ### [QuanticsTCI.jl](https://gitlab.com/quanticstci/quanticstci.jl)
