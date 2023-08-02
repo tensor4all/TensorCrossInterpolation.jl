@@ -1,4 +1,5 @@
 import TensorCrossInterpolation as TCI
+using Random
 
 @testset "tensor train" begin
     g(v) = 1 / (sum(v .^ 2) + 1)
@@ -17,4 +18,60 @@ import TensorCrossInterpolation as TCI
         gsum += functionvalue
     end
     @test gsum ≈ TCI.sum(tt)
+end
+
+@testset "batchevaluate" begin
+    N = 4
+    #bonddims = fill(3, N + 1)
+    bonddims = [1, 2, 3, 2, 1]
+    @assert length(bonddims) == N + 1
+    #bonddims[1] = 1
+    #bonddims[end] = 1
+    A = TCI.TTCache([rand(bonddims[n], 2, bonddims[n+1]) for n in 1:N])
+
+    leftindexset = [[1], [2]]
+    rightindexset = [[1], [2]]
+
+    result = TCI.batchevaluate(A, leftindexset, rightindexset, Val(2))
+    for cindex in [[1, 1], [1, 2]]
+        for (il, lindex) in enumerate(leftindexset)
+            for (ir, rindex) in enumerate(rightindexset)
+                @test result[il, cindex..., ir] ≈ TCI.evaluate(A, vcat(lindex, cindex, rindex))
+            end
+        end
+    end
+end
+
+function genindices(localdims::Vector{Int})::Vector{Vector{Int}}
+    iter = vec(collect(Iterators.product([1:d for d in localdims]...)))
+    return [collect(l) for l in iter]
+end
+
+@testset "batchevaluate2" begin
+    N = 4
+    bonddims = [1, 2, 3, 2, 1]
+    @assert length(bonddims) == N + 1
+    localdims = [2, 3, 3, 2]
+
+    A = TCI.TTCache([rand(bonddims[n], localdims[n], bonddims[n+1]) for n in 1:N])
+
+    for nleft in 0:N, nright in 0:N
+        leftindexset = genindices(localdims[1:nleft])
+        rightindexset = genindices(localdims[N-nright+1:N])
+
+        ncent = N - nleft - nright
+        if ncent < 0
+            continue
+        end
+
+        result = TCI.batchevaluate(A, leftindexset, rightindexset, Val(ncent))
+        for cindex in genindices(localdims[nleft+1:nleft+ncent])
+            for (il, lindex) in enumerate(leftindexset)
+                for (ir, rindex) in enumerate(rightindexset)
+                    @test result[il, cindex..., ir] ≈ TCI.evaluate(A, [lindex..., cindex..., rindex...], usecache=true)
+                    @test result[il, cindex..., ir] ≈ TCI.evaluate(A, [lindex..., cindex..., rindex...], usecache=false)
+                end
+            end
+        end
+    end
 end

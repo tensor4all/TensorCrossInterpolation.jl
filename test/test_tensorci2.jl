@@ -159,4 +159,32 @@ import Random
         @test nglobalpivot == 0
 
     end
+
+
+    @testset "crossinterpolate2_ttcache" begin
+        ValueType = Float64
+
+        N = 4
+        bonddims = [1, 2, 3, 2, 1]
+        @assert length(bonddims) == N + 1
+        localdims = [2, 3, 3, 2]
+    
+        tt = TCI.TensorTrain{ValueType,3}([rand(bonddims[n], localdims[n], bonddims[n+1]) for n in 1:N])
+        ttc = TCI.TTCache(tt.T)
+
+        tci2, ranks, errors = TCI.crossinterpolate2(
+            ValueType,
+            ttc,
+            localdims;
+            tolerance=1e-10,
+            maxbonddim = 10
+        )
+
+        tt_reconst = TCI.TensorTrain(tci2)
+
+        vals_reconst = [tt_reconst(collect(indices)) for indices in Iterators.product((1:d for d in localdims)...)]
+        vals_ref = [tt(collect(indices)) for indices in Iterators.product((1:d for d in localdims)...)]
+
+        @test vals_reconst ≈ vals_ref
+    end
 end
