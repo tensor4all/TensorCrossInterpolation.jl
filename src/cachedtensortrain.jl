@@ -99,7 +99,7 @@ function evaluate(
     usecache::Bool=true
 )::V where {V}
     if length(tt) != length(indexset)
-        throw(ArgumentError("To evaluate a tensor train of length $(length(tt)), need $(length(tt)) index values, but only got $(length(indexset))."))
+        throw(ArgumentError("To evaluate a tensor train of length $(length(tt)), need $(length(tt)) index values, but got $(length(indexset))."))
     end
     if usecache
         midpoint = div(length(tt), 2)

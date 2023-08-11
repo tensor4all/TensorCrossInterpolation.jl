@@ -17,8 +17,20 @@ end
 
 Bond dimensions along the links between ``T`` tensors in the tensor train.
 """
-function linkdims(tt::AbstractTensorTrain{V}) where {V}
-    return [size(T, 1) for T in tt[2:end]]
+function linkdims(tt::AbstractTensorTrain{V})::Vector{Int} where {V}
+    return [size(T, 3) for T in tt[1:end-1]]
+end
+
+function linkdim(tt::AbstractTensorTrain{V}, i::Int)::Int where {V}
+    return size(tt.T[i], 3)
+end
+
+function sitedims(tt::AbstractTensorTrain{V})::Vector{Vector{Int}} where {V}
+    return [size(T)[2:end-1] for T in tt]
+end
+
+function sitedim(tt::AbstractTensorTrain{V}, i::Int)::Vector{Int} where{V}
+    return size(tt.T[i])[2:end-1]
 end
 
 function rank(tt::AbstractTensorTrain{V}) where {V}
