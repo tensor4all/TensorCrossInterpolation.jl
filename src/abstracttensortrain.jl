@@ -18,26 +18,26 @@ end
 Bond dimensions along the links between ``T`` tensors in the tensor train.
 """
 function linkdims(tt::AbstractTensorTrain{V})::Vector{Int} where {V}
-    return [size(T, 3) for T in tt[1:end-1]]
+    return [size(T, 1) for T in tt[2:end]]
 end
 
 function linkdim(tt::AbstractTensorTrain{V}, i::Int)::Int where {V}
-    return size(tt.T[i], 3)
+    return size(tt.T[i+1], 1)
 end
 
 function sitedims(tt::AbstractTensorTrain{V})::Vector{Vector{Int}} where {V}
-    return [size(T)[2:end-1] for T in tt]
+    return [collect(size(T)[2:end-1]) for T in tt]
 end
 
-function sitedim(tt::AbstractTensorTrain{V}, i::Int)::Vector{Int} where{V}
-    return size(tt.T[i])[2:end-1]
+function sitedim(tt::AbstractTensorTrain{V}, i::Int)::Vector{Int} where {V}
+    return collect(size(tt.T[i])[2:end-1])
 end
 
 function rank(tt::AbstractTensorTrain{V}) where {V}
     return maximum(linkdims(tt))
 end
 
-function length(tt::AbstractTensorTrain{V}) where{V}
+function length(tt::AbstractTensorTrain{V}) where {V}
     return length(tt.T)
 end
 
@@ -67,8 +67,8 @@ Evaluates the tensor train `tt` at indices given by `indexset`.
 """
 function evaluate(
     tt::AbstractTensorTrain{V},
-    indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
-)::V where {N, V}
+    indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}}
+)::V where {N,V}
     if length(indexset) != length(tt)
         throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
     end
@@ -82,6 +82,20 @@ Evaluates the tensor train `tt` at indices given by `indexset`.
 """
 function evaluate(tt::AbstractTensorTrain{V}, indexset::CartesianIndex) where {V}
     return evaluate(tt, Tuple(indexset))
+end
+
+function evaluate(
+    tt::AbstractTensorTrain{V},
+    indexset::Union{
+        AbstractVector{<:AbstractVector{Int}},
+        AbstractVector{NTuple{N,Int}},
+        NTuple{N,<:AbstractVector{Int}},
+        NTuple{N,NTuple{M,Int}}}
+) where {N,M,V}
+    if length(indexset) != length(tt)
+        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
+    end
+    return only(prod(T[:, i..., :] for (T, i) in zip(tt, indexset)))
 end
 
 function (tt::AbstractTensorTrain{V})(indexset) where {V}
