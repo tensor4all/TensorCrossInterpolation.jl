@@ -26,8 +26,18 @@ Julia 1.7:
   extends:
     - .script
     - .coverage
+Julia 1.8:
+  image: julia:1.8
+  extends:
+    - .script
+    - .coverage
+Julia 1.9:
+  image: julia:1.9
+  extends:
+    - .script
+    - .coverage
 pages:
-  image: julia:1.6
+  image: julia:1.9
   stage: deploy
   script:
     - apt-get update -qq && apt-get install -y git
