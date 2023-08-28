@@ -1,6 +1,7 @@
-using TensorCrossInterpolation
+import TensorCrossInterpolation as TCI
 using Test
 using LinearAlgebra
+import ITensors
 
 include("_quantics.jl")
 
@@ -14,3 +15,5 @@ include("test_matrixlu.jl")
 include("test_tensorci.jl")
 include("test_tensorci2.jl")
 include("test_tensortrain.jl")
+include("test_ttmpsconversion.jl")
+include("test_mpsutil.jl")
