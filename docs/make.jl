@@ -8,17 +8,17 @@ DocMeta.setdocmeta!(TensorCrossInterpolation, :DocTestSetup, :(using TensorCross
 makedocs(;
     modules=[TensorCrossInterpolation],
     authors="Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de> and contributors",
-    repo="https://gitlab.com/quanticstci/tensorcrossinterpolation.jl/blob/{commit}{path}#{line}",
+    repo="https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/blob/{commit}{path}#{line}",
     sitename="TensorCrossInterpolation.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://gitlab.com/quanticstci/tensorcrossinterpolation.jl",
+        canonical="https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl",
         edit_link="main",
-        assets=String[],
+        assets=String[]
     ),
     pages=[
         "Home" => "index.md",
         "Documentation" => "documentation.md",
         "Implementation details" => "implementation.md"
-    ],
+    ]
 )

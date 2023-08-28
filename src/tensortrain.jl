@@ -57,7 +57,7 @@ end
 
 Convert the TCI2 object into a tensor train, also known as an MPS.
 
-See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
+See also: [`crossinterpolate2`](@ref), [`TensorCI2`](@ref)
 """
 function TensorTrain(tci::TensorCI2{V})::TensorTrain{V,3} where {V}
     return TensorTrain(tci.T)

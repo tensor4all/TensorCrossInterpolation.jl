@@ -6,6 +6,15 @@
 const LocalIndex = Int
 const MultiIndex = Vector{LocalIndex}
 
+"""
+    abstract type AbstractTensorTrain{V} end
+
+Abstract type that is a supertype to all tensor train types found in this module. The main purpose of this type is for the definition of functions such as [`rank`](@ref) and [`linkdims`](@ref) that are shared between different tensor train classes.
+
+When iterated over, the tensor train will return each of the tensors in order.
+
+Implementations: [`TensorTrain`](@ref), [`TensorCI2`](@ref), [`TensorCI`](@ref)
+"""
 abstract type AbstractTensorTrain{V} end
 
 function Base.show(io::IO, tt::AbstractTensorTrain{ValueType}) where {ValueType}
@@ -13,30 +22,59 @@ function Base.show(io::IO, tt::AbstractTensorTrain{ValueType}) where {ValueType}
 end
 
 """
-    function linkdims(tci::TensorCI{V}) where {V}
+    function linkdims(tt::AbstractTensorTrain{V})::Vector{Int} where {V}
 
 Bond dimensions along the links between ``T`` tensors in the tensor train.
+
+See also: [`rank`](@ref)
 """
 function linkdims(tt::AbstractTensorTrain{V})::Vector{Int} where {V}
     return [size(T, 1) for T in tt[2:end]]
 end
 
+"""
+    function linkdim(tt::AbstractTensorTrain{V}, i::Int)::Int where {V}
+
+Bond dimensions at the link between tensor ``T_i`` and ``T_{i+1}`` in the tensor train.
+"""
 function linkdim(tt::AbstractTensorTrain{V}, i::Int)::Int where {V}
     return size(tt.T[i+1], 1)
 end
 
+"""
+    function sitedims(tt::AbstractTensorTrain{V})::Vector{Vector{Int}} where {V}
+
+Dimensions of the site indices (local indices, physical indices) of the tensor train.
+"""
 function sitedims(tt::AbstractTensorTrain{V})::Vector{Vector{Int}} where {V}
     return [collect(size(T)[2:end-1]) for T in tt]
 end
 
+"""
+    function linkdim(tt::AbstractTensorTrain{V}, i::Int)::Int where {V}
+
+Dimension of the `i`th site index along the tensor train.
+"""
 function sitedim(tt::AbstractTensorTrain{V}, i::Int)::Vector{Int} where {V}
     return collect(size(tt.T[i])[2:end-1])
 end
 
+"""
+    function rank(tt::AbstractTensorTrain{V}) where {V}
+
+Rank of the tensor train, i.e. the maximum link dimension.
+
+See also: [`linkdims`](@ref), [`linkdim`](@ref)
+"""
 function rank(tt::AbstractTensorTrain{V}) where {V}
     return maximum(linkdims(tt))
 end
 
+"""
+    function length(tt::AbstractTensorTrain{V}) where {V}
+
+Length of the tensor train, i.e. the number of tensors in the tensor train.
+"""
 function length(tt::AbstractTensorTrain{V}) where {V}
     return length(tt.T)
 end

@@ -1,3 +1,9 @@
+
+"""
+    mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
+
+Type that represents tensor cross interpolations created using the TCI2 algorithm. Users may want to create these using [`crossinterpolate2`](@ref) rather than calling a constructor directly.
+"""
 mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{Vector{MultiIndex}}
     Jset::Vector{Vector{MultiIndex}}
@@ -14,7 +20,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     "Maximum sample for error normalization."
     maxsamplevalue::Float64
 
-    cache::Vector{Dict{MultiIndex, Matrix{ValueType}}}
+    cache::Vector{Dict{MultiIndex,Matrix{ValueType}}}
 
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
@@ -187,7 +193,7 @@ function _batchevaluate(
     Jset_ = Jset[jpos]
     N = length(localset)
     nl = ipos - 1
-    nr = N - jpos 
+    nr = N - jpos
     ncent = N - nl - nr
     result = _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos])
     expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
@@ -253,7 +259,7 @@ function makecanonical!(
     flushpivoterror!(tci)
     for b in L:-1:2
         Jcombined = kronecker(tci.localset[b], tci.Jset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b , b), length(tci.Iset[b]), length(Jcombined))
+        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(tci.Iset[b]), length(Jcombined))
         updatemaxsample!(tci, Pi)
         ludecomp = rrlu(
             Pi,

@@ -1,7 +1,7 @@
 """
-    mutable struct TensorCI{ValueType}
+    mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
 
-An object that represents a tensor cross interpolation. Users may want to create these using `crossinterpolate(...)` rather than calling a constructor directly.
+Type that represents tensor cross interpolations created using the TCI1 algorithm. Users may want to create these using [`crossinterpolate`](@ref) rather than calling a constructor directly.
 """
 mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
