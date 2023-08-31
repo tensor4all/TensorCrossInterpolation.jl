@@ -66,3 +66,30 @@ end
 function tensortrain(tci)
     return TensorTrain(tci)
 end
+
+
+"""
+Contruct a tensor train from a function `f` and a TCI object `tci` using QR
+"""
+function tensortrain(tci::TensorCI2{V}, f::F)::TensorTrain{V,3} where {V, F}
+    L = length(tci)
+    tensors = Array{V,3}[]
+    for n in 1:L-1
+        tmat = reshape(
+            computeT(tci, f, n),
+            length(tci.Iset[n]) * length(tci.localset[n]),
+            length(tci.Jset[n])
+        )
+        TPinv = reshape(
+            AtimesBinv(tmat, computeP(tci, f, n)),
+            length(tci.Iset[n]),
+            length(tci.localset[n]),
+            length(tci.Iset[n+1])
+        )
+        push!(tensors, TPinv)
+    end
+
+    push!(tensors, computeT(tci, f, L))
+
+    return TensorTrain{V,3}(tensors)
+end

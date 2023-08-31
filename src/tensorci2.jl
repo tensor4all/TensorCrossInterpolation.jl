@@ -14,8 +14,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     "Maximum sample for error normalization."
     maxsamplevalue::Float64
 
-    cache::Vector{Dict{MultiIndex, Matrix{ValueType}}}
-
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
     ) where {ValueType,N}
@@ -546,3 +544,39 @@ function insertglobalpivots!(
 
     return nnewpivot
 end
+
+
+function computeT(tci::TensorCI2{V}, f::F, p::Int) where {V, F}
+    Iset = tci.Iset[p]
+    Jset = tci.Jset[p]
+
+    T = zeros(V, length(Iset), length(tci.localset[p]), length(Jset))
+
+    for (j, J) in enumerate(Jset)
+        for (k, K) in enumerate(tci.localset[p])
+            for (i, I) in enumerate(Iset)
+                T[i, k, j] = vcat(I, K, J) |> f
+            end
+        end
+    end
+
+    return T
+end
+
+
+function computeP(tci::TensorCI2{V}, f::F, p::Int) where {V, F}
+    Iset = tci.Iset[p+1]
+    Jset = tci.Jset[p]
+
+    P = zeros(V, length(Iset), length(Jset))
+
+    for (j, J) in enumerate(Jset)
+        for (i, I) in enumerate(Iset)
+            P[i, j] = vcat(I, J) |> f
+        end
+    end
+
+    return P
+end
+
+
