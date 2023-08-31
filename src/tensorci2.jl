@@ -50,6 +50,13 @@ function linkdim(tci::TensorCI2{V}, i::Int)::Int where {V}
     return length(tci.Iset[i+1])
 end
 
+function flushT!(tci::TensorCI2{V}) where {V}
+    for i in 1:length(tci)
+       tci.T[i] = zeros(0, length(tci.localset[i]), 0)
+    end
+    nothing
+end
+
 
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
@@ -86,6 +93,21 @@ function printnestinginfo(io::IO, tci::TensorCI2{T}) where {T}
     end
 end
 
+function isfullynested(tci::TensorCI2{T})::Bool where {T}
+    for i in 1:length(tci.Iset)-1
+        if !isnested(tci.Iset[i], tci.Iset[i+1], :row)
+            return false
+        end
+    end
+
+    for i in 1:length(tci.Jset)-1
+        if !isnested(tci.Jset[i+1], tci.Jset[i], :col)
+            return false
+        end
+    end
+
+    return true
+end
 
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
@@ -231,6 +253,25 @@ function updatemaxsample!(tci::TensorCI2{V}, samples::Array{V}) where {V}
     tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
+
+function makefullnesting!(tci::TensorCI2{ValueType}; updateIset=true, updateJset=true) where {ValueType}
+    if updateIset
+        for n in reverse(2:length(tci))
+            for I in tci.Iset[n]
+                pushunique!(tci.Iset[n-1], I[1:end-1])
+            end
+        end
+    end
+    if updateJset
+        for n in 1:length(tci)-1
+            for J in tci.Jset[n]
+                pushunique!(tci.Jset[n+1], J[2:end])
+            end
+        end
+    end
+    nothing
+end
+
 function makecanonical!(
     tci::TensorCI2{ValueType},
     f::F;
@@ -239,6 +280,7 @@ function makecanonical!(
     maxbonddim::Int=typemax(Int)
 ) where {F,ValueType}
     L = length(tci)
+    #flushT!(tci)
 
     flushpivoterror!(tci)
     for b in 1:L-1
@@ -288,13 +330,17 @@ function makecanonical!(
         tci.Jset[b] = tci.Jset[b][colindices(luci)]
         updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
     end
-    #localtensor = reshape(
-        #_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
-        #length(tci.Iset[end]), length(tci.localset[end])
-    #)
-    #setT!(tci, L, localtensor)
+    localtensor = reshape(
+        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
+        length(tci.Iset[end]), length(tci.localset[end])
+    )
+    setT!(tci, L, localtensor)
 
-    tensortrain!(tci.T, tci, f)
+    #tensortrain!(tci.T, tci, f)
+end
+
+function _randompivot(localset)
+    return [rand(1:localset[n]) for n in 1:length(localset)]
 end
 
 function updatepivots!(
@@ -305,10 +351,28 @@ function updatepivots!(
     reltol::Float64=1e-14,
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
-    sweepdirection::Symbol=:forward
+    sweepdirection::Symbol=:forward,
+    randompivot=false
 ) where {F,ValueType}
+    localdims = [length(s) for s in tci.localset]
+
+    if randompivot
+        if leftorthogonal # forward sweep
+            nrnd = max(floor(Int, 0.1 * length(tci.Jset[b+1])), 10)
+            for _ in 1:nrnd
+                pushunique!(tci.Jset[b+1], _randompivot(localdims[b+2:end]))
+            end
+        else # backward sweep
+            nrnd = max(floor(Int, 0.1 * length(tci.Iset[b])), 10)
+            for _ in 1:nrnd
+                pushunique!(tci.Iset[b], _randompivot(localdims[1:b-1]))
+            end
+        end
+    end
+
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
+
     Pi = reshape(
         _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
         length(Icombined), length(Jcombined)
@@ -323,9 +387,25 @@ function updatepivots!(
     )
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
-    #setT!(tci, b, left(luci))
-    #setT!(tci, b + 1, right(luci))
+    setT!(tci, b, left(luci))
+    setT!(tci, b + 1, right(luci))
     updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
+
+    if randompivot
+        if leftorthogonal # forward sweep
+            for n in b+1:length(tci)
+                for j in tci.Jset[n-1]
+                    pushunique!(tci.Jset[n], j[2:end])
+                end
+            end
+        else
+            for n in reverse(1:b)
+                for i in tci.Iset[n+1]
+                pushunique!(tci.Iset[n], i[1:end-1])
+                end
+            end
+        end
+    end
 end
 
 function convergencecriterion(
@@ -416,6 +496,7 @@ function optimize!(
                     tci, bondindex, f, true;
                     abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:forward
                 )
+                #makefullnesting!(tci)
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
@@ -439,7 +520,7 @@ function optimize!(
     end
 
     # Recompute tennsor train tensors using QR
-    tensortrain!(tci.T, tci, f)
+    #tensortrain!(tci.T, tci, f)
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
     return ranks, errors ./ errornormalization
