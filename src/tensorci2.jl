@@ -42,6 +42,14 @@ function TensorCI2{ValueType}(
     return tci
 end
 
+function linkdims(tci::TensorCI2{V})::Vector{Int} where {V}
+    return [linkdim(tci, i) for i in 1:length(tci)-1]
+end
+
+function linkdim(tci::TensorCI2{V}, i::Int)::Int where {V}
+    return length(tci.Iset[i+1])
+end
+
 
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
@@ -278,14 +286,15 @@ function makecanonical!(
         )
         tci.Iset[b+1] = Icombined[rowindices(luci)]
         tci.Jset[b] = tci.Jset[b][colindices(luci)]
-        tci.T[b] = setT!(tci, b, left(luci))
         updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
     end
-    localtensor = reshape(
-        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
-        length(tci.Iset[end]), length(tci.localset[end])
-    )
-    setT!(tci, L, localtensor)
+    #localtensor = reshape(
+        #_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
+        #length(tci.Iset[end]), length(tci.localset[end])
+    #)
+    #setT!(tci, L, localtensor)
+
+    tensortrain!(tci.T, tci, f)
 end
 
 function updatepivots!(
@@ -314,8 +323,8 @@ function updatepivots!(
     )
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
-    setT!(tci, b, left(luci))
-    setT!(tci, b + 1, right(luci))
+    #setT!(tci, b, left(luci))
+    #setT!(tci, b + 1, right(luci))
     updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
 end
 
@@ -428,6 +437,9 @@ function optimize!(
             break
         end
     end
+
+    # Recompute tennsor train tensors using QR
+    tensortrain!(tci.T, tci, f)
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
     return ranks, errors ./ errornormalization
@@ -549,34 +561,44 @@ end
 function computeT(tci::TensorCI2{V}, f::F, p::Int) where {V, F}
     Iset = tci.Iset[p]
     Jset = tci.Jset[p]
-
-    T = zeros(V, length(Iset), length(tci.localset[p]), length(Jset))
-
-    for (j, J) in enumerate(Jset)
-        for (k, K) in enumerate(tci.localset[p])
-            for (i, I) in enumerate(Iset)
-                T[i, k, j] = vcat(I, K, J) |> f
-            end
-        end
-    end
-
-    return T
+    return reshape(
+        _batchevaluate(V, f, tci.localset, tci.Iset, tci.Jset, p, p),
+        length(Iset), length(tci.localset[p]), length(Jset)
+    )
 end
 
 
 function computeP(tci::TensorCI2{V}, f::F, p::Int) where {V, F}
     Iset = tci.Iset[p+1]
     Jset = tci.Jset[p]
+    return reshape(
+        _batchevaluate(V, f, tci.localset, tci.Iset, tci.Jset, p+1, p),
+        length(Iset), length(Jset)
+    )
+end
 
-    P = zeros(V, length(Iset), length(Jset))
 
-    for (j, J) in enumerate(Jset)
-        for (i, I) in enumerate(Iset)
-            P[i, j] = vcat(I, J) |> f
-        end
+"""
+Contruct a tensor train from a function `f` and a TCI object `tci` using QR
+"""
+function tensortrain!(tensors::Vector{Array{V,3}}, tci::TensorCI2{V}, f::F) where {V, F}
+    length(tensors) == length(tci) || error("Expected length(tensors) == length(tci)")
+    L = length(tci)
+    for n in 1:L-1
+        tmat = reshape(
+            computeT(tci, f, n),
+            length(tci.Iset[n]) * length(tci.localset[n]),
+            length(tci.Jset[n])
+        )
+        tensors[n] = reshape(
+            AtimesBinv(tmat, computeP(tci, f, n)),
+            length(tci.Iset[n]),
+            length(tci.localset[n]),
+            length(tci.Iset[n+1])
+        )
     end
-
-    return P
+    tensors[L] = computeT(tci, f, L)
+    return nothing
 end
 
 
