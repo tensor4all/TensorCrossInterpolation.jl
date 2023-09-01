@@ -20,6 +20,23 @@ using Random
     @test gsum ≈ TCI.sum(tt)
 end
 
+@testset "tensor train (TCI2)" begin
+    g(v) = 1 / (sum(v .^ 2) + 1)
+    localdims = (6, 6, 6, 6)
+    L = length(localdims)
+    tolerance = 1e-8
+    tci, ranks, errors = TCI.crossinterpolate2(Float64, g, localdims; tolerance=tolerance)
+
+    tt = TCI.tensortrain(tci, g)
+    tt2 = TCI.tensortrain(tci)
+
+    reconst = [TCI.evaluate(tt, collect(i)) for i in Iterators.product((1:localdims[n] for n in 1:L)...)]
+reconst2 = [TCI.evaluate(tt2, collect(i)) for i in Iterators.product((1:localdims[n] for n in 1:L)...)]
+
+    @test reconst ≈ reconst2
+end
+
+
 @testset "batchevaluate" begin
     N = 4
     #bonddims = fill(3, N + 1)

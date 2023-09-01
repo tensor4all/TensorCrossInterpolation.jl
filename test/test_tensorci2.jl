@@ -151,11 +151,15 @@ import Random
             maxbonddim=8,
             maxiter=10
         )
+        @show tci, ranks, errors
 
-        nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)
+        nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=1)
+        @show nglobalpivot
         @test nglobalpivot > 0
+        @show tci
 
         nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)
+        @show nglobalpivot
         @test nglobalpivot == 0
 
     end
