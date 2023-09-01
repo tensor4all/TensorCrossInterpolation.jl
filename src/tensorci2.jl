@@ -429,6 +429,7 @@ end
 function convergencecriterion(
     ranks::AbstractVector{Int},
     errors::AbstractVector{Float64},
+    maxsamplevalues::AbstractVector{Float64},
     tolerance::Float64,
     maxbonddim::Int,
     ncheckhistory::Int,
@@ -437,8 +438,10 @@ function convergencecriterion(
         return false
     end
     lastranks = last(ranks, ncheckhistory)
+    lastmaxsamplevalues = last(maxsamplevalues, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
+        length(unique(lastmaxsamplevalues)) == 1 &&
         minimum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
 end
@@ -499,6 +502,7 @@ function optimize!(
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
+    maxsamplevalues = Float64[]
 
     if maxbonddim >= typemax(Int) && tolerance <= 0
         throw(ArgumentError(
@@ -529,11 +533,12 @@ function optimize!(
 
         push!(errors, pivoterror(tci))
         push!(ranks, rank(tci))
+        push!(maxsamplevalues, tci.maxsamplevalue)
         if verbosity > 0 && mod(iter, loginterval) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue)")
         end
         if convergencecriterion(
-            ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
+            ranks, errors, maxsamplevalues, tolerance * errornormalization, maxbonddim, ncheckhistory
         )
             break
         end
