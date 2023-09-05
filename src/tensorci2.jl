@@ -443,7 +443,7 @@ function convergencecriterion(
         all(last(errors, ncheckhistory) .< tolerance) &&
         length(unique(lastmaxsamplevalues)) == 1 &&
         minimum(lastranks) == lastranks[end]
-    ) || all(lastranks .>= maxbonddim)
+    ) || (all(lastranks .>= maxbonddim) && length(unique(lastmaxsamplevalues)) == 1)
 end
 
 """
