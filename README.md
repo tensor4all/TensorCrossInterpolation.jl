@@ -1,29 +1,30 @@
 # TensorCrossInterpolation
 
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://quanticstci.gitlab.io/tensorcrossinterpolation.jl/dev/index.html)
-[![Build Status](https://gitlab.com/quanticstci/tensorcrossinterpolation.jl/badges/main/pipeline.svg)](https://gitlab.com/quanticstci/tensorcrossinterpolation.jl/-/pipelines)
-[![Coverage](https://gitlab.com/quanticstci/tensorcrossinterpolation.jl/badges/main/coverage.svg)](https://gitlab.com/quanticstci/tensorcrossinterpolation.jl/-/commits/main)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html)
+[![Build Status](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/badges/main/pipeline.svg)](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/-/pipelines)
+[![Coverage](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/badges/main/coverage.svg)](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/-/commits/main)
 
-The [TensorCrossInterpolation module](https://gitlab.com/quanticstci/tensorcrossinterpolation.jl) implements the *tensor cross interpolation* algorithm for efficient interpolation of multi-index tensors and multivariate functions.
+The [TensorCrossInterpolation module](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl) implements the *tensor cross interpolation* algorithm for efficient interpolation of multi-index tensors and multivariate functions.
 
-This algorithm is used in the *quantics tensor cross interpolation* (QTCI) method for exponentially efficient interpolation of functions with scale separation. QTCI is implemented in the [QuanticsTCI.jl](https://gitlab.com/quanticstci/quanticstci.jl) module.
+This algorithm is used in the *quantics tensor cross interpolation* (QTCI) method for exponentially efficient interpolation of functions with scale separation. QTCI is implemented in the [QuanticsTCI.jl](https://gitlab.com/tensors4fields/quanticstci.jl) module.
 
 ## Installation
 
-All dependencies of this module are in the standard library. After the module has been published, the following will install TensorCrossInterpolation.jl:
-
-```julia
-julia> using Pkg; Pkg.add("TensorCrossInterpolation.jl")
+The easiest way to install TensorCrossInterpolation.jl is to use the [private registry](https://gitlab.com/tensors4fields/tensors4fieldsregistry) of the Tensors4Fields group:
+```
+]
+registry add git@gitlab.com:tensors4fields/tensors4fieldsregistry.git
+add TensorCrossInterpolation
 ```
 
 ---
 
-Until then, use the following instructions.
+If this doesn't work, use the following instructions.
 
 1. Clone the repository to some convenient path
 ```sh
 $ cd ./convenient/path
-$ git clone git@gitlab.com:quanticstci/tensorcrossinterpolation.jl.git
+$ git clone git@gitlab.com:tensors4fields/tensorcrossinterpolation.jl.git
 ```
 2. In a julia REPL, press `]`. Your prompt shoud switch to `(@v1.7) pkg>` or similar (possibly with a different enviroment instead of `@v1.7`). Tell julia where you put the package by typing:
 ```
@@ -37,7 +38,7 @@ julia> import TensorCrossInterpolation as TCI
 
 ## Usage
 
-*This section only contains the bare minimum to get you started. An example with more explanation can be found in the [user manual](https://quanticstci.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).*
+*This section only contains the bare minimum to get you started. An example with more explanation can be found in the [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).*
 
 Given a multivariate function `f`, the function `crossinterpolate2` will generate a tensor cross interpolation for `f`. For example, to interpolate the 8d lorentzian $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on an 8-dimensional lattice of integers, $\mathbf{v} \in \{1, 2, ..., 10\}^8$:
 ```julia
@@ -52,7 +53,7 @@ Note:
 - `f` is defined as a function that takes a single `Vector` of integers.
 - The return type of `f` (`Float64` in this case) must be stated explicitly in the call to `crossinterpolate2`.
 
-The resulting `TensorCI2` object can be further manipulated, see [user manual](https://quanticstci.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
+The resulting `TensorCI2` object can be further manipulated, see [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
 To evaluate the TCI interpolation, simply call your `TensorCI` object like you would call the original function:
 ```julia
 originalvalue = f([1, 2, 3, 4, 5, 6, 7, 8])
@@ -65,14 +66,14 @@ sumvalue = sum(tci)
 
 ## Related modules
 
-### [TCIITensorConversion.jl](https://gitlab.com/quanticstci/tciitensorconversion.jl)
+### [TCIITensorConversion.jl](https://gitlab.com/tensors4fields/tciitensorconversion.jl)
 A small helper module for easy conversion of `TensorCI`, `TensorCI2` and `TensorTrain` objects into ITensors `MPS` objects. This should be helpful for those integrating TCI into a larger tensor network algorithm.
 For this conversion, simply call the `MPS` constructor on the object:
 ```julia
 mps = MPS(tci)
 ```
 
-### [QuanticsTCI.jl](https://gitlab.com/quanticstci/quanticstci.jl)
+### [tensors4fields.jl](https://gitlab.com/tensors4fields/tensors4fields.jl)
 A module that implements the *quantics representation* and combines it with TCI for exponentially efficient interpolation of functions with scale separation.
 
 ## Contributions
