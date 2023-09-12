@@ -286,7 +286,7 @@ function makecanonical!(
         )
         tci.Iset[b+1] = Icombined[rowindices(luci)]
         tci.Jset[b] = tci.Jset[b][colindices(luci)]
-        tci.T[b] = setT!(tci, b, left(luci))
+        setT!(tci, b, left(luci))
         updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
     end
     localtensor = reshape(
