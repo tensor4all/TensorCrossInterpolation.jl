@@ -108,7 +108,7 @@ function evaluate(
     indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}}
 )::V where {N,V}
     if length(indexset) != length(tt)
-        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
+        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices, but there were $(length(indexset))."))
     end
     return only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
 end
@@ -131,7 +131,7 @@ function evaluate(
         NTuple{N,NTuple{M,Int}}}
 ) where {N,M,V}
     if length(indexset) != length(tt)
-        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices."))
+        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices, but there were $(length(indexset))."))
     end
     return only(prod(T[:, i..., :] for (T, i) in zip(tt, indexset)))
 end
