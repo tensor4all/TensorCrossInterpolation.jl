@@ -33,6 +33,24 @@ function isconstant(collection)
     return all(collection .== c)
 end
 
+function randomsubset(set, n::Int)
+    n = min(n, length(set))
+    c = copy(set[:])
+    subset = Array{typeof(first(c))}(undef, n)
+    for i in 1:n
+        index = rand(1:length(c))
+        subset[i] = c[index]
+        deleteat!(c, index)
+    end
+    return subset
+end
+
+function pushrandomsubset!(subset, set, n::Int)
+    topush = randomsubset(setdiff(set, subset), n)
+    push!(subset, topush...)
+    nothing
+end
+
 """
     function optfirstpivot(
         f,

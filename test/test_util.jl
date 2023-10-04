@@ -1,5 +1,5 @@
 using Test
-import TensorCrossInterpolation: maxabs, optfirstpivot, pushunique!, isconstant
+import TensorCrossInterpolation: maxabs, optfirstpivot, pushunique!, isconstant, randomsubset
 
 @testset "Test updatemax" begin
     s = 1.0
@@ -56,4 +56,16 @@ end
     u = [3, 3, 3, 3]
     @test !isconstant(v)
     @test isconstant(u)
+end
+
+@testset "randomsubset" begin
+    v = [
+        0.22859485344235864 0.9192240341080489
+        0.08698212281811202 0.834857219760308
+        0.9167576448882734 0.9701323128191051
+    ]
+    b = randomsubset(v, 3)
+    @test length(b) == 3
+    @test size(b) == (3,)
+    @test issubset(b, v)
 end

@@ -44,6 +44,23 @@ using LinearAlgebra
         @test TCI.left(LU) * TCI.right(LU) ≈ A
     end
 
+    @testset "Implementation of approximate rank-revealing LU" begin
+        A = [
+            0.711002 0.724557 0.789335 0.382373
+            0.910429 0.726781 0.719957 0.486302
+            0.632716 0.39967 0.571809 0.0803125
+            0.885709 0.531645 0.569399 0.481214
+        ]
+
+        LU = TCI.arrlu(Float64, (i, j) -> A[i, j], size(A), [1], [1])
+        @test size(LU) == size(A)
+        L = TCI.left(LU; permute=false)
+        @test all(L .== UnitLowerTriangular(L))
+        U = TCI.right(LU; permute=false)
+        @test all(U .== UpperTriangular(U))
+        @test TCI.left(LU) * TCI.right(LU) ≈ A
+    end
+
     @testset "Approximation in rrLU" begin
         A = [
             0.684025 0.784249 0.826742 0.054321 0.0234695 0.467096
