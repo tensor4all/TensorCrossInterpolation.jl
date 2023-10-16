@@ -7,8 +7,8 @@ function submatrixargmax(
     m = typemin(f(first(A)))
     mr = first(rows)
     mc = first(cols)
-    rows ⊆ axes(A, 1) || BoundsError("rows ⊆ axes(A, 1) must be satified")
-    cols ⊆ axes(A, 2) || BoundsError("cols ⊆ axes(A, 2) must be satified")
+    rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
+    cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
     @inbounds for c in cols
         for r in rows
             v = f(A[r, c])
