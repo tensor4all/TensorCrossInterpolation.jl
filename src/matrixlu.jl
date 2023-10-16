@@ -118,7 +118,16 @@ function addpivot!(lu::rrLU{T}, newpivot) where {T}
         lu.buffer[k, k+1:end] /= lu.buffer[k, k]
     end
 
-    lu.buffer[k+1:end, k+1:end] -= lu.buffer[k+1:end, k] * transpose(lu.buffer[k, k+1:end])
+    # perform BLAS subroutine manually: A <- -x * transpose(y) + A
+    x = @view(lu.buffer[k+1:end, k])
+    y = @view(lu.buffer[k, k+1:end])
+    A = @view(lu.buffer[k+1:end, k+1:end])
+    @inbounds for j in eachindex(axes(A, 2), y)
+        for i in eachindex(axes(A, 1), x)
+            # update `lu.buffer[k+1:end, k+1:end]`
+            A[i, j] -= x[i] * y[j]
+        end
+    end
 end
 
 function size(lu::rrLU{T}) where {T}
