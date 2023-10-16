@@ -28,6 +28,9 @@ using LinearAlgebra
     end
 
     @testset "Argmax finder test_throws" begin
+        @test_throws "ArgumentError: rows must not be empty" TCI.submatrixargmax(rand(10, 10), 100)
+        @test_throws "ArgumentError: cols must not be empty" TCI.submatrixargmax(rand(10, 10), 3, [])
+
         @test_throws "ArgumentError: rows ⊆ axes(A, 1) must be satified" TCI.submatrixargmax(rand(10, 10), [1, 100, 1000], [1])
         @test_throws "ArgumentError: cols ⊆ axes(A, 2) must be satified" TCI.submatrixargmax(rand(10, 10), [1], [1, 100, 1000])
     end

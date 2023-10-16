@@ -5,6 +5,8 @@ function submatrixargmax(
     cols::Union{AbstractVector,UnitRange},
 ) where {T}
     m = typemin(f(first(A)))
+    !isempty(rows) || throw(ArgumentError("rows must not be empty"))
+    !isempty(cols) || throw(ArgumentError("cols must not be empty"))
     mr = first(rows)
     mc = first(cols)
     rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
