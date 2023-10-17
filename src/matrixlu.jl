@@ -1,17 +1,37 @@
 function submatrixargmax(
-    A::AbstractMatrix,
+    f::Function, # real valued function
+    A::AbstractMatrix{T},
     rows::Union{AbstractVector,UnitRange},
-    cols::Union{AbstractVector,UnitRange}
-)
-    result = argmax(A[rows, cols]) |> Tuple
-    return rows[result[1]], cols[result[2]]
+    cols::Union{AbstractVector,UnitRange},
+) where {T}
+    m = typemin(f(first(A)))
+    !isempty(rows) || throw(ArgumentError("rows must not be empty"))
+    !isempty(cols) || throw(ArgumentError("cols must not be empty"))
+    mr = first(rows)
+    mc = first(cols)
+    rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
+    cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
+    @inbounds for c in cols
+        for r in rows
+            v = f(A[r, c])
+            newm = v > m
+            m = ifelse(newm, v, m)
+            mr = ifelse(newm, r, mr)
+            mc = ifelse(newm, c, mc)
+        end
+    end
+    return mr, mc
 end
 
 function submatrixargmax(
     A::AbstractMatrix,
-    rows,
-    cols
+    rows::Union{AbstractVector,UnitRange},
+    cols::Union{AbstractVector,UnitRange},
 )
+    return submatrixargmax(identity, A, rows, cols)
+end
+
+function submatrixargmax(f::Function, A::AbstractMatrix, rows, cols)
     function convertarg(arg::Int, size::Int)
         return [arg]
     end
@@ -24,18 +44,20 @@ function submatrixargmax(
         return arg
     end
 
-    return submatrixargmax(
-        A,
-        convertarg(rows, size(A, 1)),
-        convertarg(cols, size(A, 2))
-    )
+    return submatrixargmax(f, A, convertarg(rows, size(A, 1)), convertarg(cols, size(A, 2)))
 end
 
-function submatrixargmax(
-    A::AbstractMatrix,
-    startindex::Int
-)
-    return submatrixargmax(A, startindex:size(A, 1), startindex:size(A, 2))
+function submatrixargmax(A::AbstractMatrix, rows, cols)
+    submatrixargmax(identity, A::AbstractMatrix, rows, cols)
+end
+
+
+function submatrixargmax(f::Function, A::AbstractMatrix, startindex::Int)
+    return submatrixargmax(f, A, startindex:size(A, 1), startindex:size(A, 2))
+end
+
+function submatrixargmax(A::AbstractMatrix, startindex::Int)
+    return submatrixargmax(identity, A, startindex:size(A, 1), startindex:size(A, 2))
 end
 
 mutable struct rrLU{T}
@@ -66,7 +88,7 @@ function rrlu(
 
     for k in 1:maxrank
         lu.npivot = k
-        newpivot = submatrixargmax(abs.(lu.buffer), k)
+        newpivot = submatrixargmax(abs2, lu.buffer, k)
         if k >= 1 &&
             (abs(lu.buffer[newpivot...]) < reltol * abs(lu.buffer[1]) || abs(lu.buffer[newpivot...]) < abstol)
             break
@@ -98,7 +120,16 @@ function addpivot!(lu::rrLU{T}, newpivot) where {T}
         lu.buffer[k, k+1:end] /= lu.buffer[k, k]
     end
 
-    lu.buffer[k+1:end, k+1:end] -= lu.buffer[k+1:end, k] * transpose(lu.buffer[k, k+1:end])
+    # perform BLAS subroutine manually: A <- -x * transpose(y) + A
+    x = @view(lu.buffer[k+1:end, k])
+    y = @view(lu.buffer[k, k+1:end])
+    A = @view(lu.buffer[k+1:end, k+1:end])
+    @inbounds for j in eachindex(axes(A, 2), y)
+        for i in eachindex(axes(A, 1), x)
+            # update `lu.buffer[k+1:end, k+1:end]`
+            A[i, j] -= x[i] * y[j]
+        end
+    end
 end
 
 function size(lu::rrLU{T}) where {T}

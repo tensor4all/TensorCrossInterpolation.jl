@@ -27,6 +27,29 @@ using LinearAlgebra
         @test TCI.submatrixargmax(A, minimum(size(A))) == (minimum(size(A)), minimum(size(A)))
     end
 
+    @testset "Argmax finder test_throws" begin
+        @test_throws ArgumentError("rows must not be empty") TCI.submatrixargmax(rand(10, 10), 100)
+        @test_throws ArgumentError("cols must not be empty") TCI.submatrixargmax(rand(10, 10), 3, [])
+
+        @test_throws ArgumentError("rows ⊆ axes(A, 1) must be satified") TCI.submatrixargmax(rand(10, 10), [1, 100, 1000], [1])
+        @test_throws ArgumentError("cols ⊆ axes(A, 2) must be satified") TCI.submatrixargmax(rand(10, 10), [1], [1, 100, 1000])
+    end
+
+    @testset "Argmax finder A::Matrix{ComplexF64}" begin
+        A = ComplexF64[
+            0 1 2 3 4 5
+            1 +im 2+im 3+im 4+im 5+im
+            1 +2im 2+2im 3+2im 4+2im 5+2im
+        ]
+        @test TCI.submatrixargmax(abs2, A, [3], [5]) == (3, 5)
+
+        @test TCI.submatrixargmax(abs2, A, :, :) == Tuple(argmax(abs2.(A)))
+        @test TCI.submatrixargmax(abs2, A, [1], :) == (1, argmax(abs2.(A[1, :])))
+        @test TCI.submatrixargmax(abs2, A, :, [1]) == (argmax(abs2.(A[:, 1])), 1)
+
+        @test TCI.submatrixargmax(abs2, A, 1) == Tuple(argmax(abs2.(A)))
+    end
+
     @testset "Implementation of rank-revealing LU" begin
         A = [
             0.711002 0.724557 0.789335 0.382373
