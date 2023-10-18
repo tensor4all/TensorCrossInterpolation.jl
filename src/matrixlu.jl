@@ -98,7 +98,6 @@ function rrlu!(
     lu = rrLU{T}(A, leftorthogonal=leftorthogonal)
 
     for k in 1:maxrank
-        lu.npivot = k
         newpivot = submatrixargmax(abs.(lu.buffer), k)
         if k >= 1 && (
             abs(lu.buffer[newpivot...]) < reltol * abs(lu.buffer[1]) ||
@@ -164,8 +163,7 @@ function arrlu(
                 f.(1:matrixsize[1], J0')
             end
             lu = rrlu!(submatrix; maxrank, reltol, abstol, leftorthogonal)
-
-            islowrank = npivots(lu) < minimum(size(submatrix))
+            islowrank |= npivots(lu) < minimum(size(submatrix))
             if rowindices(lu) == I0 && colindices(lu) == J0
                 break
             end
@@ -196,6 +194,25 @@ function arrlu(
     lu.colpermutation = vcat(J0, J2)
 
     return lu
+end
+
+function rrlu(
+    ::Type{ValueType},
+    f,
+    matrixsize::Tuple{Int,Int},
+    I0::AbstractVector{Int}=Int[],
+    J0::AbstractVector{Int}=Int[];
+    pivotsearch=:rook,
+    kwargs...
+)::rrLU{ValueType} where {ValueType}
+    if pivotsearch === :rook
+        return arrlu(ValueType, f, matrixsize, I0, J0; kwargs...)
+    elseif pivotsearch === :full
+        A = f.(1:matrixsize[1], collect(1:matrixsize[2])')
+        return rrlu!(A; kwargs...)
+    else
+        throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose between :rook and :full."))
+    end
 end
 
 function cols2Lmatrix!(C::AbstractMatrix, P::AbstractMatrix, leftorthogonal::Bool)
@@ -241,7 +258,7 @@ function swapcol!(lu::rrLU{T}, a, b) where {T}
 end
 
 function addpivot!(lu::rrLU{T}, newpivot) where {T}
-    k = lu.npivot
+    k = lu.npivot += 1
     swaprow!(lu, k, newpivot[1])
     swapcol!(lu, k, newpivot[2])
 
