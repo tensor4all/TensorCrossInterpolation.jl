@@ -3,7 +3,7 @@ module TensorCrossInterpolation
 using LinearAlgebra
 
 # To add a method for rank(tci)
-import LinearAlgebra: rank
+import LinearAlgebra: rank, diag
 # To define equality of IndexSet
 import Base: ==
 # To define iterators and element access for MCI, TCI and TT objects

@@ -121,7 +121,11 @@ function pivoterror(tci::TensorCI2{T}) where {T}
 end
 
 function updateerrors!(
-    tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, errors::AbstractVector{Float64}, lastpivoterror::Float64
+    tci::TensorCI2{T},
+    b::Int,
+    sweepdirection::Symbol,
+    errors::AbstractVector{Float64},
+    lastpivoterror::Float64
 ) where {T}
     updatebonderror!(tci, b, sweepdirection, lastpivoterror)
     updatepivoterror!(tci, errors)
@@ -162,7 +166,10 @@ function _batchevaluate_dispatch(
     nl = length(first(Iset))
     nr = length(first(Jset))
     ncent = N - nl - nr
-    return ValueType[f(collect(Iterators.flatten(i))) for i in Iterators.product(Iset, localset[nl+1:nl+ncent]..., Jset)]
+    return ValueType[
+        f(collect(Iterators.flatten(i)))
+        for i in Iterators.product(Iset, localset[nl+1:nl+ncent]..., Jset)
+    ]
 end
 
 
@@ -197,7 +204,10 @@ function _batchevaluate(
     ncent = N - nl - nr
     result = _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos])
     expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
-    size(result) == expected_size || throw(DimensionMismatch("Result has wrong size $(size(result)) != expected $(expected_size)"))
+    size(result) == expected_size ||
+        throw(DimensionMismatch(
+            "Result has wrong size $(size(result)) != expected $(expected_size)"
+        ))
     return result
 end
 
@@ -243,7 +253,10 @@ function makecanonical!(
     flushpivoterror!(tci)
     for b in 1:L-1
         Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(Icombined), length(tci.Jset[b]))
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            length(Icombined), length(tci.Jset[b])
+        )
         updatemaxsample!(tci, Pi)
         ludecomp = rrlu(
             Pi,
@@ -259,7 +272,10 @@ function makecanonical!(
     flushpivoterror!(tci)
     for b in L:-1:2
         Jcombined = kronecker(tci.localset[b], tci.Jset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(tci.Iset[b]), length(Jcombined))
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            length(tci.Iset[b]), length(Jcombined)
+        )
         updatemaxsample!(tci, Pi)
         ludecomp = rrlu(
             Pi,
@@ -269,13 +285,17 @@ function makecanonical!(
             leftorthogonal=false
         )
         tci.Jset[b-1] = Jcombined[colindices(ludecomp)]
-        updateerrors!(tci, b - 1, :backward, pivoterrors(ludecomp), lastpivoterror(ludecomp))
+        updateerrors!(
+            tci, b - 1, :backward, pivoterrors(ludecomp), lastpivoterror(ludecomp)
+        )
     end
 
     flushpivoterror!(tci)
     for b in 1:L-1
         Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(Icombined), length(tci.Jset[b]))
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            length(Icombined), length(tci.Jset[b]))
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
             Pi,
@@ -290,7 +310,9 @@ function makecanonical!(
         updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
     end
     localtensor = reshape(
-        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
+        _batchevaluate(
+            ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)
+        ),
         length(tci.Iset[end]), length(tci.localset[end])
     )
     setT!(tci, L, localtensor)
@@ -413,14 +435,18 @@ function optimize!(
             for bondindex in 1:n-1
                 updatepivots!(
                     tci, bondindex, f, true;
-                    abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:forward
+                    abstol=pivottolerance * errornormalization,
+                    maxbonddim=maxbonddim,
+                    sweepdirection=:forward
                 )
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
                 updatepivots!(
                     tci, bondindex, f, false;
-                    abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:backward
+                    abstol=pivottolerance * errornormalization,
+                    maxbonddim=maxbonddim,
+                    sweepdirection=:backward
                 )
             end
         end

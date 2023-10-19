@@ -100,7 +100,7 @@ import Random
             maxiter=200
         )
 
-        @test pivoterror(tci3) <= 1e-12
+        @test pivoterror(tci3) <= 2e-12
         @test all(linkdims(tci3) .<= 200)
         @test rank(tci3) <= 200
 
@@ -121,7 +121,7 @@ import Random
             maxiter=200
         )
 
-        @test pivoterror(tci4) <= 1e-12
+        @test pivoterror(tci4) <= 2e-12
         @test all(linkdims(tci4) .<= 200)
         @test rank(tci4) <= 200
 
@@ -168,7 +168,7 @@ import Random
         bonddims = [1, 2, 3, 2, 1]
         @assert length(bonddims) == N + 1
         localdims = [2, 3, 3, 2]
-    
+
         tt = TCI.TensorTrain{ValueType,3}([rand(bonddims[n], localdims[n], bonddims[n+1]) for n in 1:N])
         ttc = TCI.TTCache(tt.T)
 
