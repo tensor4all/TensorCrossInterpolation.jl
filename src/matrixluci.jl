@@ -1,24 +1,28 @@
 mutable struct MatrixLUCI{T} <: AbstractMatrixCI{T}
-    A::Matrix{T}
     lu::rrLU{T}
+end
 
-    function MatrixLUCI(
-        A::AbstractMatrix{T};
-        maxrank::Int=typemax(Int),
-        reltol::Number=1e-14,
-        abstol::Number=0.0,
-        leftorthogonal::Bool=true
-    ) where {T}
-        new{T}(A, rrlu(A, maxrank=maxrank, reltol=reltol, abstol=abstol, leftorthogonal=leftorthogonal))
-    end
+function MatrixLUCI(A::AbstractMatrix{T}; kwargs...) where {T}
+    MatrixLUCI{T}(rrlu(A; kwargs...))
+end
+
+function MatrixLUCI(
+    ::Type{ValueType},
+    f,
+    matrixsize::Tuple{Int,Int},
+    I0::AbstractVector{Int}=Int[],
+    J0::AbstractVector{Int}=Int[];
+    kwargs...
+)::rrLU{ValueType} where {ValueType}
+    MatrixLUCI{T}(rrlu(ValueType, f, matrixsize, I0, J0; kwargs...))
 end
 
 function size(luci::MatrixLUCI{T}) where {T}
-    return size(luci.A)
+    return size(luci.lu)
 end
 
 function size(luci::MatrixLUCI{T}, dim) where {T}
-    return size(luci.A, dim)
+    return size(luci.lu, dim)
 end
 
 function npivots(luci::MatrixLUCI{T}) where {T}
@@ -34,11 +38,11 @@ function colindices(luci::MatrixLUCI{T}) where {T}
 end
 
 function colmatrix(luci::MatrixLUCI{T}) where {T}
-    return luci.A[:, colindices(luci)]
+    return left(luci.lu) * right(luci.lu, permute=false)[:, 1:npivots(luci)]
 end
 
 function rowmatrix(luci::MatrixLUCI{T}) where {T}
-    return luci.A[rowindices(luci), :]
+    return left(luci.lu, permute=false)[1:npivots(luci), :] * right(luci.lu)
 end
 
 function colstimespivotinv(luci::MatrixLUCI{T}) where {T}
