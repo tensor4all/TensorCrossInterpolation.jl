@@ -75,6 +75,31 @@ function submatrixargmax_tturbo(
     return mr, mc
 end
 
+function submatrixargmax_tturbo(
+    f::Function, # real valued function
+    A::AbstractMatrix{T},
+    rows::Union{AbstractVector,UnitRange},
+    cols::Union{AbstractVector,UnitRange},
+) where {T <: Complex}
+    m = typemin(f(first(A)))
+    !isempty(rows) || throw(ArgumentError("rows must not be empty"))
+    !isempty(cols) || throw(ArgumentError("cols must not be empty"))
+    mr = first(rows)
+    mc = first(cols)
+    rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
+    cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
+    @tturbo for c in cols
+        for r in rows
+            v = f(A[r, c])
+            newm = v > m
+            m = ifelse(newm, v, m)
+            mr = ifelse(newm, r, mr)
+            mc = ifelse(newm, c, mc)
+        end
+    end
+    return mr, mc
+end
+
 function submatrixargmax(
     A::AbstractMatrix,
     rows::Union{AbstractVector,UnitRange},
@@ -288,9 +313,9 @@ function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T<:Complex}
     swapcol!(lu, k, newpivot[2])
 
     if lu.leftorthogonal
-        lu.buffer[k+1:end, k] /= lu.buffer[k, k]
+        lu.buffer[k+1:end, k] ./= lu.buffer[k, k]
     else
-        lu.buffer[k, k+1:end] /= lu.buffer[k, k]
+        lu.buffer[k, k+1:end] ./= lu.buffer[k, k]
     end
 
     x = @view(lu.buffer[k+1:end, k])
