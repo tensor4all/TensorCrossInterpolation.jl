@@ -168,7 +168,8 @@ function rrlu(
             break
         end
         if iscomplexeltype
-            addpivot_turbo!(lu, newpivot)
+            #addpivot_turbo!(lu, newpivot)
+            apfunc!(lu, newpivot)
         else
             apfunc!(lu, newpivot)
         end
