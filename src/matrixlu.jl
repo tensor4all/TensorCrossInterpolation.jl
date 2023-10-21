@@ -224,7 +224,6 @@ function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T}
     # perform BLAS subroutine manually: A <- -x * transpose(y) + A
     x = @view(lu.buffer[k+1:end, k])
     y = @view(lu.buffer[k, k+1:end])
-    @info y
     A = @view(lu.buffer[k+1:end, k+1:end])
     @turbo for j in eachindex(axes(A, 2), y)
         for i in eachindex(axes(A, 1), x)
