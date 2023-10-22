@@ -25,37 +25,12 @@ end
 
 using LoopVectorization
 
-function submatrixargmax_turbo(
-    f::Function, # real valued function
-    A::AbstractMatrix{T},
-    rows::Union{AbstractVector,UnitRange},
-    cols::Union{AbstractVector,UnitRange},
-) where {T}
-    m = typemin(f(first(A)))
-    !isempty(rows) || throw(ArgumentError("rows must not be empty"))
-    !isempty(cols) || throw(ArgumentError("cols must not be empty"))
-    mr = first(rows)
-    mc = first(cols)
-    rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
-    cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
-    @turbo for c in cols
-        for r in rows
-            v = f(A[r, c])
-            newm = v > m
-            m = ifelse(newm, v, m)
-            mr = ifelse(newm, r, mr)
-            mc = ifelse(newm, c, mc)
-        end
-    end
-    return mr, mc
-end
-
 function submatrixargmax_tturbo(
     f::Function, # real valued function
     A::AbstractMatrix{T},
     rows::Union{AbstractVector,UnitRange},
     cols::Union{AbstractVector,UnitRange},
-) where {T}
+) where {T <: Real}
     m = typemin(f(first(A)))
     !isempty(rows) || throw(ArgumentError("rows must not be empty"))
     !isempty(cols) || throw(ArgumentError("cols must not be empty"))
@@ -75,12 +50,12 @@ function submatrixargmax_tturbo(
     return mr, mc
 end
 
-function submatrixargmax_tturbo(
+function submatrixargmax_threads(
     f::Function, # real valued function
     A::AbstractMatrix{T},
-    rows::Union{AbstractVector,UnitRange},
-    cols::Union{AbstractVector,UnitRange},
-) where {T <: Complex}
+    rows::Union{AbstractVector,UnitRange, Base.OneTo},
+    cols::Union{AbstractVector,UnitRange, Base.OneTo},
+) where {T}
     m = typemin(f(first(A)))
     !isempty(rows) || throw(ArgumentError("rows must not be empty"))
     !isempty(cols) || throw(ArgumentError("cols must not be empty"))
@@ -88,16 +63,23 @@ function submatrixargmax_tturbo(
     mc = first(cols)
     rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
     cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
-    @tturbo for c in cols
+	ms = [m for _ in 1:Base.Threads.nthreads()]
+	mrs = [mr for _ in 1:Base.Threads.nthreads()]
+	mcs = [mc for _ in 1:Base.Threads.nthreads()]
+    Base.Threads.@threads for c in cols
+		i = Threads.threadid()
         for r in rows
             v = f(A[r, c])
-            newm = v > m
-            m = ifelse(newm, v, m)
-            mr = ifelse(newm, r, mr)
-            mc = ifelse(newm, c, mc)
+            newm = v > ms[i]
+			if newm
+	            ms[i] = v
+	            mrs[i] = r
+    	        mcs[i] = c
+			end
         end
     end
-    return mr, mc
+	am = argmax(ms)
+    return mrs[am], mcs[am]
 end
 
 function submatrixargmax(
@@ -133,12 +115,12 @@ function submatrixargmax(f::Function, A::AbstractMatrix, startindex::Int)
     return submatrixargmax(f, A, startindex:size(A, 1), startindex:size(A, 2))
 end
 
-function submatrixargmax_turbo(f::Function, A::AbstractMatrix, startindex::Int)
-    return submatrixargmax_turbo(f, A, startindex:size(A, 1), startindex:size(A, 2))
-end
-
 function submatrixargmax_tturbo(f::Function, A::AbstractMatrix, startindex::Int)
     return submatrixargmax_tturbo(f, A, startindex:size(A, 1), startindex:size(A, 2))
+end
+
+function submatrixargmax_threads(f::Function, A::AbstractMatrix, startindex::Int)
+    return submatrixargmax_threads(f, A, startindex:size(A, 1), startindex:size(A, 2))
 end
 
 function submatrixargmax(A::AbstractMatrix, startindex::Int)
@@ -163,7 +145,8 @@ mutable struct rrLU{T, M}
     end
 
     function rrLU{T}(A::StructArray{T}; leftorthogonal::Bool=true) where {T <: Complex}
-        new{T, StructArray{T}}(axes(A, 1), axes(A, 2), A, leftorthogonal, 0)
+        M = typeof(A)
+        new{T, M}(axes(A, 1), axes(A, 2), A, leftorthogonal, 0)
     end
 end
 
@@ -173,30 +156,65 @@ function rrlu(
     reltol::Number=1e-14,
     abstol::Number=0.0,
     leftorthogonal::Bool=true,
-    performancemode::Symbol=:tturbo,
+    use_turbo::Bool=false
 )::rrLU{T} where {T}
     maxrank = min(maxrank, size(A)...)
-    iscomplexeltype = T <: Complex
-    _buffer = iscomplexeltype ? StructArray(A) : copy(A)
-    lu = rrLU{T}(_buffer, leftorthogonal=leftorthogonal)
-    smfunc = sym2submatriargmax[performancemode]
-    apfunc! = sym2addpivot![performancemode]
+    lu = rrLU{T}(copy(A), leftorthogonal=leftorthogonal)
     for k in 1:maxrank
         lu.npivot = k
-        newpivot = if iscomplexeltype
-                submatrixargmax(abs2, lu.buffer, k)
-            else
-                smfunc(abs, lu.buffer, k)
-            end
+        newpivot = if use_turbo
+                    submatrixargmax_tturbo(abs, lu.buffer, k)
+                else
+                    if Base.Threads.nthreads() > 1
+                        submatrixargmax_threads(abs, lu.buffer, k)
+                    else
+                        submatrixargmax(abs, lu.buffer, k)
+                    end
+                end
         if k >= 1 &&
             (abs(lu.buffer[newpivot...]) < reltol * abs(lu.buffer[1]) || abs(lu.buffer[newpivot...]) < abstol)
             break
         end
-        if iscomplexeltype
-            #addpivot_turbo!(lu, newpivot)
-            apfunc!(lu, newpivot)
+        if use_turbo
+            addpivot_tturbo!(lu, newpivot)
         else
-            apfunc!(lu, newpivot)
+            addpivot!(lu, newpivot)
+        end
+    end
+
+    return lu
+end
+
+function rrlu(
+    A::AbstractMatrix{T};
+    maxrank::Int=typemax(Int),
+    reltol::Number=1e-14,
+    abstol::Number=0.0,
+    leftorthogonal::Bool=true,
+    use_turbo::Bool=false
+)::rrLU{T} where {T <: Complex}
+    maxrank = min(maxrank, size(A)...)
+    lu = rrLU{T}(StructArray(A), leftorthogonal=leftorthogonal)
+    for k in 1:maxrank
+        lu.npivot = k
+        newpivot = if Base.Threads.nthreads() > 1
+            submatrixargmax_threads(abs2, lu.buffer, k)
+        else
+            # For T <: Complex with nthread == 1, we force to use `submatrixargmax` instead
+            submatrixargmax(abs2, lu.buffer, k)
+        end
+        if k >= 1 &&
+            (abs(lu.buffer[newpivot...]) < reltol * abs(lu.buffer[1]) || abs(lu.buffer[newpivot...]) < abstol)
+            break
+        end
+        if Base.Threads.nthreads() > 1
+            addpivot_threads!(lu, newpivot)
+        else
+            if use_turbo
+                addpivot_turbo!(lu, newpivot)
+            else
+                addpivot!(lu, newpivot)
+            end
         end
     end
 
@@ -204,12 +222,12 @@ function rrlu(
 end
 
 function swaprow!(lu::rrLU{T}, a, b) where {T}
-    lu.rowpermutation[[a, b]] = lu.rowpermutation[[b, a]]
+    lu.rowpermutation[[a, b]] .= lu.rowpermutation[[b, a]]
     lu.buffer[[a, b], :] .= lu.buffer[[b, a], :]
 end
 
 function swapcol!(lu::rrLU{T}, a, b) where {T}
-    lu.colpermutation[[a, b]] = lu.colpermutation[[b, a]]
+    lu.colpermutation[[a, b]] .= lu.colpermutation[[b, a]]
     lu.buffer[:, [a, b]] .= lu.buffer[:, [b, a]]
 end
 
@@ -236,7 +254,30 @@ function addpivot!(lu::rrLU{T}, newpivot) where {T}
     end
 end
 
-function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T}
+function addpivot_threads!(lu::rrLU{T}, newpivot) where {T}
+    k = lu.npivot
+    swaprow!(lu, k, newpivot[1])
+    swapcol!(lu, k, newpivot[2])
+
+    if lu.leftorthogonal
+        lu.buffer[k+1:end, k] ./= lu.buffer[k, k]
+    else
+        lu.buffer[k, k+1:end] ./= lu.buffer[k, k]
+    end
+
+    # perform BLAS subroutine manually: A <- -x * transpose(y) + A
+    x = @view(lu.buffer[k+1:end, k])
+    y = @view(lu.buffer[k, k+1:end])
+    A = @view(lu.buffer[k+1:end, k+1:end])
+    Base.Threads.@threads for j in eachindex(axes(A, 2), y)
+        for i in eachindex(axes(A, 1), x)
+            # update `lu.buffer[k+1:end, k+1:end]`
+            A[i, j] -= x[i] * y[j]
+        end
+    end
+end
+
+function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T <: Real}
     k = lu.npivot
     swaprow!(lu, k, newpivot[1])
     swapcol!(lu, k, newpivot[2])
@@ -259,7 +300,7 @@ function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T}
     end
 end
 
-function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T}
+function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T <: Real}
     k = lu.npivot
     swaprow!(lu, k, newpivot[1])
     swapcol!(lu, k, newpivot[2])
@@ -282,7 +323,7 @@ function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T}
     end
 end
 
-function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T<:Complex}
+function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T <: Complex}
     k = lu.npivot
     swaprow!(lu, k, newpivot[1])
     swapcol!(lu, k, newpivot[2])
@@ -307,7 +348,7 @@ function addpivot_turbo!(lu::rrLU{T}, newpivot) where {T<:Complex}
     end
 end
 
-function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T<:Complex}
+function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T <: Complex}
     k = lu.npivot
     swaprow!(lu, k, newpivot[1])
     swapcol!(lu, k, newpivot[2])
@@ -332,17 +373,30 @@ function addpivot_tturbo!(lu::rrLU{T}, newpivot) where {T<:Complex}
     end
 end
 
-const sym2submatriargmax = Dict(
-    :inbounds => submatrixargmax,
-    :turbo => submatrixargmax_turbo,
-    :tturbo => submatrixargmax_tturbo,
-)
+function addpivot_threads!(lu::rrLU{T}, newpivot) where {T<:Complex}
+    k = lu.npivot
+    swaprow!(lu, k, newpivot[1])
+    swapcol!(lu, k, newpivot[2])
 
-const sym2addpivot! = Dict(
-    :inbounds => addpivot!,
-    :turbo => addpivot_turbo!,
-    :tturbo => addpivot_tturbo!,
-)
+    if lu.leftorthogonal
+        lu.buffer[k+1:end, k] ./= lu.buffer[k, k]
+    else
+        lu.buffer[k, k+1:end] ./= lu.buffer[k, k]
+    end
+
+    x = @view(lu.buffer[k+1:end, k])
+    y = @view(lu.buffer[k, k+1:end])
+    A = @view(lu.buffer[k+1:end, k+1:end])
+    # perform BLAS subroutine manually: A <- -x * transpose(y) + A
+    # for element type T <: Complex
+    Base.Threads.@threads for j in eachindex(axes(A.re, 2), axes(A.im, 2), y.re, y.im)
+        for i in eachindex(axes(A.re, 1), axes(A.im, 1), x.re, x.im)
+            # update `lu.buffer[k+1:end, k+1:end]`
+            A.re[i, j] += - x.re[i] * y.re[j] + x.im[i] * y.im[j]
+            A.im[i, j] += - x.re[i] * y.im[j] - x.im[i] * y.re[j]
+        end
+    end
+end
 
 function size(lu::rrLU{T}) where {T}
     return size(lu.buffer)
