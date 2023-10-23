@@ -179,7 +179,7 @@ function _batchevaluate_dispatch(
     localset::Vector{Vector{LocalIndex}},
     Iset::Vector{MultiIndex},
     Jset::Vector{MultiIndex},
-) where {ValueType}
+)::Array{ValueType} where {ValueType}
     N = length(localset)
     nl = length(first(Iset))
     nr = length(first(Jset))
@@ -316,6 +316,7 @@ function makecanonical!(
         length(tci.Iset[end]), length(tci.localset[end])
     )
     setT!(tci, L, localtensor)
+    nothing
 end
 
 function updatepivots!(
@@ -326,27 +327,43 @@ function updatepivots!(
     reltol::Float64=1e-14,
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
-    sweepdirection::Symbol=:forward
+    sweepdirection::Symbol=:forward,
+    pivotsearch::Symbol=:full
 ) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
-    Pi = reshape(
-        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
-        length(Icombined), length(Jcombined)
-    )
-    updatemaxsample!(tci, Pi)
-    luci = MatrixLUCI(
-        Pi,
-        reltol=reltol,
-        abstol=abstol,
-        maxrank=maxbonddim,
-        leftorthogonal=leftorthogonal
-    )
+    luci = if pivotsearch === :full
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
+            length(Icombined), length(Jcombined)
+        )
+        updatemaxsample!(tci, Pi)
+        MatrixLUCI(
+            Pi,
+            reltol=reltol,
+            abstol=abstol,
+            maxrank=maxbonddim,
+            leftorthogonal=leftorthogonal
+        )
+    elseif pivotsearch === :rook
+        MatrixLUCI(
+            ValueType,
+            (i, j) -> f(vcat(Icombined[i], Jcombined[j])),
+            (length(Icombined), length(Jcombined));
+            reltol=reltol, abstol=abstol,
+            maxrank=maxbonddim,
+            leftorthogonal=leftorthogonal,
+            pivotsearch=:rook
+        )
+    else
+        throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
+    end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
     setT!(tci, b, left(luci))
     setT!(tci, b + 1, right(luci))
     updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
+    nothing
 end
 
 function convergencecriterion(
@@ -411,8 +428,9 @@ function optimize!(
     tolerance::Float64=1e-8,
     pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
-    maxiter::Int=200,
+    maxiter::Int=20,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+    pivotsearch::Symbol=:full,
     verbosity::Int=0,
     loginterval::Int=10,
     normalizeerror::Bool=true,
@@ -437,7 +455,8 @@ function optimize!(
                     tci, bondindex, f, true;
                     abstol=pivottolerance * errornormalization,
                     maxbonddim=maxbonddim,
-                    sweepdirection=:forward
+                    sweepdirection=:forward,
+                    pivotsearch=pivotsearch
                 )
             end
         else # backward sweep
@@ -446,7 +465,8 @@ function optimize!(
                     tci, bondindex, f, false;
                     abstol=pivottolerance * errornormalization,
                     maxbonddim=maxbonddim,
-                    sweepdirection=:backward
+                    sweepdirection=:backward,
+                    pivotsearch=pivotsearch
                 )
             end
         end
@@ -513,23 +533,10 @@ function crossinterpolate2(
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
-    tolerance::Float64=1e-8,
-    pivottolerance::Float64=tolerance,
-    maxbonddim::Int=typemax(Int),
-    maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
-    verbosity::Int=0,
-    loginterval::Int=10,
-    normalizeerror::Bool=true,
-    ncheckhistory=3
+    kwargs...
 ) where {ValueType,N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
-    ranks, errors = optimize!(
-        tci, f;
-        tolerance=tolerance, pivottolerance=pivottolerance, maxbonddim=maxbonddim,
-        maxiter=maxiter, sweepstrategy=sweepstrategy, verbosity=verbosity,
-        loginterval=loginterval, normalizeerror=normalizeerror, ncheckhistory=ncheckhistory
-    )
+    ranks, errors = optimize!(tci, f; kwargs...)
     return tci, ranks, errors
 end
 
@@ -553,8 +560,8 @@ function insertglobalpivots!(
     nsearch=100,
     tolerance::Float64=1e-8,
     verbosity::Int=0,
-    normalizeerror::Bool=true)::Int where {ValueType}
-
+    normalizeerror::Bool=true
+)::Int where {ValueType}
     localdims = [length(s) for s in tci.localset]
 
     nnewpivot = 0
@@ -562,8 +569,7 @@ function insertglobalpivots!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
         err(x) = abs(evaluate(tci, x) - f(x))
-        newpivot_ = optfirstpivot(
-            err, localdims, [rand(1:d) for d in localdims])
+        newpivot_ = optfirstpivot(err, localdims, [rand(1:d) for d in localdims])
 
         e = err(newpivot_)
         if e > tolerance * errornormalization

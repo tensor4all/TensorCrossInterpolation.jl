@@ -13,8 +13,8 @@ function MatrixLUCI(
     I0::AbstractVector{Int}=Int[],
     J0::AbstractVector{Int}=Int[];
     kwargs...
-)::rrLU{ValueType} where {ValueType}
-    MatrixLUCI{T}(rrlu(ValueType, f, matrixsize, I0, J0; kwargs...))
+) where {ValueType}
+    MatrixLUCI{ValueType}(rrlu(ValueType, f, matrixsize, I0, J0; kwargs...))
 end
 
 function size(luci::MatrixLUCI{T}) where {T}

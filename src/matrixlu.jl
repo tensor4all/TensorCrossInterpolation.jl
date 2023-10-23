@@ -185,14 +185,19 @@ function arrlu(
     end
 
     I2 = setdiff(1:matrixsize[1], I0)
-    J2 = setdiff(1:matrixsize[2], J0)
-    L2 = cols2Lmatrix!(f.(I2, J0'), lu.U[1:lu.npivot, 1:lu.npivot], leftorthogonal)
-    U2 = rows2Umatrix!(f.(I0, J2'), lu.L[1:lu.npivot, 1:lu.npivot], leftorthogonal)
-
-    lu.L = vcat(lu.L, L2)
-    lu.U = hcat(lu.U, U2)
     lu.rowpermutation = vcat(I0, I2)
+    if size(lu.L, 1) < matrixsize[1]
+        L2 = cols2Lmatrix!(f.(I2, J0'), lu.U[1:lu.npivot, 1:lu.npivot], leftorthogonal)
+        lu.L = vcat(lu.L, L2)
+    end
+
+    J2 = setdiff(1:matrixsize[2], J0)
     lu.colpermutation = vcat(J0, J2)
+    if size(lu.U, 2) < matrixsize[2]
+        U2 = rows2Umatrix!(f.(I0, J2'), lu.L[1:lu.npivot, 1:lu.npivot], leftorthogonal)
+        lu.U = hcat(lu.U, U2)
+    end
+
     return lu
 end
 
