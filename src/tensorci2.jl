@@ -346,10 +346,13 @@ function updatepivots!(
             leftorthogonal=leftorthogonal
         )
     elseif pivotsearch === :rook
+        I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
+        J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
         MatrixLUCI(
             ValueType,
             (i, j) -> f(vcat(Icombined[i], Jcombined[j])),
-            (length(Icombined), length(Jcombined));
+            (length(Icombined), length(Jcombined)),
+            I0, J0;
             reltol=reltol, abstol=abstol,
             maxrank=maxbonddim,
             leftorthogonal=leftorthogonal,
