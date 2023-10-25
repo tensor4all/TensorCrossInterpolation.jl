@@ -77,6 +77,32 @@ function rrLU{T}(A::AbstractMatrix{T}; leftorthogonal::Bool=true) where {T}
     rrLU{T}(size(A)...; leftorthogonal=leftorthogonal)
 end
 
+function _optimizerrlu!(
+    lu::rrLU{T},
+    A::AbstractMatrix{T};
+    maxrank::Int=typemax(Int),
+    reltol::Number=1e-14,
+    abstol::Number=0.0
+) where {T}
+    maxrank = min(maxrank, size(A)...)
+
+    for k in lu.npivot+1:maxrank
+        newpivot = submatrixargmax(abs2, A, k)
+        if abs(A[newpivot...]) < reltol * abs(A[1]) || abs(A[newpivot...]) < abstol
+            break
+        end
+        addpivot!(lu, A, newpivot)
+    end
+    lu.L = tril(A[:, 1:lu.npivot])
+    lu.U = triu(A[1:lu.npivot, :])
+    if lu.leftorthogonal
+        lu.L[diagind(lu.L)] .= one(T)
+    else
+        lu.U[diagind(lu.U)] .= one(T)
+    end
+    nothing
+end
+
 """
     function rrlu!(
         A::AbstractMatrix{T};
@@ -95,23 +121,8 @@ function rrlu!(
     abstol::Number=0.0,
     leftorthogonal::Bool=true
 )::rrLU{T} where {T}
-    maxrank = min(maxrank, size(A)...)
     lu = rrLU{T}(A, leftorthogonal=leftorthogonal)
-
-    for k in 1:maxrank
-        newpivot = submatrixargmax(abs2, A, k)
-        if abs(A[newpivot...]) < reltol * abs(A[1]) || abs(A[newpivot...]) < abstol
-            break
-        end
-        addpivot!(lu, A, newpivot)
-    end
-    lu.L = tril(A[:, 1:lu.npivot])
-    lu.U = triu(A[1:lu.npivot, :])
-    if lu.leftorthogonal
-        lu.L[diagind(lu.L)] .= one(T)
-    else
-        lu.U[diagind(lu.U)] .= one(T)
-    end
+    _optimizerrlu!(lu, A; maxrank, reltol, abstol)
     return lu
 end
 
@@ -148,7 +159,7 @@ function arrlu(
     leftorthogonal::Bool=true,
     numrookiter::Int=3
 )::rrLU{ValueType} where {ValueType}
-    local lu::rrLU{ValueType}
+    lu = rrLU{ValueType}(matrixsize...; leftorthogonal)
     islowrank = false
     maxrank = min(maxrank, matrixsize...)
 
@@ -162,21 +173,19 @@ function arrlu(
         for rookiter in 1:numrookiter
             colmove = (iseven(rookiter) == leftorthogonal)
             submatrix = if colmove
-                f.(I0, collect(1:matrixsize[2])')
+                f.(I0, lu.colpermutation')
             else
-                f.(1:matrixsize[1], J0')
+                f.(lu.rowpermutation, J0')
             end
-            lu = rrlu!(submatrix; maxrank, reltol, abstol, leftorthogonal)
+            lu.npivot = 0
+            _optimizerrlu!(lu, submatrix; maxrank, reltol, abstol)
             islowrank |= npivots(lu) < minimum(size(submatrix))
             if rowindices(lu) == I0 && colindices(lu) == J0
                 break
             end
 
-            if colmove
-                J0 = colindices(lu)
-            else
-                I0 = rowindices(lu)
-            end
+            J0 = colindices(lu)
+            I0 = rowindices(lu)
         end
 
         if islowrank || length(I0) >= maxrank
@@ -184,18 +193,20 @@ function arrlu(
         end
     end
 
-    I2 = setdiff(1:matrixsize[1], I0)
-    lu.rowpermutation = vcat(I0, I2)
     if size(lu.L, 1) < matrixsize[1]
-        L2 = cols2Lmatrix!(f.(I2, J0'), lu.U[1:lu.npivot, 1:lu.npivot], leftorthogonal)
-        lu.L = vcat(lu.L, L2)
+        I2 = setdiff(1:matrixsize[1], I0)
+        lu.rowpermutation = vcat(I0, I2)
+        L2 = f.(I2, J0')
+        cols2Lmatrix!(L2, lu.U[1:lu.npivot, 1:lu.npivot], leftorthogonal)
+        lu.L = vcat(lu.L[1:lu.npivot, 1:lu.npivot], L2)
     end
 
-    J2 = setdiff(1:matrixsize[2], J0)
-    lu.colpermutation = vcat(J0, J2)
     if size(lu.U, 2) < matrixsize[2]
-        U2 = rows2Umatrix!(f.(I0, J2'), lu.L[1:lu.npivot, 1:lu.npivot], leftorthogonal)
-        lu.U = hcat(lu.U, U2)
+        J2 = setdiff(1:matrixsize[2], J0)
+        lu.colpermutation = vcat(J0, J2)
+        U2 = f.(I0, J2')
+        rows2Umatrix!(U2, lu.L[1:lu.npivot, 1:lu.npivot], leftorthogonal)
+        lu.U = hcat(lu.U[1:lu.npivot, 1:lu.npivot], U2)
     end
 
     return lu
@@ -228,9 +239,7 @@ function cols2Lmatrix!(C::AbstractMatrix, P::AbstractMatrix, leftorthogonal::Boo
     end
 
     for k in axes(P, 1)
-        if leftorthogonal
-            C[:, k] /= P[k, k]
-        end
+        C[:, k] /= P[k, k]
         C[:, k+1:end] -= C[:, k] * transpose(P[k, k+1:end])
     end
     return C
@@ -244,9 +253,7 @@ function rows2Umatrix!(R::AbstractMatrix, P::AbstractMatrix, leftorthogonal::Boo
     end
 
     for k in axes(P, 1)
-        if leftorthogonal
-            R[k, :] /= P[k, k]
-        end
+        R[k, :] /= P[k, k]
         R[k+1:end, :] -= P[k+1:end, k] * transpose(R[k, :])
     end
     return R
