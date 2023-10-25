@@ -43,7 +43,7 @@ import Random
         @test tci.localset == fill([1, 2], n)
     end
 
-    @testset "Lorentz MPS" for coeff in [1.0, 1.0im]
+    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for coeff in [1.0, 0.5-1.0im], pivotsearch in [:full, :rook]
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
 
@@ -57,7 +57,7 @@ import Random
         @test length(tci.Jset[end]) == 1
 
         for p in 1:n-1
-            updatepivots!(tci, p, f, true; reltol=1e-8, maxbonddim=2)
+            updatepivots!(tci, p, f, true; reltol=1e-8, maxbonddim=2, pivotsearch)
         end
         @test linkdims(tci) == fill(2, n - 1)
         @test rank(tci) == 2
@@ -71,9 +71,9 @@ import Random
         @test length(tci.Iset[1]) == 1
         @test length(tci.Jset[end]) == 1
 
-        for iter in 4:8
+        for iter in 4:20
             for p in 1:n-1
-                updatepivots!(tci, p, f, true; reltol=1e-8)
+                updatepivots!(tci, p, f, true; reltol=1e-8, pivotsearch)
             end
         end
 
@@ -85,7 +85,8 @@ import Random
             tolerance=1e-8,
             pivottolerance=1e-8,
             maxiter=8,
-            sweepstrategy=SweepStrategies.forward
+            sweepstrategy=SweepStrategies.forward,
+            pivotsearch
         )
 
         @test linkdims(tci) == linkdims(tci2)
@@ -97,7 +98,8 @@ import Random
             fill(10, n),
             [ones(Int, n)];
             tolerance=1e-12,
-            maxiter=200
+            maxiter=200,
+            pivotsearch
         )
 
         @test pivoterror(tci3) <= 2e-12
@@ -118,7 +120,8 @@ import Random
             fill(10, n),
             initialpivots;
             tolerance=1e-12,
-            maxiter=200
+            maxiter=200,
+            pivotsearch
         )
 
         @test pivoterror(tci4) <= 2e-12
