@@ -90,9 +90,9 @@ end
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
 ) where {T}
-    if sweepdirection == :forward
+    if sweepdirection === :forward
         tci.bonderrorsforward[b] = error
-    elseif sweepdirection == :backward
+    elseif sweepdirection === :backward
         tci.bonderrorsbackward[b] = error
     end
     nothing
@@ -241,6 +241,64 @@ function updatemaxsample!(tci::TensorCI2{V}, samples::Array{V}) where {V}
     tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
+function sweep1site!(
+    tci::TensorCI2{ValueType},
+    f,
+    sweepdirection::Symbol=:forward;
+    reltol::Float64=1e-14,
+    abstol::Float64=0.0,
+    maxbonddim::Int=typemax(Int),
+    updatetensors::Bool=true
+) where {ValueType}
+    flushpivoterror!(tci)
+
+    if !(sweepdirection === :forward || sweepdirection === :backward)
+        throw(ArgumentError("Unknown sweep direction $sweepdirection: choose between :forward, :backward."))
+    end
+
+    forwardsweep = sweepdirection === :forward
+    for b in (forwardsweep ? (1:length(tci)-1) : (length(tci):-1:2))
+        Is = forwardsweep ? kronecker(tci.Iset[b], tci.localset[b]) : tci.Iset[b]
+        Js = forwardsweep ? tci.Jset[b] : kronecker(tci.localset[b], tci.Jset[b])
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            length(Is), length(Js))
+        updatemaxsample!(tci, Pi)
+        luci = MatrixLUCI(
+            Pi,
+            reltol=reltol,
+            abstol=abstol,
+            maxrank=maxbonddim,
+            leftorthogonal=forwardsweep
+        )
+        tci.Iset[b+forwardsweep] = Is[rowindices(luci)]
+        tci.Jset[b-!forwardsweep] = Js[colindices(luci)]
+        if updatetensors
+            setT!(tci, b, forwardsweep ? left(luci) : right(luci))
+        end
+        updateerrors!(
+            tci, b - !forwardsweep, sweepdirection,
+            pivoterrors(luci), lastpivoterror(luci)
+        )
+    end
+
+    # Update last tensor according to last index set
+    if updatetensors
+        lastupdateindex = forwardsweep ? length(tci) : 1
+        shape = if forwardsweep
+            (length(tci.Iset[end]), length(tci.localset[end]))
+        else
+            (length(tci.localset[begin]), length(tci.Jset[begin]))
+        end
+        localtensor = reshape(_batchevaluate(
+            ValueType, f, tci.localset, tci.Iset, tci.Jset,
+            lastupdateindex, lastupdateindex
+        ), shape)
+        setT!(tci, lastupdateindex, localtensor)
+    end
+    nothing
+end
+
 function makecanonical!(
     tci::TensorCI2{ValueType},
     f::F;
@@ -248,75 +306,9 @@ function makecanonical!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int)
 ) where {F,ValueType}
-    L = length(tci)
-
-    flushpivoterror!(tci)
-    for b in 1:L-1
-        Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
-            length(Icombined), length(tci.Jset[b])
-        )
-        updatemaxsample!(tci, Pi)
-        ludecomp = rrlu(
-            Pi,
-            reltol=reltol,
-            abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=true
-        )
-        tci.Iset[b+1] = Icombined[rowindices(ludecomp)]
-        updateerrors!(tci, b, :forward, pivoterrors(ludecomp), lastpivoterror(ludecomp))
-    end
-
-    flushpivoterror!(tci)
-    for b in L:-1:2
-        Jcombined = kronecker(tci.localset[b], tci.Jset[b])
-        Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
-            length(tci.Iset[b]), length(Jcombined)
-        )
-        updatemaxsample!(tci, Pi)
-        ludecomp = rrlu(
-            Pi,
-            reltol=reltol,
-            abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=false
-        )
-        tci.Jset[b-1] = Jcombined[colindices(ludecomp)]
-        updateerrors!(
-            tci, b - 1, :backward, pivoterrors(ludecomp), lastpivoterror(ludecomp)
-        )
-    end
-
-    flushpivoterror!(tci)
-    for b in 1:L-1
-        Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
-            length(Icombined), length(tci.Jset[b]))
-        updatemaxsample!(tci, Pi)
-        luci = MatrixLUCI(
-            Pi,
-            reltol=reltol,
-            abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=true
-        )
-        tci.Iset[b+1] = Icombined[rowindices(luci)]
-        tci.Jset[b] = tci.Jset[b][colindices(luci)]
-        setT!(tci, b, left(luci))
-        updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
-    end
-    localtensor = reshape(
-        _batchevaluate(
-            ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)
-        ),
-        length(tci.Iset[end]), length(tci.localset[end])
-    )
-    setT!(tci, L, localtensor)
-    nothing
+    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=false)
+    sweep1site!(tci, f, :backward; reltol, abstol, maxbonddim, updatetensors=false)
+    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=true)
 end
 
 function updatepivots!(
