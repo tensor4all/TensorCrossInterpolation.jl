@@ -90,9 +90,9 @@ end
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
 ) where {T}
-    if sweepdirection == :forward
+    if sweepdirection === :forward
         tci.bonderrorsforward[b] = error
-    elseif sweepdirection == :backward
+    elseif sweepdirection === :backward
         tci.bonderrorsbackward[b] = error
     end
     nothing
@@ -121,7 +121,11 @@ function pivoterror(tci::TensorCI2{T}) where {T}
 end
 
 function updateerrors!(
-    tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, errors::AbstractVector{Float64}, lastpivoterror::Float64
+    tci::TensorCI2{T},
+    b::Int,
+    sweepdirection::Symbol,
+    errors::AbstractVector{Float64},
+    lastpivoterror::Float64
 ) where {T}
     updatebonderror!(tci, b, sweepdirection, lastpivoterror)
     updatepivoterror!(tci, errors)
@@ -162,7 +166,10 @@ function _batchevaluate_dispatch(
     nl = length(first(Iset))
     nr = length(first(Jset))
     ncent = N - nl - nr
-    return ValueType[f(collect(Iterators.flatten(i))) for i in Iterators.product(Iset, localset[nl+1:nl+ncent]..., Jset)]
+    return ValueType[
+        f(collect(Iterators.flatten(i)))
+        for i in Iterators.product(Iset, localset[nl+1:nl+ncent]..., Jset)
+    ]
 end
 
 
@@ -172,7 +179,7 @@ function _batchevaluate_dispatch(
     localset::Vector{Vector{LocalIndex}},
     Iset::Vector{MultiIndex},
     Jset::Vector{MultiIndex},
-) where {ValueType}
+)::Array{ValueType} where {ValueType}
     N = length(localset)
     nl = length(first(Iset))
     nr = length(first(Jset))
@@ -197,7 +204,10 @@ function _batchevaluate(
     ncent = N - nl - nr
     result = _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos])
     expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
-    size(result) == expected_size || throw(DimensionMismatch("Result has wrong size $(size(result)) != expected $(expected_size)"))
+    size(result) == expected_size ||
+        throw(DimensionMismatch(
+            "Result has wrong size $(size(result)) != expected $(expected_size)"
+        ))
     return result
 end
 
@@ -231,6 +241,64 @@ function updatemaxsample!(tci::TensorCI2{V}, samples::Array{V}) where {V}
     tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
+function sweep1site!(
+    tci::TensorCI2{ValueType},
+    f,
+    sweepdirection::Symbol=:forward;
+    reltol::Float64=1e-14,
+    abstol::Float64=0.0,
+    maxbonddim::Int=typemax(Int),
+    updatetensors::Bool=true
+) where {ValueType}
+    flushpivoterror!(tci)
+
+    if !(sweepdirection === :forward || sweepdirection === :backward)
+        throw(ArgumentError("Unknown sweep direction $sweepdirection: choose between :forward, :backward."))
+    end
+
+    forwardsweep = sweepdirection === :forward
+    for b in (forwardsweep ? (1:length(tci)-1) : (length(tci):-1:2))
+        Is = forwardsweep ? kronecker(tci.Iset[b], tci.localset[b]) : tci.Iset[b]
+        Js = forwardsweep ? tci.Jset[b] : kronecker(tci.localset[b], tci.Jset[b])
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            length(Is), length(Js))
+        updatemaxsample!(tci, Pi)
+        luci = MatrixLUCI(
+            Pi,
+            reltol=reltol,
+            abstol=abstol,
+            maxrank=maxbonddim,
+            leftorthogonal=forwardsweep
+        )
+        tci.Iset[b+forwardsweep] = Is[rowindices(luci)]
+        tci.Jset[b-!forwardsweep] = Js[colindices(luci)]
+        if updatetensors
+            setT!(tci, b, forwardsweep ? left(luci) : right(luci))
+        end
+        updateerrors!(
+            tci, b - !forwardsweep, sweepdirection,
+            pivoterrors(luci), lastpivoterror(luci)
+        )
+    end
+
+    # Update last tensor according to last index set
+    if updatetensors
+        lastupdateindex = forwardsweep ? length(tci) : 1
+        shape = if forwardsweep
+            (length(tci.Iset[end]), length(tci.localset[end]))
+        else
+            (length(tci.localset[begin]), length(tci.Jset[begin]))
+        end
+        localtensor = reshape(_batchevaluate(
+            ValueType, f, tci.localset, tci.Iset, tci.Jset,
+            lastupdateindex, lastupdateindex
+        ), shape)
+        setT!(tci, lastupdateindex, localtensor)
+    end
+    nothing
+end
+
 function makecanonical!(
     tci::TensorCI2{ValueType},
     f::F;
@@ -238,62 +306,9 @@ function makecanonical!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int)
 ) where {F,ValueType}
-    L = length(tci)
-
-    flushpivoterror!(tci)
-    for b in 1:L-1
-        Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(Icombined), length(tci.Jset[b]))
-        updatemaxsample!(tci, Pi)
-        ludecomp = rrlu(
-            Pi,
-            reltol=reltol,
-            abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=true
-        )
-        tci.Iset[b+1] = Icombined[rowindices(ludecomp)]
-        updateerrors!(tci, b, :forward, pivoterrors(ludecomp), lastpivoterror(ludecomp))
-    end
-
-    flushpivoterror!(tci)
-    for b in L:-1:2
-        Jcombined = kronecker(tci.localset[b], tci.Jset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(tci.Iset[b]), length(Jcombined))
-        updatemaxsample!(tci, Pi)
-        ludecomp = rrlu(
-            Pi,
-            reltol=reltol,
-            abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=false
-        )
-        tci.Jset[b-1] = Jcombined[colindices(ludecomp)]
-        updateerrors!(tci, b - 1, :backward, pivoterrors(ludecomp), lastpivoterror(ludecomp))
-    end
-
-    flushpivoterror!(tci)
-    for b in 1:L-1
-        Icombined = kronecker(tci.Iset[b], tci.localset[b])
-        Pi = reshape(_batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b), length(Icombined), length(tci.Jset[b]))
-        updatemaxsample!(tci, Pi)
-        luci = MatrixLUCI(
-            Pi,
-            reltol=reltol,
-            abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=true
-        )
-        tci.Iset[b+1] = Icombined[rowindices(luci)]
-        tci.Jset[b] = tci.Jset[b][colindices(luci)]
-        setT!(tci, b, left(luci))
-        updateerrors!(tci, b, :forward, pivoterrors(luci), lastpivoterror(luci))
-    end
-    localtensor = reshape(
-        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, length(tci), length(tci)),
-        length(tci.Iset[end]), length(tci.localset[end])
-    )
-    setT!(tci, L, localtensor)
+    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=false)
+    sweep1site!(tci, f, :backward; reltol, abstol, maxbonddim, updatetensors=false)
+    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=true)
 end
 
 function updatepivots!(
@@ -304,27 +319,46 @@ function updatepivots!(
     reltol::Float64=1e-14,
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
-    sweepdirection::Symbol=:forward
+    sweepdirection::Symbol=:forward,
+    pivotsearch::Symbol=:full
 ) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
-    Pi = reshape(
-        _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
-        length(Icombined), length(Jcombined)
-    )
-    updatemaxsample!(tci, Pi)
-    luci = MatrixLUCI(
-        Pi,
-        reltol=reltol,
-        abstol=abstol,
-        maxrank=maxbonddim,
-        leftorthogonal=leftorthogonal
-    )
+    luci = if pivotsearch === :full
+        Pi = reshape(
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
+            length(Icombined), length(Jcombined)
+        )
+        updatemaxsample!(tci, Pi)
+        MatrixLUCI(
+            Pi,
+            reltol=reltol,
+            abstol=abstol,
+            maxrank=maxbonddim,
+            leftorthogonal=leftorthogonal
+        )
+    elseif pivotsearch === :rook
+        I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
+        J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
+        MatrixLUCI(
+            ValueType,
+            (i, j) -> f(vcat(Icombined[i], Jcombined[j])),
+            (length(Icombined), length(Jcombined)),
+            I0, J0;
+            reltol=reltol, abstol=abstol,
+            maxrank=maxbonddim,
+            leftorthogonal=leftorthogonal,
+            pivotsearch=:rook
+        )
+    else
+        throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
+    end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
     setT!(tci, b, left(luci))
     setT!(tci, b + 1, right(luci))
     updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
+    nothing
 end
 
 function convergencecriterion(
@@ -389,8 +423,9 @@ function optimize!(
     tolerance::Float64=1e-8,
     pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
-    maxiter::Int=200,
+    maxiter::Int=20,
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+    pivotsearch::Symbol=:full,
     verbosity::Int=0,
     loginterval::Int=10,
     normalizeerror::Bool=true,
@@ -413,14 +448,20 @@ function optimize!(
             for bondindex in 1:n-1
                 updatepivots!(
                     tci, bondindex, f, true;
-                    abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:forward
+                    abstol=pivottolerance * errornormalization,
+                    maxbonddim=maxbonddim,
+                    sweepdirection=:forward,
+                    pivotsearch=pivotsearch
                 )
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
                 updatepivots!(
                     tci, bondindex, f, false;
-                    abstol=pivottolerance * errornormalization, maxbonddim=maxbonddim, sweepdirection=:backward
+                    abstol=pivottolerance * errornormalization,
+                    maxbonddim=maxbonddim,
+                    sweepdirection=:backward,
+                    pivotsearch=pivotsearch
                 )
             end
         end
@@ -487,23 +528,10 @@ function crossinterpolate2(
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
-    tolerance::Float64=1e-8,
-    pivottolerance::Float64=tolerance,
-    maxbonddim::Int=typemax(Int),
-    maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
-    verbosity::Int=0,
-    loginterval::Int=10,
-    normalizeerror::Bool=true,
-    ncheckhistory=3
+    kwargs...
 ) where {ValueType,N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
-    ranks, errors = optimize!(
-        tci, f;
-        tolerance=tolerance, pivottolerance=pivottolerance, maxbonddim=maxbonddim,
-        maxiter=maxiter, sweepstrategy=sweepstrategy, verbosity=verbosity,
-        loginterval=loginterval, normalizeerror=normalizeerror, ncheckhistory=ncheckhistory
-    )
+    ranks, errors = optimize!(tci, f; kwargs...)
     return tci, ranks, errors
 end
 
@@ -527,8 +555,8 @@ function insertglobalpivots!(
     nsearch=100,
     tolerance::Float64=1e-8,
     verbosity::Int=0,
-    normalizeerror::Bool=true)::Int where {ValueType}
-
+    normalizeerror::Bool=true
+)::Int where {ValueType}
     localdims = [length(s) for s in tci.localset]
 
     nnewpivot = 0
@@ -536,8 +564,7 @@ function insertglobalpivots!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
         err(x) = abs(evaluate(tci, x) - f(x))
-        newpivot_ = optfirstpivot(
-            err, localdims, [rand(1:d) for d in localdims])
+        newpivot_ = optfirstpivot(err, localdims, [rand(1:d) for d in localdims])
 
         e = err(newpivot_)
         if e > tolerance * errornormalization
