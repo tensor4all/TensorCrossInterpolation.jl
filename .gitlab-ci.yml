@@ -49,8 +49,8 @@ julia test:
         Pkg.develop(PackageSpec(path=pwd()))
         Pkg.instantiate()
         using Documenter: doctest
-        using Quantics
-        doctest(Quantics)
+        using TensorCrossInterpolation
+        doctest(TensorCrossInterpolation)
         include("docs/make.jl")'
 doctest:
   image: julia:1.6
