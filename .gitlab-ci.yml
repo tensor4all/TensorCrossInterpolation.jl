@@ -41,6 +41,21 @@ julia test:
         - "1.7"
         - "1.8"
         - "1.9"
+.doctest:
+  script:
+    - |
+      julia --project=docs -e '
+        using Pkg
+        Pkg.develop(PackageSpec(path=pwd()))
+        Pkg.instantiate()
+        using Documenter: doctest
+        using Quantics
+        doctest(Quantics)
+        include("docs/make.jl")'
+doctest:
+  image: julia:1.6
+  extends:
+    - .doctest
 pages:
   image: julia:1.9
   stage: deploy
