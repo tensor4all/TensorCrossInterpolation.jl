@@ -87,11 +87,10 @@ function _optimizerrlu!(
     maxrank = min(maxrank, size(A)...)
 
     for k in lu.npivot+1:maxrank
-        newpivot = submatrixargmax(abs2, A, k)
-        if abs(A[newpivot...]) < reltol * abs(A[1]) || abs(A[newpivot...]) < abstol
+        addpivot!(lu, A, submatrixargmax(abs2, A, k))
+        if abs(A[k, k]) < reltol * abs(A[1]) || abs(A[k, k]) < abstol
             break
         end
-        addpivot!(lu, A, newpivot)
     end
     lu.L = tril(A[:, 1:lu.npivot])
     lu.U = triu(A[1:lu.npivot, :])
