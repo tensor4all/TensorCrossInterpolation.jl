@@ -84,6 +84,17 @@ using LinearAlgebra
         @test TCI.left(LU) * TCI.right(LU) ≈ A
     end
 
+    @testset "Truncated rank-revealing LU" begin
+        A = [
+            1.0 0.0 0.0
+            0.0 0.0 0.0
+            0.0 0.0 0.0
+        ]
+
+        LU = TCI.rrlu(A)
+        @test LU.npivot == 1
+    end
+
     @testset "Approximation in rrLU" begin
         A = [
             0.684025 0.784249 0.826742 0.054321 0.0234695 0.467096

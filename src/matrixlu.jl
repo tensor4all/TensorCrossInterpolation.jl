@@ -67,9 +67,10 @@ mutable struct rrLU{T}
     U::Matrix{T}
     leftorthogonal::Bool
     npivot::Int
+    error::Float64
 
     function rrLU{T}(nrows::Int, ncols::Int; leftorthogonal::Bool=true) where {T}
-        new{T}(1:nrows, 1:ncols, zeros(nrows, 0), zeros(0, ncols), leftorthogonal, 0)
+        new{T}(1:nrows, 1:ncols, zeros(nrows, 0), zeros(0, ncols), leftorthogonal, 0, NaN)
     end
 end
 
@@ -86,19 +87,38 @@ function _optimizerrlu!(
 ) where {T}
     maxrank = min(maxrank, size(A)...)
 
+    earlytermination = false
     for k in lu.npivot+1:maxrank
-        addpivot!(lu, A, submatrixargmax(abs2, A, k))
+        newpivot = submatrixargmax(abs2, A, k)
+        if A[newpivot...] == zero(T)
+            earlytermination = true
+            break
+        end
+        addpivot!(lu, A, newpivot)
         if abs(A[k, k]) < reltol * abs(A[1]) || abs(A[k, k]) < abstol
             break
         end
     end
     lu.L = tril(A[:, 1:lu.npivot])
     lu.U = triu(A[1:lu.npivot, :])
+    if any(isnan.(lu.L))
+        error("lu.L contains NaNs")
+    end
+    if any(isnan.(lu.U))
+        error("lu.U contains NaNs")
+    end
     if lu.leftorthogonal
         lu.L[diagind(lu.L)] .= one(T)
     else
         lu.U[diagind(lu.U)] .= one(T)
     end
+
+    if earlytermination || lu.npivot == min(size(lu)...)
+        lu.error = zero(T)
+    else
+        lu.error = lu.leftorthogonal ? abs(lu.U[lu.npivot, lu.npivot]) : abs(lu.L[lu.npivot, lu.npivot])
+    end
+
     nothing
 end
 
@@ -355,9 +375,5 @@ Correct estimate of the last pivot error
 A special care is taken for a full-rank matrix: the last pivot error is set to zero.
 """
 function lastpivoterror(lu::rrLU{T})::Float64 where {T}
-    if lu.npivot == min(size(lu)...)
-        return 0.0
-    else
-        return abs(diag(lu)[lu.npivot])
-    end
+    return lu.error
 end

@@ -91,8 +91,9 @@ function optfirstpivot(
             for d in 1:localdims[i]
                 bak = pivot[i]
                 pivot[i] = d
-                if abs(f(pivot)) > valf
-                    valf = abs(f(pivot))
+                newval = abs(f(pivot))
+                if newval > valf
+                    valf = newval
                 else
                     pivot[i] = bak
                 end

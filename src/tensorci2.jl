@@ -136,7 +136,8 @@ function addglobalpivots!(
     tci::TensorCI2{ValueType},
     f::F,
     pivots::Vector{MultiIndex};
-    reltol=1e-14,
+    reltol::Float64=1e-14,
+    abstol::Float64=0.0,
     maxbonddim=typemax(Int)
 ) where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
@@ -150,7 +151,7 @@ function addglobalpivots!(
         end
     end
 
-    makecanonical!(tci, f; reltol=reltol, maxbonddim=maxbonddim)
+    makecanonical!(tci, f; reltol=reltol, abstol=abstol, maxbonddim=maxbonddim)
 end
 
 
@@ -275,6 +276,9 @@ function sweep1site!(
         tci.Jset[b-!forwardsweep] = Js[colindices(luci)]
         if updatetensors
             setT!(tci, b, forwardsweep ? left(luci) : right(luci))
+        end
+        if any(isnan.(tci.T[b]))
+            error("Error: NaN in tensor T[$b]")
         end
         updateerrors!(
             tci, b - !forwardsweep, sweepdirection,
@@ -560,24 +564,44 @@ function insertglobalpivots!(
     nsearch=100,
     tolerance::Float64=1e-8,
     verbosity::Int=0,
-    normalizeerror::Bool=true
+    normalizeerror::Bool=true,
+    maxsweep::Int=1000
 )::Int where {ValueType}
     localdims = [length(s) for s in tci.localset]
 
     nnewpivot = 0
-    for _ in 1:nsearch
+    for isearch in 1:nsearch
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
         err(x) = abs(evaluate(tci, x) - f(x))
-        newpivot_ = optfirstpivot(err, localdims, [rand(1:d) for d in localdims])
+        newpivot_ = optfirstpivot(err, localdims, [rand(1:d) for d in localdims]; maxsweep=maxsweep)
 
         e = err(newpivot_)
+        if isnan(e)
+            ttval = evaluate(tci, newpivot_)
+            error("NaN error for pivot $(newpivot_), ttval=$ttval")
+        end
+
+        if verbosity > 0 && mod(isearch, 100) == 0
+            println()
+            println("$(isearch)-th attempt: error $e")
+        end
         if e > tolerance * errornormalization
             nnewpivot += 1
-            addglobalpivots!(tci, f, [newpivot_])
             if verbosity > 0
-                println("Inserting a global pivot $(newpivot_): error $e > $(tolerance * errornormalization)")
-                println("New linkdims is $(maximum(linkdims(tci))).")
+                println()
+                println("$(isearch)-th attempt: Inserting a global pivot $(newpivot_): error $e > $(tolerance * errornormalization)")
+                println("Old error is $(err(newpivot_)).")
+            end
+            addglobalpivots!(
+                tci, f, [newpivot_];
+                abstol=tolerance * errornormalization,
+                reltol=0.0
+                )
+            if verbosity > 0
+                nan =  [any(isnan.(t)) for t in tci.T]
+                any(nan) && error("tt is $nan")
+                println("New linkdims is $(maximum(linkdims(tci))). New error is $(err(newpivot_)).")
             end
         end
     end
