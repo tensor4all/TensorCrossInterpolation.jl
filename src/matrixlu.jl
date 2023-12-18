@@ -156,11 +156,14 @@ function arrlu(
     reltol::Number=1e-14,
     abstol::Number=0.0,
     leftorthogonal::Bool=true,
-    numrookiter::Int=3
+    numrookiter::Int=3,
+    batcheval::Bool=false
 )::rrLU{ValueType} where {ValueType}
     lu = rrLU{ValueType}(matrixsize...; leftorthogonal)
     islowrank = false
     maxrank = min(maxrank, matrixsize...)
+
+    _batchf = batcheval ? f : ((x, y) -> f.(x, y'))
 
     while true
         if leftorthogonal
@@ -172,9 +175,9 @@ function arrlu(
         for rookiter in 1:numrookiter
             colmove = (iseven(rookiter) == leftorthogonal)
             submatrix = if colmove
-                f.(I0, lu.colpermutation')
+                _batchf(I0, lu.colpermutation)
             else
-                f.(lu.rowpermutation, J0')
+                _batchf(lu.rowpermutation, J0)
             end
             lu.npivot = 0
             _optimizerrlu!(lu, submatrix; maxrank, reltol, abstol)
@@ -195,7 +198,7 @@ function arrlu(
     if size(lu.L, 1) < matrixsize[1]
         I2 = setdiff(1:matrixsize[1], I0)
         lu.rowpermutation = vcat(I0, I2)
-        L2 = f.(I2, J0')
+        L2 = _batchf(I2, J0)
         cols2Lmatrix!(L2, lu.U[1:lu.npivot, 1:lu.npivot], leftorthogonal)
         lu.L = vcat(lu.L[1:lu.npivot, 1:lu.npivot], L2)
     end
@@ -203,7 +206,7 @@ function arrlu(
     if size(lu.U, 2) < matrixsize[2]
         J2 = setdiff(1:matrixsize[2], J0)
         lu.colpermutation = vcat(J0, J2)
-        U2 = f.(I0, J2')
+        U2 = _batchf(I0, J2)
         rows2Umatrix!(U2, lu.L[1:lu.npivot, 1:lu.npivot], leftorthogonal)
         lu.U = hcat(lu.U[1:lu.npivot, 1:lu.npivot], U2)
     end

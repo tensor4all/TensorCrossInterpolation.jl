@@ -322,9 +322,21 @@ mutable struct SubMatrix{T}
     end
 end
 
-function (obj::SubMatrix{T})(i::Int, j::Int)::T where T
-    res = obj.f(vcat(obj.rows[i], obj.cols[j]))
-    obj.maxsamplevalue = max(obj.maxsamplevalue, abs(res))
+function _submatrix_batcheval(obj::SubMatrix{T}, f, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
+    return [f(vcat(obj.rows[i], obj.cols[j])) for i in irows, j in icols]
+end
+
+
+function _submatrix_batcheval(obj::SubMatrix{T}, f::BatchEvaluator{T}, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
+    Iset = [obj.rows[i] for i in irows]
+    Jset = [obj.cols[j] for j in icols]
+    return batchevaluate(f, Iset, Jset, 0)
+end
+ 
+
+function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where T
+    res = _submatrix_batcheval(obj, obj.f, irows, icols)
+    obj.maxsamplevalue = max(obj.maxsamplevalue, maximum(abs, res))
     return res
 end
 
@@ -367,7 +379,8 @@ function updatepivots!(
             reltol=reltol, abstol=abstol,
             maxrank=maxbonddim,
             leftorthogonal=leftorthogonal,
-            pivotsearch=:rook
+            pivotsearch=:rook,
+            batcheval=true
         )
         updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
         res
