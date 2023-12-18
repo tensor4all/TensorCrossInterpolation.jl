@@ -93,19 +93,22 @@ function (tt::TTCache{V})(indexset::AbstractVector{Int}) where {V}
     return evaluate(tt, indexset; usecache=true)
 end
 
+_dot(x::Vector{Float64}, y::Vector{Float64}) = LA.BLAS.dot(x, y)
+_dot(x::Vector{ComplexF64}, y::Vector{ComplexF64}) = LA.BLAS.dotu(x, y)
+
 function evaluate(
     tt::TTCache{V},
     indexset::AbstractVector{Int};
-    usecache::Bool=true
+    usecache::Bool=true,
+    midpoint::Int = div(length(tt), 2)
 )::V where {V}
     if length(tt) != length(indexset)
         throw(ArgumentError("To evaluate a tensor train of length $(length(tt)), need $(length(tt)) index values, but got $(length(indexset))."))
     end
     if usecache
-        midpoint = div(length(tt), 2)
-        return sum(
-            evaluateleft(tt, indexset[1:midpoint]) .*
-            evaluateright(tt, indexset[midpoint+1:end]))
+        return _dot(
+            evaluateleft(tt, view(indexset, 1:midpoint)),
+            evaluateright(tt, view(indexset, midpoint+1:length(indexset))))
     else
         return sum(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
     end

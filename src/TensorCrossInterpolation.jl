@@ -4,6 +4,7 @@ using LinearAlgebra
 
 # To add a method for rank(tci)
 import LinearAlgebra: rank, diag
+import LinearAlgebra as LA
 # To define equality of IndexSet
 import Base: ==
 # To define iterators and element access for MCI, TCI and TT objects

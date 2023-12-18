@@ -311,6 +311,24 @@ function makecanonical!(
     sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=true)
 end
 
+mutable struct SubMatrix{T}
+    f::Function
+    rows::Vector{MultiIndex}
+    cols::Vector{MultiIndex}
+    maxsamplevalue::Float64
+
+    function SubMatrix{T}(f, rows, cols) where {T}
+        new(f, rows, cols, 0.0)
+    end
+end
+
+function (obj::SubMatrix{T})(i::Int, j::Int)::T where T
+    res = obj.f(vcat(obj.rows[i], obj.cols[j]))
+    obj.maxsamplevalue = max(obj.maxsamplevalue, abs(res))
+    return res
+end
+
+
 function updatepivots!(
     tci::TensorCI2{ValueType},
     b::Int,
@@ -340,12 +358,8 @@ function updatepivots!(
     elseif pivotsearch === :rook
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
         J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
-        Pif(i, j) = begin
-            res = f(vcat(Icombined[i], Jcombined[j]))
-            updatemaxsample!(tci, [res])
-            return res
-        end
-        MatrixLUCI(
+        Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
+        res = MatrixLUCI(
             ValueType,
             Pif,
             (length(Icombined), length(Jcombined)),
@@ -355,6 +369,8 @@ function updatepivots!(
             leftorthogonal=leftorthogonal,
             pivotsearch=:rook
         )
+        updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
+        res
     else
         throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
     end
