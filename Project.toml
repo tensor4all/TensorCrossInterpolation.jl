@@ -1,7 +1,7 @@
 name = "TensorCrossInterpolation"
 uuid = "b261b2ec-6378-4871-b32e-9173bb050604"
 authors = ["Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de> and contributors"]
-version = "0.2.1"
+version = "0.3.0"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
