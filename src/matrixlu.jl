@@ -157,13 +157,13 @@ function arrlu(
     abstol::Number=0.0,
     leftorthogonal::Bool=true,
     numrookiter::Int=3,
-    batcheval::Bool=false
+    usebatcheval::Bool=false
 )::rrLU{ValueType} where {ValueType}
     lu = rrLU{ValueType}(matrixsize...; leftorthogonal)
     islowrank = false
     maxrank = min(maxrank, matrixsize...)
 
-    _batchf = batcheval ? f : ((x, y) -> f.(x, y'))
+    _batchf = usebatcheval ? f : ((x, y) -> f.(x, y'))
 
     while true
         if leftorthogonal

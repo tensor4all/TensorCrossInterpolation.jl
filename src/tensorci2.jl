@@ -184,7 +184,7 @@ function _batchevaluate_dispatch(
     nl = length(first(Iset))
     nr = length(first(Jset))
     ncent = N - nl - nr
-    return batchevaluate(f, Iset, Jset, Val(ncent))
+    return f(Iset, Jset, Val(ncent))
 end
 
 
@@ -380,7 +380,7 @@ function updatepivots!(
             maxrank=maxbonddim,
             leftorthogonal=leftorthogonal,
             pivotsearch=:rook,
-            batcheval=true
+            usebatcheval=true
         )
         updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
         res
@@ -549,6 +549,7 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
+- `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.

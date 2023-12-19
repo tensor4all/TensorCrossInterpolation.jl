@@ -115,8 +115,7 @@ function evaluate(
 end
 
 
-function batchevaluate(
-    tt::TTCache{V},
+function (tt::TTCache{V})(
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
