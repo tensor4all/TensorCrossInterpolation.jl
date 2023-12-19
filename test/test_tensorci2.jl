@@ -86,7 +86,7 @@ import Random
             pivottolerance=1e-8,
             maxiter=8,
             sweepstrategy=SweepStrategies.forward,
-            pivotsearch
+            pivotsearch = pivotsearch 
         )
 
         #@test linkdims(tci) == linkdims(tci2) Too strict

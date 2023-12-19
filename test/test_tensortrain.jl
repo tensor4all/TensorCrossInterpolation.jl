@@ -32,7 +32,7 @@ end
     leftindexset = [[1], [2]]
     rightindexset = [[1], [2]]
 
-    result = TCI.batchevaluate(A, leftindexset, rightindexset, Val(2))
+    result = A(leftindexset, rightindexset, Val(2))
     for cindex in [[1, 1], [1, 2]]
         for (il, lindex) in enumerate(leftindexset)
             for (ir, rindex) in enumerate(rightindexset)
@@ -64,7 +64,7 @@ end
             continue
         end
 
-        result = TCI.batchevaluate(A, leftindexset, rightindexset, Val(ncent))
+        result = A(leftindexset, rightindexset, Val(ncent))
         for cindex in genindices(localdims[nleft+1:nleft+ncent])
             for (il, lindex) in enumerate(leftindexset)
                 for (ir, rindex) in enumerate(rightindexset)
