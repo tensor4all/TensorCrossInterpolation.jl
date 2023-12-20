@@ -45,8 +45,7 @@ function TensorCI2{ValueType}(
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))]
 ) where {F,ValueType,N}
     tci = TensorCI2{ValueType}(localdims)
-    f(x) = convert(ValueType, func(x))
-    addglobalpivots!(tci, f, initialpivots)
+    addglobalpivots!(tci, func, initialpivots)
     return tci
 end
 
@@ -162,7 +161,10 @@ function _batchevaluate_dispatch(
     localset::Vector{Vector{LocalIndex}},
     Iset::Vector{MultiIndex},
     Jset::Vector{MultiIndex},
-) where {ValueType}
+)::Array{ValueType} where {ValueType}
+    if length(Iset) * length(Jset) == 0
+        return ValueType[]
+    end
     N = length(localset)
     nl = length(first(Iset))
     nr = length(first(Jset))
@@ -181,6 +183,9 @@ function _batchevaluate_dispatch(
     Iset::Vector{MultiIndex},
     Jset::Vector{MultiIndex},
 )::Array{ValueType} where {ValueType}
+    if length(Iset) * length(Jset) == 0
+        return ValueType[]
+    end
     N = length(localset)
     nl = length(first(Iset))
     nr = length(first(Jset))
@@ -203,8 +208,11 @@ function _batchevaluate(
     nl = ipos - 1
     nr = N - jpos
     ncent = N - nl - nr
-    result = _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos])
     expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
+    result = reshape(
+        _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos]),
+        expected_size...
+    )
     size(result) == expected_size ||
         throw(DimensionMismatch(
             "Result has wrong size $(size(result)) != expected $(expected_size)"
