@@ -1,5 +1,7 @@
 import TensorCrossInterpolation as TCI
 using Random
+using Zygote
+using Optim
 
 @testset "tensor train" begin
     g(v) = 1 / (sum(v .^ 2) + 1)
@@ -74,4 +76,32 @@ end
             end
         end
     end
+end
+
+@testset "ttfit" for T in [Float64, ComplexF64]
+    Random.seed!(10)
+    localdims = [2, 2, 2]
+    linkdims = [1, 2, 3, 1]
+    L = length(localdims)
+    @assert L == length(linkdims) - 1
+    tt0 = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L])
+
+    indexsets = [[1, 1, 1], [2, 2, 2]]
+    values = randn(T, length(indexsets))
+
+    # Loss function for fitting
+    ttfit = TCI.TensorTrainFit{T}(indexsets, values, tt0)
+
+    # Convert an intial tensor train to a flatten vector
+    x0::Vector{T} = TCI.flatten(tt0)
+
+    loss(x) = ttfit(x)
+
+    function dloss!(g, x)
+        g .= Zygote.gradient(ttfit, x)[1]
+    end
+
+    xopt = Optim.minimizer(optimize(loss, dloss!, x0, LBFGS()))
+    ttopt = TCI.TensorTrain{T,3}(TCI.to_tensors(ttfit, xopt))
+    @test [TCI.evaluate(ttopt, idx) for (idx, v) in zip(indexsets, values)] ≈ values
 end

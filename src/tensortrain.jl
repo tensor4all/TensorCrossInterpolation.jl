@@ -66,3 +66,42 @@ end
 function tensortrain(tci)
     return TensorTrain(tci)
 end
+
+
+"""
+Fitting data with a TensorTrain object.
+This may be useful when the interpolated function is noisy.
+"""
+struct TensorTrainFit{ValueType}
+    indexsets::Vector{MultiIndex}
+    values::Vector{ValueType}
+    tt::TensorTrain{ValueType,3}
+    offsets::Vector{Int}
+end
+
+function TensorTrainFit{ValueType}(indexsets, values, tt) where {ValueType}
+    offsets = [0]
+    for n in 1:length(tt.T)
+        push!(offsets, offsets[end] + length(tt.T[n]))
+    end
+    return TensorTrainFit{ValueType}(indexsets, values, tt, offsets)
+end
+
+flatten(obj::TensorTrain{ValueType}) where {ValueType} = vcat(vec.(obj.T)...)
+
+function to_tensors(obj::TensorTrainFit{ValueType}, x::Vector{ValueType}) where {ValueType}
+    return [
+        reshape(
+            x[obj.offsets[n]+1:obj.offsets[n+1]],
+            size(obj.tt.T[n])
+            )
+        for n in 1:length(obj.tt)
+    ]
+end
+
+_evaluate(tt, indexset) = only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
+
+function (obj::TensorTrainFit{ValueType})(x::Vector{ValueType}) where {ValueType}
+    tensors = to_tensors(obj, x)
+    return sum((abs2(_evaluate(tensors, indexset)  - obj.values[i]) for (i, indexset) in enumerate(obj.indexsets)))
+end
