@@ -37,6 +37,15 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             0.0                                     # maxsample
         )
     end
+
+    function TensorCI2{ValueType}(tci1::TensorCI{ValueType}) where {ValueType}
+        return new{ValueType}(
+            [i.fromint for i in tci1.Iset], [j.fromint for j in tci1.Jset], tci1.localset,
+            TtimesPinv.(tci1, 1:length(tci1)),
+            Float64[], tci1.pivoterrors, tci1.pivoterrors,
+            tci1.maxsamplevalue
+        )
+    end
 end
 
 function TensorCI2{ValueType}(
@@ -48,7 +57,6 @@ function TensorCI2{ValueType}(
     addglobalpivots!(tci, func, initialpivots)
     return tci
 end
-
 
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
@@ -303,9 +311,9 @@ function sweep1site!(
             (length(tci.localset[begin]), length(tci.Jset[begin]))
         end
         localtensor = reshape(_batchevaluate(
-            ValueType, f, tci.localset, tci.Iset, tci.Jset,
-            lastupdateindex, lastupdateindex
-        ), shape)
+                ValueType, f, tci.localset, tci.Iset, tci.Jset,
+                lastupdateindex, lastupdateindex
+            ), shape)
         setT!(tci, lastupdateindex, localtensor)
     end
     nothing
@@ -344,9 +352,9 @@ function _submatrix_batcheval(obj::SubMatrix{T}, f::BatchEvaluator{T}, irows::Ve
     Jset = [obj.cols[j] for j in icols]
     return batchevaluate(f, Iset, Jset, 0)
 end
- 
 
-function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where T
+
+function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
     res = _submatrix_batcheval(obj, obj.f, irows, icols)
     obj.maxsamplevalue = max(obj.maxsamplevalue, maximum(abs, res))
     return res
@@ -635,9 +643,9 @@ function insertglobalpivots!(
                 tci, f, [newpivot_];
                 abstol=tolerance * errornormalization,
                 reltol=0.0
-                )
+            )
             if verbosity > 0
-                nan =  [any(isnan.(t)) for t in tci.T]
+                nan = [any(isnan.(t)) for t in tci.T]
                 any(nan) && error("tt is $nan")
                 println("New linkdims is $(maximum(linkdims(tci))). New error is $(err(newpivot_)).")
             end
