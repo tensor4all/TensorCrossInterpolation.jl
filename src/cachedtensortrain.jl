@@ -17,6 +17,7 @@ struct TTCache{ValueType} <: BatchEvaluator{ValueType}
             [Dict{MultiIndex,Vector{ValueType}}() for _ in T],
             [Dict{MultiIndex,Vector{ValueType}}() for _ in T])
     end
+
 end
 
 Base.length(tt::TTCache{V}) where {V} = length(tt.T)

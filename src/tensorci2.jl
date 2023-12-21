@@ -198,25 +198,22 @@ function _batchevaluate(
     ::Type{ValueType},
     f,
     localset::Vector{Vector{LocalIndex}},
-    Iset::Vector{Vector{MultiIndex}},
-    Jset::Vector{Vector{MultiIndex}},
-    ipos, jpos
+    Iset::Vector{MultiIndex},
+    Jset::Vector{MultiIndex}
 ) where {ValueType}
-    Iset_ = Iset[ipos]
-    Jset_ = Jset[jpos]
+    if length(Iset) * length(Jset) == 0
+        return ValueType[]
+    end
+
     N = length(localset)
-    nl = ipos - 1
-    nr = N - jpos
+    nl = length(first(Iset))
+    nr = length(first(Jset))
     ncent = N - nl - nr
-    expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
+    expected_size = (length(Iset), length.(localset[nl+1:nl+ncent])..., length(Jset))
     result = reshape(
-        _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos]),
+        _batchevaluate_dispatch(ValueType, f, localset, Iset, Jset),
         expected_size...
     )
-    size(result) == expected_size ||
-        throw(DimensionMismatch(
-            "Result has wrong size $(size(result)) != expected $(expected_size)"
-        ))
     return result
 end
 
@@ -270,7 +267,7 @@ function sweep1site!(
         Is = forwardsweep ? kronecker(tci.Iset[b], tci.localset[b]) : tci.Iset[b]
         Js = forwardsweep ? tci.Jset[b] : kronecker(tci.localset[b], tci.Jset[b])
         Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset[b], tci.Jset[b]),
             length(Is), length(Js))
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
@@ -303,9 +300,7 @@ function sweep1site!(
             (length(tci.localset[begin]), length(tci.Jset[begin]))
         end
         localtensor = reshape(_batchevaluate(
-            ValueType, f, tci.localset, tci.Iset, tci.Jset,
-            lastupdateindex, lastupdateindex
-        ), shape)
+            ValueType, f, tci.localset, tci.Iset[lastupdateindex], tci.Jset[lastupdateindex]), shape)
         setT!(tci, lastupdateindex, localtensor)
     end
     nothing
@@ -368,7 +363,7 @@ function updatepivots!(
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
     luci = if pivotsearch === :full
         Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset[b], tci.Jset[b+1]),
             length(Icombined), length(Jcombined)
         )
         updatemaxsample!(tci, Pi)
@@ -489,6 +484,15 @@ function optimize!(
 
     for iter in rank(tci)+1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+
+        floatingzone!(
+            tci, f;
+            tolerance = pivottolerance * errornormalization,
+            verbosity=verbosity,
+            normalizeerror=false,
+            lengthzone=1,
+        )
+
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
@@ -645,4 +649,46 @@ function insertglobalpivots!(
     end
 
     return nnewpivot
+end
+
+
+function floatingzone!(
+    tci::TensorCI2{ValueType}, f;
+    tolerance::Float64=1e-8,
+    verbosity::Int=0,
+    normalizeerror::Bool=true,
+    lengthzone=1,
+)::Nothing where {ValueType}
+    localdims = [length(s) for s in tci.localset]
+
+    n = length(tci)
+
+    ttcache = TTCache(tci.T)
+
+    for nl in 0:(length(tci)-lengthzone)
+        nr = length(tci) - nl - lengthzone
+
+        idxzone = [rand(1:d) for d in localdims[nl+1:nl+lengthzone]]
+
+        Jset = [vcat(idxzone, j) for j in tci.Jset[n-nr]]
+        exactdata = _batchevaluate(
+            ValueType,
+            f,
+            tci.localset,
+            tci.Iset[nl+1],
+            Jset
+        )
+
+        prediction = _batchevaluate(
+            ValueType,
+            ttcache,
+            tci.localset,
+            tci.Iset[nl+1],
+            Jset
+        )
+
+        @show maximum(abs, exactdata .- prediction)
+    end
+
+    return nothing
 end
