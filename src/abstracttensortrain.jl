@@ -7,7 +7,7 @@ const LocalIndex = Int
 const MultiIndex = Vector{LocalIndex}
 
 """
-    abstract type AbstractTensorTrain{V} end
+    abstract type AbstractTensorTrain{V} <: Function end
 
 Abstract type that is a supertype to all tensor train types found in this module. The main purpose of this type is for the definition of functions such as [`rank`](@ref) and [`linkdims`](@ref) that are shared between different tensor train classes.
 
@@ -15,7 +15,7 @@ When iterated over, the tensor train will return each of the tensors in order.
 
 Implementations: [`TensorTrain`](@ref), [`TensorCI2`](@ref), [`TensorCI`](@ref)
 """
-abstract type AbstractTensorTrain{V} end
+abstract type AbstractTensorTrain{V} <: Function end
 
 function Base.show(io::IO, tt::AbstractTensorTrain{ValueType}) where {ValueType}
     print(io, "$(typeof(tt)) with rank $(rank(tt))")
