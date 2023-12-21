@@ -22,6 +22,22 @@ mutable struct MatrixACA{T} <: AbstractMatrixCI{T}
             A[:, [firstpivot[2]]], A[[firstpivot[1]], :],
             [1 / A[firstpivot[1], firstpivot[2]]])
     end
+
+    function MatrixACA(lu::rrLU{T}) where {T}
+        aca = new{T}(rowindices(lu), colindices(lu), left(lu), right(lu), 1 ./ diag(lu))
+        if lu.leftorthogonal
+            # Set the permuted diagonal of aca.u to the diagonal elements of lu.
+            for j in axes(aca.u, 2)
+                aca.u[:, j] *= diag(lu)[j]
+            end
+        else
+            # Same with aca.v
+            for i in axes(aca.v, 1)
+                aca.v[i, :] *= diag(lu)[i]
+            end
+        end
+        return aca
+    end
 end
 
 function nrows(aca::MatrixACA)
