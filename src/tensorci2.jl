@@ -486,11 +486,9 @@ function optimize!(
     for iter in rank(tci)+1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
-        floatingzone(
+        floatingzone!(
             tci, f;
-            tolerance = pivottolerance * errornormalization,
             verbosity=verbosity,
-            normalizeerror=false,
             lengthzone=min(lengthfz, n),
         )
 
@@ -653,30 +651,52 @@ function insertglobalpivots!(
 end
 
 
-function floatingzone(
+function floatingzone!(
     tci::TensorCI2{ValueType}, f;
-    tolerance::Float64=1e-8,
+    nmaxglobalpivots = 10,
     verbosity::Int=0,
-    normalizeerror::Bool=true,
     lengthzone=1,
-)::Nothing where {ValueType}
-    n = length(tci)
+)::Int where {ValueType}
+    result = Dict{Float64,MultiIndex}()
     for nl in 0:(length(tci)-lengthzone)
         nr = length(tci) - nl - lengthzone
-        maxeror, pivot = _floatingzone(tci, f, nl, nr)
+        maxerror, pivot = _floatingzone(tci, f, nl, nr)
+        if pivot !== nothing
+            result[maxerror] = pivot 
+        end
     end
 
-    nothing
+    result_sorted = sort(collect(result); by=x->x[1], rev=true)
+    if length(result_sorted) > nmaxglobalpivots
+        result_sorted = result_sorted[1:nmaxglobalpivots]
+    end
+    
+    bonddim_prev = maximum(linkdims(tci))
+    if verbosity > 0
+        print("Adding $(length(result_sorted)) global pivots... ")
+    end
+
+    addglobalpivots!(
+        tci, f, collect(map(x->x[2], result_sorted));
+        abstol=0.0, reltol=1e-15
+    )
+    bonddim = maximum(linkdims(tci))
+
+    if verbosity > 0
+        println(": bonddim $(bonddim_prev) -> $(bonddim)")
+    end
+
+    return length(result_sorted)
 end
 
 
 function _floatingzone(
     tci::TensorCI2{ValueType}, f,
     nl, nr;
-    tolerance::Float64=1e-8,
-    verbosity::Int=0,
+    #tolerance::Float64=1e-8,
+    #verbosity::Int=0,
     nsweeps=10,
-    normalizeerror::Bool=true,
+    #normalizeerror::Bool=true,
 ) where {ValueType}
     localdims = [length(s) for s in tci.localset]
 
@@ -714,12 +734,9 @@ function _floatingzone(
             err = reshape(abs.(exactdata .- prediction), length(tci.Iset[nl+1]), localdims[ipos+nl], length(tci.Jset[n-nr]))
 
             maxerror = maximum(err)
-            @show isweep, ipos, maxerror
             argmax_ = argmax(err)
-            pivot = vcat(tci.Iset[nl+1][argmax_[1]], zoneset[argmax_[2]], Jset[argmax_[3]])
+            pivot = vcat(tci.Iset[nl+1][argmax_[1]], zoneset[argmax_[2]], tci.Jset[n-nr][argmax_[3]])
 
-            #@show tci.localset[ipos]
-            #@show argmax_[2]
             idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
         end
 
