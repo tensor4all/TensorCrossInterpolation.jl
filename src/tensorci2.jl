@@ -470,7 +470,8 @@ function optimize!(
     verbosity::Int=0,
     loginterval::Int=10,
     normalizeerror::Bool=true,
-    ncheckhistory=3
+    ncheckhistory=3,
+    lengthfz=4
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -485,12 +486,12 @@ function optimize!(
     for iter in rank(tci)+1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
-        floatingzone!(
+        floatingzone(
             tci, f;
             tolerance = pivottolerance * errornormalization,
             verbosity=verbosity,
             normalizeerror=false,
-            lengthzone=1,
+            lengthzone=min(lengthfz, n),
         )
 
         flushpivoterror!(tci)
@@ -652,43 +653,80 @@ function insertglobalpivots!(
 end
 
 
-function floatingzone!(
+function floatingzone(
     tci::TensorCI2{ValueType}, f;
     tolerance::Float64=1e-8,
     verbosity::Int=0,
     normalizeerror::Bool=true,
     lengthzone=1,
 )::Nothing where {ValueType}
+    n = length(tci)
+    for nl in 0:(length(tci)-lengthzone)
+        nr = length(tci) - nl - lengthzone
+        maxeror, pivot = _floatingzone(tci, f, nl, nr)
+    end
+
+    nothing
+end
+
+
+function _floatingzone(
+    tci::TensorCI2{ValueType}, f,
+    nl, nr;
+    tolerance::Float64=1e-8,
+    verbosity::Int=0,
+    nsweeps=10,
+    normalizeerror::Bool=true,
+) where {ValueType}
     localdims = [length(s) for s in tci.localset]
 
     n = length(tci)
 
     ttcache = TTCache(tci.T)
 
-    for nl in 0:(length(tci)-lengthzone)
-        nr = length(tci) - nl - lengthzone
+    lengthzone = length(tci) - nl - nr
 
-        idxzone = [rand(1:d) for d in localdims[nl+1:nl+lengthzone]]
+    idxzone = [rand(1:d) for d in localdims[nl+1:nl+lengthzone]]
 
-        Jset = [vcat(idxzone, j) for j in tci.Jset[n-nr]]
-        exactdata = _batchevaluate(
-            ValueType,
-            f,
-            tci.localset,
-            tci.Iset[nl+1],
-            Jset
-        )
+    maxerror = 0.0
+    pivot::Union{Nothing,MultiIndex} = nothing
 
-        prediction = _batchevaluate(
-            ValueType,
-            ttcache,
-            tci.localset,
-            tci.Iset[nl+1],
-            Jset
-        )
+    for isweep in 1:nsweeps
+        prev_maxerror = maxerror
+        for ipos in 1:lengthzone
+            zoneset = [vcat(idxzone[1:ipos-1], it, idxzone[ipos+1:end]) for it in tci.localset[ipos+nl]]
+            Jset = [vcat(z, j) for z in zoneset, j in tci.Jset[n-nr]]
 
-        @show maximum(abs, exactdata .- prediction)
+            exactdata = _batchevaluate(
+                ValueType,
+                f,
+                tci.localset,
+                tci.Iset[nl+1],
+                vec(Jset)
+            )
+            prediction = _batchevaluate(
+                ValueType,
+                ttcache,
+                tci.localset,
+                tci.Iset[nl+1],
+                vec(Jset)
+            )
+            err = reshape(abs.(exactdata .- prediction), length(tci.Iset[nl+1]), localdims[ipos+nl], length(tci.Jset[n-nr]))
+
+            maxerror = maximum(err)
+            @show isweep, ipos, maxerror
+            argmax_ = argmax(err)
+            pivot = vcat(tci.Iset[nl+1][argmax_[1]], zoneset[argmax_[2]], Jset[argmax_[3]])
+
+            #@show tci.localset[ipos]
+            #@show argmax_[2]
+            idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
+        end
+
+        if maxerror == prev_maxerror
+            break
+        end
     end
 
-    return nothing
+    return maxerror, pivot
 end
