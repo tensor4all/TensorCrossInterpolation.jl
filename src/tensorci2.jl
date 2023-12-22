@@ -450,6 +450,7 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
+- `nglobalpivot::Int` can be set to `>= 0`. Default: `0`. For `> 0`, a very experimental global pivot search will be activated. Please do not use this option unless you understand the functionality deeply.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -470,8 +471,8 @@ function optimize!(
     verbosity::Int=0,
     loginterval::Int=10,
     normalizeerror::Bool=true,
-    ncheckhistory=3,
-    maxnumglobalpivots=10
+    ncheckhistory::Int=3,
+    nglobalpivot::Int=1
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -494,11 +495,8 @@ function optimize!(
 
         nglobalpivot = floatingzone!(
             tci, f, pivottolerance * errornormalization;
-            verbosity=verbosity, maxnumglobalpivots=maxnumglobalpivots
+            verbosity=verbosity, nglobalpivot=nglobalpivot
         )
-        #if verbosity > 0
-            #println("nglobalpivot: $(nglobalpivot)")
-        #end
 
         flushpivoterror!(tci)
         if verbosity > 1
@@ -664,12 +662,14 @@ function insertglobalpivots!(
     return nnewpivot
 end
 
-
+"""
+Seach & add global pivots beyond the given abstol
+"""
 function floatingzone!(
     tci::TensorCI2{ValueType}, f, abstol;
     verbosity::Int=0,
-    nsearch = 100,
-    maxnumglobalpivots=10
+    nsearch::Int = 100,
+    nglobalpivot::Int = 10
 )::Int where {ValueType}
     pivots = Dict{Float64,MultiIndex}()
     for _ in 1:nsearch
@@ -677,7 +677,7 @@ function floatingzone!(
         if error > abstol
             pivots[error] = pivot
         end
-        if length(pivots) == maxnumglobalpivots
+        if length(pivots) == nglobalpivot
             break
         end
     end
@@ -689,7 +689,7 @@ function floatingzone!(
     bonddim_prev = maximum(linkdims(tci))
     addglobalpivots!(
         tci, f, [p for (e,p) in pivots],
-        abstol=0.0, reltol=0.0
+        abstol=0.0, reltol=0.0 # Force add all the pivots
     )
     bonddim = maximum(linkdims(tci))
 
@@ -705,7 +705,9 @@ function _floatingzone(
     tci::TensorCI2{ValueType}, f,
     nl, nr, abstol;
     nsweeps=100
-) where {ValueType}
+)::Tuple{MultiIndex,Float64} where {ValueType}
+    nsweeps > 0 || error("nsweeps should be positive!")
+
     localdims = [length(s) for s in tci.localset]
 
     n = length(tci)
