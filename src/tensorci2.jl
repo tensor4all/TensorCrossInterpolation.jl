@@ -471,7 +471,7 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory=3,
-    lengthfz=4
+    lengthfz=5
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -491,7 +491,7 @@ function optimize!(
         if verbosity > 0
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
-        floatingzone!(
+        _, fz_err = floatingzone!(
             tci, f;
             verbosity=verbosity,
             lengthzone=min(lengthfz, n),
@@ -526,7 +526,7 @@ function optimize!(
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
         end
 
-        push!(errors, pivoterror(tci))
+        push!(errors, max(pivoterror(tci), fz_err))
         push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, loginterval) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue)")
@@ -664,10 +664,10 @@ end
 
 function floatingzone!(
     tci::TensorCI2{ValueType}, f;
-    nmaxglobalpivots = 10,
+    nmaxglobalpivots = 1,
     verbosity::Int=0,
     lengthzone=1,
-)::Int where {ValueType}
+)::Tuple{Int,Float64} where {ValueType}
     result = Dict{Float64,MultiIndex}()
     for nl in 0:(length(tci)-lengthzone)
         nr = length(tci) - nl - lengthzone
@@ -693,11 +693,11 @@ function floatingzone!(
 
     t2 = time_ns()
     if verbosity > 0
-        printl("Added $(length(result_sorted)) global pivots (max error $(result_sorted[1][1]), min error $(result_sorted[end][1]))) ")
-        println(": bonddim $(bonddim_prev) -> $(bonddim) with $((t2-t1)*1e-9) sec")
+        println("Added $(length(result_sorted)) global pivots (max error $(result_sorted[1][1]), min error $(result_sorted[end][1]))) " *
+        ": bonddim $(bonddim_prev) -> $(bonddim) with $((t2-t1)*1e-9) sec")
     end
 
-    return length(result_sorted)
+    return length(result_sorted), result_sorted[1][1]
 end
 
 
@@ -706,7 +706,7 @@ function _floatingzone(
     nl, nr;
     #tolerance::Float64=1e-8,
     #verbosity::Int=0,
-    nsweeps=1,
+    nsweeps=10,
     #normalizeerror::Bool=true,
 ) where {ValueType}
     localdims = [length(s) for s in tci.localset]
