@@ -405,6 +405,7 @@ end
 function convergencecriterion(
     ranks::AbstractVector{Int},
     errors::AbstractVector{Float64},
+    nglobalpivots::AbstractVector{Int},
     tolerance::Float64,
     maxbonddim::Int,
     ncheckhistory::Int,
@@ -413,8 +414,10 @@ function convergencecriterion(
         return false
     end
     lastranks = last(ranks, ncheckhistory)
+    lastngpivots = last(nglobalpivots, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
+        all(lastngpivots .== 0) &&
         minimum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
 end
@@ -450,7 +453,8 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `nglobalpivot::Int` can be set to `>= 0`. Default: `0`. For `> 0`, a very experimental global pivot search will be activated. Please do not use this option unless you understand the functionality deeply.
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `10`.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `100`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -472,11 +476,13 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
-    nglobalpivot::Int=1
+    maxnglobalpivot::Int=10,
+    nsearchglobalpivot::Int=0
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
+    nglobalpivots = Int[]
 
     tstart = time_ns()
 
@@ -490,13 +496,27 @@ function optimize!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
         if verbosity > 1
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting cnnonicalization")
+        end
+
+        #makecanonical!(
+            #tci, f,
+            #reltol=1e-14,
+            #abstol= pivottolerance * errornormalization,
+            #maxbonddim=maxbonddim
+        ##) 
+
+        if verbosity > 1
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
 
         nglobalpivot = floatingzone!(
             tci, f, pivottolerance * errornormalization;
-            verbosity=verbosity, nglobalpivot=nglobalpivot
+            verbosity=verbosity,
+            maxnglobalpivot=maxnglobalpivot,
+            nsearch=nsearchglobalpivot
         )
+        push!(nglobalpivots, nglobalpivot)
 
         flushpivoterror!(tci)
         if verbosity > 1
@@ -532,8 +552,8 @@ function optimize!(
         if verbosity > 0 && mod(iter, loginterval) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue), nglobalpivot=$(nglobalpivot)")
         end
-        if nglobalpivot == 0 && convergencecriterion(
-            ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
+        if convergencecriterion(
+            ranks, errors, nglobalpivots, tolerance * errornormalization, maxbonddim, ncheckhistory
         )
             break
         end
@@ -669,15 +689,18 @@ function floatingzone!(
     tci::TensorCI2{ValueType}, f, abstol;
     verbosity::Int=0,
     nsearch::Int = 100,
-    nglobalpivot::Int = 10
+    maxnglobalpivot::Int = 10
 )::Int where {ValueType}
+    if nsearch == 0 || maxnglobalpivot == 0
+        return 0
+    end
     pivots = Dict{Float64,MultiIndex}()
     for _ in 1:nsearch
         pivot, error = _floatingzone(tci, f, 0, 0, abstol)
         if error > abstol
             pivots[error] = pivot
         end
-        if length(pivots) == nglobalpivot
+        if length(pivots) == maxnglobalpivot
             break
         end
     end
@@ -694,7 +717,8 @@ function floatingzone!(
     bonddim = maximum(linkdims(tci))
 
     if verbosity > 1
-        println("Added $(length(pivots)) global pivots: bonddim $(bonddim_prev) -> $(bonddim)")
+        maxerr = maximum(keys(pivots))
+        println("Added $(length(pivots)) global pivots: bonddim $(bonddim_prev) -> $(bonddim), max error $(maxerr)")
     end
 
     return length(pivots)
