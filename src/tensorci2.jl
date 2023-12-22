@@ -488,7 +488,7 @@ function optimize!(
     for iter in rank(tci)+1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
-        if verbosity > 0
+        if verbosity > 1
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
 
@@ -496,12 +496,12 @@ function optimize!(
             tci, f, pivottolerance * errornormalization;
             verbosity=verbosity, maxnumglobalpivots=maxnumglobalpivots
         )
-        if verbosity > 0
-            println("nglobalpivot: $(nglobalpivot)")
-        end
+        #if verbosity > 0
+            #println("nglobalpivot: $(nglobalpivot)")
+        #end
 
         flushpivoterror!(tci)
-        if verbosity > 0
+        if verbosity > 1
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting two-site sweep")
         end
         if forwardsweep(sweepstrategy, iter) # forward sweep
@@ -525,14 +525,14 @@ function optimize!(
                 )
             end
         end
-        if verbosity > 0
+        if verbosity > 1
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
         end
 
         push!(errors, pivoterror(tci))
         push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, loginterval) == 0
-            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue)")
+            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue), nglobalpivot=$(nglobalpivot)")
         end
         if nglobalpivot == 0 && convergencecriterion(
             ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
