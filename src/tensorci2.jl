@@ -471,7 +471,7 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory=3,
-    lengthfz=5
+    lengthfz=4
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -491,11 +491,15 @@ function optimize!(
         if verbosity > 0
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
-        _, fz_err = floatingzone!(
-            tci, f;
-            verbosity=verbosity,
-            lengthzone=min(lengthfz, n),
-        )
+        fz_err = 0.0
+        for lz in min(lengthfz, n):2:n-1
+            _, fz_err_ = floatingzone!(
+                tci, f;
+                verbosity=verbosity,
+                lengthzone=lz
+            )
+            fz_err = max(fz_err, fz_err_)
+        end
 
         flushpivoterror!(tci)
         if verbosity > 0
@@ -706,7 +710,7 @@ function _floatingzone(
     nl, nr;
     #tolerance::Float64=1e-8,
     #verbosity::Int=0,
-    nsweeps=10,
+    nsweeps=1,
     #normalizeerror::Bool=true,
 ) where {ValueType}
     localdims = [length(s) for s in tci.localset]
