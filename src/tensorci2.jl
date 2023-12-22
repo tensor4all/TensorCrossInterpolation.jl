@@ -471,7 +471,7 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory=3,
-    lengthfz=4
+    maxnumglobalpivots=10
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -491,14 +491,13 @@ function optimize!(
         if verbosity > 0
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
-        fz_err = 0.0
-        for lz in min(lengthfz, n):2:n-1
-            _, fz_err_ = floatingzone!(
-                tci, f;
-                verbosity=verbosity,
-                lengthzone=lz
-            )
-            fz_err = max(fz_err, fz_err_)
+
+        nglobalpivot = floatingzone!(
+            tci, f, pivottolerance * errornormalization;
+            verbosity=verbosity, maxnumglobalpivots=maxnumglobalpivots
+        )
+        if verbosity > 0
+            println("nglobalpivot: $(nglobalpivot)")
         end
 
         flushpivoterror!(tci)
@@ -530,12 +529,12 @@ function optimize!(
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
         end
 
-        push!(errors, max(pivoterror(tci), fz_err))
+        push!(errors, pivoterror(tci))
         push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, loginterval) == 0
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue)")
         end
-        if convergencecriterion(
+        if nglobalpivot == 0 && convergencecriterion(
             ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
         )
             break
@@ -667,51 +666,45 @@ end
 
 
 function floatingzone!(
-    tci::TensorCI2{ValueType}, f;
-    nmaxglobalpivots = 1,
+    tci::TensorCI2{ValueType}, f, abstol;
     verbosity::Int=0,
-    lengthzone=1,
-)::Tuple{Int,Float64} where {ValueType}
-    result = Dict{Float64,MultiIndex}()
-    for nl in 0:(length(tci)-lengthzone)
-        nr = length(tci) - nl - lengthzone
-        maxerror, pivot = _floatingzone(tci, f, nl, nr)
-        if pivot !== nothing
-            result[maxerror] = pivot 
+    nsearch = 100,
+    maxnumglobalpivots=10
+)::Int where {ValueType}
+    pivots = Dict{Float64,MultiIndex}()
+    for _ in 1:nsearch
+        pivot, error = _floatingzone(tci, f, 0, 0, abstol)
+        if error > abstol
+            pivots[error] = pivot
+        end
+        if length(pivots) == maxnumglobalpivots
+            break
         end
     end
 
-    result_sorted = sort(collect(result); by=x->x[1], rev=true)
-    if length(result_sorted) > nmaxglobalpivots
-        result_sorted = result_sorted[1:nmaxglobalpivots]
+    if length(pivots) == 0
+        return 0
     end
-    
-    bonddim_prev = maximum(linkdims(tci))
-    t1 = time_ns()
 
+    bonddim_prev = maximum(linkdims(tci))
     addglobalpivots!(
-        tci, f, collect(map(x->x[2], result_sorted));
-        abstol=0.0, reltol=1e-15
+        tci, f, [p for (e,p) in pivots],
+        abstol=0.0, reltol=0.0
     )
     bonddim = maximum(linkdims(tci))
 
-    t2 = time_ns()
-    if verbosity > 0
-        println("Added $(length(result_sorted)) global pivots (max error $(result_sorted[1][1]), min error $(result_sorted[end][1]))) " *
-        ": bonddim $(bonddim_prev) -> $(bonddim) with $((t2-t1)*1e-9) sec")
+    if verbosity > 1
+        println("Added $(length(pivots)) global pivots: bonddim $(bonddim_prev) -> $(bonddim)")
     end
 
-    return length(result_sorted), result_sorted[1][1]
+    return length(pivots)
 end
 
 
 function _floatingzone(
     tci::TensorCI2{ValueType}, f,
-    nl, nr;
-    #tolerance::Float64=1e-8,
-    #verbosity::Int=0,
-    nsweeps=1,
-    #normalizeerror::Bool=true,
+    nl, nr, abstol;
+    nsweeps=100
 ) where {ValueType}
     localdims = [length(s) for s in tci.localset]
 
@@ -755,10 +748,12 @@ function _floatingzone(
             idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
         end
 
-        if maxerror == prev_maxerror
+        if maxerror == prev_maxerror || abstol < maxerror
             break
         end
     end
 
-    return maxerror, pivot
+    @assert pivot !== nothing
+
+    return pivot, maxerror
 end
