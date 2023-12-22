@@ -477,6 +477,8 @@ function optimize!(
     errors = Float64[]
     ranks = Int[]
 
+    tstart = time_ns()
+
     if maxbonddim >= typemax(Int) && tolerance <= 0
         throw(ArgumentError(
             "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"
@@ -486,6 +488,9 @@ function optimize!(
     for iter in rank(tci)+1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
+        if verbosity > 0
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
+        end
         floatingzone!(
             tci, f;
             verbosity=verbosity,
@@ -493,6 +498,9 @@ function optimize!(
         )
 
         flushpivoterror!(tci)
+        if verbosity > 0
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting two-site sweep")
+        end
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
                 updatepivots!(
@@ -513,6 +521,9 @@ function optimize!(
                     pivotsearch=pivotsearch
                 )
             end
+        end
+        if verbosity > 0
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
         end
 
         push!(errors, pivoterror(tci))
@@ -672,9 +683,7 @@ function floatingzone!(
     end
     
     bonddim_prev = maximum(linkdims(tci))
-    if verbosity > 0
-        print("Adding $(length(result_sorted)) global pivots... ")
-    end
+    t1 = time_ns()
 
     addglobalpivots!(
         tci, f, collect(map(x->x[2], result_sorted));
@@ -682,8 +691,10 @@ function floatingzone!(
     )
     bonddim = maximum(linkdims(tci))
 
+    t2 = time_ns()
     if verbosity > 0
-        println(": bonddim $(bonddim_prev) -> $(bonddim)")
+        printl("Added $(length(result_sorted)) global pivots (max error $(result_sorted[1][1]), min error $(result_sorted[end][1]))) ")
+        println(": bonddim $(bonddim_prev) -> $(bonddim) with $((t2-t1)*1e-9) sec")
     end
 
     return length(result_sorted)
@@ -695,7 +706,7 @@ function _floatingzone(
     nl, nr;
     #tolerance::Float64=1e-8,
     #verbosity::Int=0,
-    nsweeps=10,
+    nsweeps=1,
     #normalizeerror::Bool=true,
 ) where {ValueType}
     localdims = [length(s) for s in tci.localset]
