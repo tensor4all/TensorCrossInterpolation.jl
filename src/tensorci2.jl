@@ -477,7 +477,8 @@ function optimize!(
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
     maxnglobalpivot::Int=10,
-    nsearchglobalpivot::Int=0
+    nsearchglobalpivot::Int=0,
+    checkglobalpivots=false
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -496,27 +497,16 @@ function optimize!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
         if verbosity > 1
-            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting cnnonicalization")
-        end
-
-        #makecanonical!(
-            #tci, f,
-            #reltol=1e-14,
-            #abstol= pivottolerance * errornormalization,
-            #maxbonddim=maxbonddim
-        ##) 
-
-        if verbosity > 1
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
 
-        nglobalpivot = floatingzone!(
+        globalpivots = floatingzone!(
             tci, f, pivottolerance * errornormalization;
             verbosity=verbosity,
             maxnglobalpivot=maxnglobalpivot,
             nsearch=nsearchglobalpivot
         )
-        push!(nglobalpivots, nglobalpivot)
+        push!(nglobalpivots, length(globalpivots))
 
         flushpivoterror!(tci)
         if verbosity > 1
@@ -545,6 +535,13 @@ function optimize!(
         end
         if verbosity > 1
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
+        end
+
+        if checkglobalpivots && length(globalpivots) > 0
+            err = [abs(tci(p) - f(p)) for p in globalpivots]
+            if maximum(err) > pivottolerance * errornormalization
+                println("Warning, inserted global pivots removed by two-site sweep: ", maximum(err), " ", globalpivots[argmax(err)])
+            end
         end
 
         push!(errors, pivoterror(tci))
@@ -690,9 +687,9 @@ function floatingzone!(
     verbosity::Int=0,
     nsearch::Int = 100,
     maxnglobalpivot::Int = 10
-)::Int where {ValueType}
+)::Vector{MultiIndex} where {ValueType}
     if nsearch == 0 || maxnglobalpivot == 0
-        return 0
+        return MultiIndex[]
     end
     pivots = Dict{Float64,MultiIndex}()
     for _ in 1:nsearch
@@ -706,7 +703,7 @@ function floatingzone!(
     end
 
     if length(pivots) == 0
-        return 0
+        return MultiIndex[]
     end
 
     bonddim_prev = maximum(linkdims(tci))
@@ -721,7 +718,7 @@ function floatingzone!(
         println("Added $(length(pivots)) global pivots: bonddim $(bonddim_prev) -> $(bonddim), max error $(maxerr)")
     end
 
-    return length(pivots)
+    return [p for (e,p) in pivots]
 end
 
 
