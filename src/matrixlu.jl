@@ -135,12 +135,13 @@ function _optimizerrlu!(
         lu.error = lu.leftorthogonal ? abs(A[lu.npivot, lu.npivot]) : abs(A[lu.npivot, lu.npivot])
     end
 
+    npivot1 = lu.npivot
     if !exactlowrank && length(conservedcols) > 0
         for cols in conservedcols
             mask = fill(false, size(A, 2))
             mask[cols] .= true
             while lu.npivot < maxrank && _count_cols_selected(lu, cols) == 0
-                terminated_, _ = _addpivot!(lu, A, 1e-12, 0.0; colmask=x->mask[x])
+                terminated_, _ = _addpivot!(lu, A, 1e-14, 0.0; colmask=x->mask[x])
                 if terminated_
                    break
                 end
@@ -149,16 +150,25 @@ function _optimizerrlu!(
     end
     if !exactlowrank && length(conservedrows) > 0
         for rows in conservedrows
-            mask = fill(false, size(A, 2))
+            mask = fill(false, size(A, 1))
             mask[rows] .= true
             while lu.npivot < maxrank && _count_rows_selected(lu, rows) == 0
-                terminated_, _ = _addpivot!(lu, A, 1e-12, 0.0; rowmask=x->mask[x])
+                terminated_, _ = _addpivot!(lu, A, 1e-14, 0.0; rowmask=x->mask[x])
                 if terminated_
                    break
                 end
             end
         end
     end
+    #if any([_count_cols_selected(lu, cols) for cols in conservedcols] .== 0)
+        #@show [_count_cols_selected(lu, cols) for cols in conservedcols]
+    #end
+    #if any([_count_rows_selected(lu, rows) for rows in conservedrows] .== 0)
+        #@show [_count_rows_selected(lu, rows) for rows in conservedrows]
+    #end
+    #if lu.npivot I> npivot1 &&  length(conservedrows) > 0
+        #@show lu.npivot - npivot1
+    #end
 
     lu.L = tril(A[:, 1:lu.npivot])
     lu.U = triu(A[1:lu.npivot, :])
