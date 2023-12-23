@@ -1,3 +1,29 @@
+before_script:
+  - which git || (apt-get update -qq && apt-get install --no-install-recommends -qqqy git)
+  - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com/".insteadOf "git@gitlab.com:"
+  - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com/".insteadOf "https://gitlab.com/" --add
+  - |
+      julia -e '
+      using Pkg
+      Pkg.Registry.add(
+        RegistrySpec(url = "https://github.com/JuliaRegistries/General.git")
+      )
+      Pkg.Registry.add(
+        RegistrySpec(url = "https://gitlab.com/tensors4fields/tensors4fieldsregistry.git")
+      )'
+
+variables:
+  CI_JULIA_CACHE_DIR: ${CI_PROJECT_DIR}/julia_pkg
+  JULIA_DEPOT_PATH: ${CI_JULIA_CACHE_DIR}
+cache:
+  key:
+    files:
+      - Project.toml
+      - docs/Project.toml
+    prefix: ${CI_JOB_NAME}
+  paths:
+    - ${CI_JULIA_CACHE_DIR}
+
 .script:
   script:
     - |
@@ -16,26 +42,34 @@
         c, t = get_summary(process_folder())
         using Printf
         @printf "Test coverage %.2f%%\n" 100c / t'
-Julia 1.6:
+
+julia test:
+  image: julia:${JULIA_VERSION}
+  extends:
+    - .script
+    - .coverage
+  parallel:
+    matrix:
+      - JULIA_VERSION:
+        - "1.6"
+        - "1.7"
+        - "1.8"
+        - "1.9"
+.doctest:
+  script:
+    - |
+      julia --project=docs -e '
+        using Pkg
+        Pkg.develop(PackageSpec(path=pwd()))
+        Pkg.instantiate()
+        using Documenter: doctest
+        using TensorCrossInterpolation
+        doctest(TensorCrossInterpolation)
+        include("docs/make.jl")'
+doctest:
   image: julia:1.6
   extends:
-    - .script
-    - .coverage
-Julia 1.7:
-  image: julia:1.7
-  extends:
-    - .script
-    - .coverage
-Julia 1.8:
-  image: julia:1.8
-  extends:
-    - .script
-    - .coverage
-Julia 1.9:
-  image: julia:1.9
-  extends:
-    - .script
-    - .coverage
+    - .doctest
 pages:
   image: julia:1.9
   stage: deploy
