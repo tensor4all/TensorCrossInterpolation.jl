@@ -367,13 +367,22 @@ function updatepivots!(
             length(Icombined), length(Jcombined)
         )
         updatemaxsample!(tci, Pi)
-        MatrixLUCI(
+        mci = MatrixLUCI(
             Pi,
             reltol=reltol,
             abstol=abstol,
             maxrank=maxbonddim,
             leftorthogonal=leftorthogonal
         )
+        #==
+        if !keepnesting
+            mci
+        else
+            new_Jset_b = Set(Jcombined[colindices(luci)])
+            Jset_b_add = filer(x -> x ∈ new_Jset_b, (j[2:end] in tci.Jset[b-1]) )
+
+        end
+        ==#
     elseif pivotsearch === :rook
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
         J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
