@@ -102,6 +102,9 @@ end
 _count_cols_selected(lu, cols)::Int = sum([c ∈ lu.colpermutation[1:lu.npivot] for c ∈ cols])
 _count_rows_selected(lu, rows)::Int = sum([r ∈ lu.rowpermutation[1:lu.npivot] for r ∈ rows])
 
+"""
+We add at least one column in each entry of `conservedcols` if numerically stable. The same applies to `conservedrows`.
+"""
 function _optimizerrlu!(
     lu::rrLU{T},
     A::AbstractMatrix{T};
@@ -135,7 +138,6 @@ function _optimizerrlu!(
         lu.error = lu.leftorthogonal ? abs(A[lu.npivot, lu.npivot]) : abs(A[lu.npivot, lu.npivot])
     end
 
-    npivot1 = lu.npivot
     if !exactlowrank && length(conservedcols) > 0
         for cols in conservedcols
             mask = fill(false, size(A, 2))
@@ -160,15 +162,6 @@ function _optimizerrlu!(
             end
         end
     end
-    #if any([_count_cols_selected(lu, cols) for cols in conservedcols] .== 0)
-        #@show [_count_cols_selected(lu, cols) for cols in conservedcols]
-    #end
-    #if any([_count_rows_selected(lu, rows) for rows in conservedrows] .== 0)
-        #@show [_count_rows_selected(lu, rows) for rows in conservedrows]
-    #end
-    #if lu.npivot I> npivot1 &&  length(conservedrows) > 0
-        #@show lu.npivot - npivot1
-    #end
 
     lu.L = tril(A[:, 1:lu.npivot])
     lu.U = triu(A[1:lu.npivot, :])

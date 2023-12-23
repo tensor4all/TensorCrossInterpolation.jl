@@ -385,8 +385,7 @@ function updatepivots!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward,
-    pivotsearch::Symbol=:full,
-    tolmargin::Float64=0.1
+    pivotsearch::Symbol=:full
 ) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
@@ -413,8 +412,8 @@ function updatepivots!(
         updatemaxsample!(tci, Pi)
         MatrixLUCI(
             Pi,
-            reltol=tolmargin*reltol,
-            abstol=tolmargin*abstol,
+            reltol=reltol,
+            abstol=abstol,
             maxrank=maxbonddim,
             leftorthogonal=leftorthogonal,
             conservedcols=conservedcols,
@@ -524,7 +523,7 @@ function optimize!(
     ncheckhistory::Int=3,
     maxnglobalpivot::Int=10,
     nsearchglobalpivot::Int=0,
-    checkglobalpivots=true
+    tolmarginglobalsearch::Float64=10.0
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -547,19 +546,21 @@ function optimize!(
         end
 
         globalpivots = floatingzone!(
-            tci, f, pivottolerance * errornormalization;
+            tci, f, tolmarginglobalsearch * pivottolerance * errornormalization;
             verbosity=verbosity,
             maxnglobalpivot=maxnglobalpivot,
             nsearch=nsearchglobalpivot
         )
         push!(nglobalpivots, length(globalpivots))
 
+        #==
         if checkglobalpivots && length(globalpivots) > 0
             err = [abs(tci(p) - f(p)) for p in globalpivots]
             if maximum(err) > pivottolerance * errornormalization
                 println("Warning, inserted global pivots removed by single-site sweep: ", maximum(err), " ", globalpivots[argmax(err)])
             end
         end
+        ==#
 
         flushpivoterror!(tci)
         if verbosity > 1
@@ -590,12 +591,14 @@ function optimize!(
             println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
         end
 
+        #==
         if checkglobalpivots && length(globalpivots) > 0
             err = [abs(tci(p) - f(p)) for p in globalpivots]
             if maximum(err) > pivottolerance * errornormalization
                 println("Warning, inserted global pivots removed by two-site sweep: ", maximum(err), " ", globalpivots[argmax(err)], [abs(tci(p) - f(p)) for p in globalpivots])
             end
         end
+        ==#
 
         push!(errors, pivoterror(tci))
         push!(ranks, rank(tci))
