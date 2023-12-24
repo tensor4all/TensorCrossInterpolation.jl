@@ -385,7 +385,8 @@ function updatepivots!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward,
-    pivotsearch::Symbol=:full
+    pivotsearch::Symbol=:full,
+    respectfullnesting::Bool=false,
 ) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
@@ -396,14 +397,14 @@ function updatepivots!(
         )
 
         conservedcols =
-        if sweepdirection == :forward && b - 1 > 0 
+        if sweepdirection == :forward && b - 1 > 0  && respectfullnesting
             _conservedcols(b, tci.Jset, Jcombined)
         else
             Vector{Int}[]
         end
 
         conservedrows =
-        if sweepdirection == :backward && b + 2 <= length(tci.Iset)
+        if sweepdirection == :backward && b + 2 <= length(tci.Iset) && respectfullnesting
             _conservedrows(b, tci.Iset, Icombined)
         else
             Vector{Int}[]
@@ -523,7 +524,8 @@ function optimize!(
     ncheckhistory::Int=3,
     maxnglobalpivot::Int=10,
     nsearchglobalpivot::Int=0,
-    tolmarginglobalsearch::Float64=10.0
+    tolmarginglobalsearch::Float64=10.0,
+    respectfullnesting::Bool=false
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
@@ -573,7 +575,8 @@ function optimize!(
                     abstol=pivottolerance * errornormalization,
                     maxbonddim=maxbonddim,
                     sweepdirection=:forward,
-                    pivotsearch=pivotsearch
+                    pivotsearch=pivotsearch,
+                    respectfullnesting=respectfullnesting
                 )
             end
         else # backward sweep
@@ -583,7 +586,8 @@ function optimize!(
                     abstol=pivottolerance * errornormalization,
                     maxbonddim=maxbonddim,
                     sweepdirection=:backward,
-                    pivotsearch=pivotsearch
+                    pivotsearch=pivotsearch,
+                    respectfullnesting=respectfullnesting
                 )
             end
         end
