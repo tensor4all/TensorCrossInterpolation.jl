@@ -146,4 +146,44 @@ using LinearAlgebra
         @test TCI.pivoterrors(LU1) == [1.0, 1.0]
         @test TCI.lastpivoterror(LU1) == 0.0
     end
+
+    @testset "Implementation of rank-revealing LU with conservedcols/rows" for cr in [:row, :col]
+        A = diagm(
+            Float64[1e+0, 1e-1, 1e-2, 1e-3, 1e-4, 0.0, 0.0,   0.0, 1e-8]
+        )
+        N = size(A, 1)
+        conserved = [[N-1, N]]
+        if cr == :row
+            LU = TCI.rrlu(A; abstol=0, reltol = 1e-2, conservedrows=conserved)
+        else
+            LU = TCI.rrlu(A; abstol=0, reltol = 1e-2, conservedcols=conserved)
+        end
+        @test N ∈ TCI.colindices(LU)
+        @test N ∈ TCI.rowindices(LU)
+        @test !(N-1 ∈ TCI.colindices(LU))
+        @test !(N-1 ∈ TCI.rowindices(LU))
+        @test LU.error ≈ 1e-3
+        #@test false
+    end
+
+    @testset "Implementation of rank-revealing LU with conservedcols (2)" for cr in [:row, :col]
+        A = diagm(
+            Float64[1e+0, 1e-1, 1e-2, 1e-3, 1e-4, 0.0, 0.0, 1e-10, 1e-8, 1e-10, 1e-8]
+        )
+        N = size(A, 1)
+        conserved = [[N-1, N], [N-3, N-2]]
+        if cr == :row
+            LU = TCI.rrlu(A; abstol=0, reltol = 1e-2, conservedcols=conserved)
+        else
+            LU = TCI.rrlu(A; abstol=0, reltol = 1e-2, conservedcols=conserved)
+        end
+        @test N ∈ TCI.colindices(LU)
+        @test N ∈ TCI.rowindices(LU)
+        @test !(N-1 ∈ TCI.colindices(LU))
+        @test !(N-1 ∈ TCI.rowindices(LU))
+        @test N-2 ∈ TCI.colindices(LU)
+        @test N-2 ∈ TCI.rowindices(LU)
+        @test !(N-3 ∈ TCI.colindices(LU))
+        @test !(N-3 ∈ TCI.rowindices(LU))
+    end
 end

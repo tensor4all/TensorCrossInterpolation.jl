@@ -2,7 +2,9 @@ function submatrixargmax(
     f::Function, # real valued function
     A::AbstractMatrix{T},
     rows::Union{AbstractVector,UnitRange},
-    cols::Union{AbstractVector,UnitRange},
+    cols::Union{AbstractVector,UnitRange};
+    colmask::Function=x->true,
+    rowmask::Function=x->true
 ) where {T}
     m = typemin(f(first(A)))
     !isempty(rows) || throw(ArgumentError("rows must not be empty"))
@@ -12,7 +14,13 @@ function submatrixargmax(
     rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
     cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
     @inbounds for c in cols
+        if !colmask(c)
+            continue
+        end
         for r in rows
+            if !rowmask(r)
+                continue
+            end
             v = f(A[r, c])
             newm = v > m
             m = ifelse(newm, v, m)
@@ -31,7 +39,7 @@ function submatrixargmax(
     return submatrixargmax(identity, A, rows, cols)
 end
 
-function submatrixargmax(f::Function, A::AbstractMatrix, rows, cols)
+function submatrixargmax(f::Function, A::AbstractMatrix, rows, cols; colmask::Function=x->true, rowmask::Function=x->true)
     function convertarg(arg::Int, size::Int)
         return [arg]
     end
@@ -44,7 +52,7 @@ function submatrixargmax(f::Function, A::AbstractMatrix, rows, cols)
         return arg
     end
 
-    return submatrixargmax(f, A, convertarg(rows, size(A, 1)), convertarg(cols, size(A, 2)))
+    return submatrixargmax(f, A, convertarg(rows, size(A, 1)), convertarg(cols, size(A, 2)); colmask=colmask, rowmask=rowmask)
 end
 
 function submatrixargmax(A::AbstractMatrix, rows, cols)
@@ -52,8 +60,8 @@ function submatrixargmax(A::AbstractMatrix, rows, cols)
 end
 
 
-function submatrixargmax(f::Function, A::AbstractMatrix, startindex::Int)
-    return submatrixargmax(f, A, startindex:size(A, 1), startindex:size(A, 2))
+function submatrixargmax(f::Function, A::AbstractMatrix, startindex::Int; colmask::Function=x->true, rowmask::Function=x->true)
+    return submatrixargmax(f, A, startindex:size(A, 1), startindex:size(A, 2); colmask=colmask, rowmask=rowmask)
 end
 
 function submatrixargmax(A::AbstractMatrix, startindex::Int)
@@ -78,27 +86,83 @@ function rrLU{T}(A::AbstractMatrix{T}; leftorthogonal::Bool=true) where {T}
     rrLU{T}(size(A)...; leftorthogonal=leftorthogonal)
 end
 
+function _addpivot!(lu, A, reltol, abstol; colmask::Function=x->true, rowmask::Function=x->true)::Tuple{Bool,Bool} # (break, exactlowrank)
+    k = lu.npivot + 1
+    newpivot = submatrixargmax(abs2, A, k; colmask=colmask, rowmask=rowmask)
+    if A[newpivot...] == 0
+        return (true, true)
+    end
+    addpivot!(lu, A, newpivot)
+    if abs(A[k, k]) < reltol * abs(A[1]) || abs(A[k, k]) < abstol
+        return (true, false)
+    end
+    return (false, false)
+end
+
+_count_cols_selected(lu, cols)::Int = sum([c ∈ lu.colpermutation[1:lu.npivot] for c ∈ cols])
+_count_rows_selected(lu, rows)::Int = sum([r ∈ lu.rowpermutation[1:lu.npivot] for r ∈ rows])
+
+"""
+We add at least one column in each entry of `conservedcols` if numerically stable. The same applies to `conservedrows`.
+"""
 function _optimizerrlu!(
     lu::rrLU{T},
     A::AbstractMatrix{T};
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
-    abstol::Number=0.0
+    abstol::Number=0.0,
+    conservedcols::Vector{Vector{Int}} = Vector{Int}[],
+    conservedrows::Vector{Vector{Int}} = Vector{Int}[]
 ) where {T}
+    if length(conservedcols) > 0
+        allunique(vcat(conservedcols...)) || error("Duplicate in conservedcols")
+    end
+    if length(conservedrows) > 0
+        allunique(vcat(conservedrows...)) || error("Duplicate in conservedrows")
+    end
+
     maxrank = min(maxrank, size(A)...)
 
-    earlytermination = false
-    for k in lu.npivot+1:maxrank
-        newpivot = submatrixargmax(abs2, A, k)
-        if A[newpivot...] == zero(T)
-            earlytermination = true
-            break
-        end
-        addpivot!(lu, A, newpivot)
-        if abs(A[k, k]) < reltol * abs(A[1]) || abs(A[k, k]) < abstol
+    exactlowrank = false
+    while lu.npivot < maxrank
+        terminated, exactlowrank = _addpivot!(lu, A, reltol, abstol)
+        if terminated
             break
         end
     end
+
+    # Error estimate must be done additional pivots are forcely added
+    if exactlowrank || lu.npivot == min(size(lu)...)
+        lu.error = zero(T)
+    else
+        lu.error = lu.leftorthogonal ? abs(A[lu.npivot, lu.npivot]) : abs(A[lu.npivot, lu.npivot])
+    end
+
+    if !exactlowrank && length(conservedcols) > 0
+        for cols in conservedcols
+            mask = fill(false, size(A, 2))
+            mask[cols] .= true
+            while lu.npivot < maxrank && _count_cols_selected(lu, cols) == 0
+                terminated_, _ = _addpivot!(lu, A, 1e-14, 0.0; colmask=x->mask[x])
+                if terminated_
+                   break
+                end
+            end
+        end
+    end
+    if !exactlowrank && length(conservedrows) > 0
+        for rows in conservedrows
+            mask = fill(false, size(A, 1))
+            mask[rows] .= true
+            while lu.npivot < maxrank && _count_rows_selected(lu, rows) == 0
+                terminated_, _ = _addpivot!(lu, A, 1e-14, 0.0; rowmask=x->mask[x])
+                if terminated_
+                   break
+                end
+            end
+        end
+    end
+
     lu.L = tril(A[:, 1:lu.npivot])
     lu.U = triu(A[1:lu.npivot, :])
     if any(isnan.(lu.L))
@@ -111,12 +175,6 @@ function _optimizerrlu!(
         lu.L[diagind(lu.L)] .= one(T)
     else
         lu.U[diagind(lu.U)] .= one(T)
-    end
-
-    if earlytermination || lu.npivot == min(size(lu)...)
-        lu.error = zero(T)
-    else
-        lu.error = lu.leftorthogonal ? abs(lu.U[lu.npivot, lu.npivot]) : abs(lu.L[lu.npivot, lu.npivot])
     end
 
     nothing
@@ -138,10 +196,12 @@ function rrlu!(
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0,
-    leftorthogonal::Bool=true
+    leftorthogonal::Bool=true,
+    conservedcols::Vector{Vector{Int}} = Vector{Int}[],
+    conservedrows::Vector{Vector{Int}} = Vector{Int}[],
 )::rrLU{T} where {T}
     lu = rrLU{T}(A, leftorthogonal=leftorthogonal)
-    _optimizerrlu!(lu, A; maxrank, reltol, abstol)
+    _optimizerrlu!(lu, A; maxrank=maxrank, reltol=reltol, abstol=abstol, conservedcols=conservedcols, conservedrows=conservedrows)
     return lu
 end
 
@@ -161,9 +221,11 @@ function rrlu(
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0,
-    leftorthogonal::Bool=true
+    leftorthogonal::Bool=true,
+    conservedcols::Vector{Vector{Int}} = Vector{Int}[],
+    conservedrows::Vector{Vector{Int}} = Vector{Int}[],
 )::rrLU{T} where {T}
-    return rrlu!(copy(A); maxrank, reltol, abstol, leftorthogonal)
+    return rrlu!(copy(A); maxrank, reltol, abstol, leftorthogonal, conservedcols, conservedrows)
 end
 
 function arrlu(
