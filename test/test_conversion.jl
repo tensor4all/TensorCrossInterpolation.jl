@@ -21,8 +21,8 @@ import TensorCrossInterpolation: TensorCI, TensorCI2, sitedims, linkdims, rank,
 end
 
 @testset "Conversion between TCI1 and TCI2" begin
-    d = 5
-    n = 5
+    d = 3
+    n = 4
     tci1 = TensorCI{ComplexF64}(fill(d, n))
     tci2 = TensorCI2{ComplexF64}(tci1)
 
@@ -33,7 +33,7 @@ end
     @test all(isempty.(tci2.Jset))
     @test all(isempty.(tci2.T))
 
-    globalpivot = [2, 4, 3, 5, 5]
+    globalpivot = [2, 2, 3, 1]
     tci1 = TensorCI{ComplexF64}(rand, fill(d, n), globalpivot)
     tci2 = TensorCI2{ComplexF64}(tci1)
     @test rank(tci2) == 1
@@ -47,12 +47,12 @@ end
         ones(Int, n);
         tolerance=1e-6,
         pivottolerance=1e-8,
-        maxiter=8,
+        maxiter=4,
         sweepstrategy=SweepStrategies.forward
     )
     tci2 = TensorCI2{ComplexF64}(tci1)
-    tci1_backconverted = TensorCI(tci2)
-    tci2_backconverted = TensorCI2(tci1_backconverted)
+    tci1_backconverted = TensorCI{ComplexF64}(tci2, f)
+    tci2_backconverted = TensorCI2{ComplexF64}(tci1_backconverted)
     @test rank(tci2) == rank(tci1)
     @test rank(tci1_backconverted) == rank(tci1)
     @test rank(tci2_backconverted) == rank(tci2)

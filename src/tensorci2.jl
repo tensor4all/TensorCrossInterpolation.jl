@@ -37,15 +37,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             0.0                                     # maxsample
         )
     end
-
-    function TensorCI2{ValueType}(tci1::TensorCI{ValueType}) where {ValueType}
-        return new{ValueType}(
-            [i.fromint for i in tci1.Iset], [j.fromint for j in tci1.Jset], tci1.localset,
-            TtimesPinv.(tci1, 1:length(tci1)),
-            Float64[], tci1.pivoterrors, tci1.pivoterrors,
-            tci1.maxsamplevalue
-        )
-    end
 end
 
 function TensorCI2{ValueType}(
