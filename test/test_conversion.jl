@@ -64,8 +64,8 @@ end
         @test tci1(v) ≈ tci1_backconverted(v)
     end
 
-    print(optimize!(tci2, f; tolerance=1e-12))
-    @test last(tci2.pivoterrors) <= 1e-12
+    optimize!(tci2, f; tolerance=1e-12)
+    @test pivoterror(tci2) <= 1e-12
     @test rank(tci2) > rank(tci1)
     for v in Iterators.product([1:d for p in 1:n]...)
         @test tci2(v) ≈ f(v)
