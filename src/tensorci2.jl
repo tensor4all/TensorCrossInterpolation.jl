@@ -197,25 +197,22 @@ function _batchevaluate(
     ::Type{ValueType},
     f,
     localset::Vector{Vector{LocalIndex}},
-    Iset::Vector{Vector{MultiIndex}},
-    Jset::Vector{Vector{MultiIndex}},
-    ipos, jpos
+    Iset::Vector{MultiIndex},
+    Jset::Vector{MultiIndex}
 ) where {ValueType}
-    Iset_ = Iset[ipos]
-    Jset_ = Jset[jpos]
+    if length(Iset) * length(Jset) == 0
+        return ValueType[]
+    end
+
     N = length(localset)
-    nl = ipos - 1
-    nr = N - jpos
+    nl = length(first(Iset))
+    nr = length(first(Jset))
     ncent = N - nl - nr
-    expected_size = (length(Iset_), length.(localset[nl+1:nl+ncent])..., length(Jset_))
+    expected_size = (length(Iset), length.(localset[nl+1:nl+ncent])..., length(Jset))
     result = reshape(
-        _batchevaluate_dispatch(ValueType, f, localset, Iset[ipos], Jset[jpos]),
+        _batchevaluate_dispatch(ValueType, f, localset, Iset, Jset),
         expected_size...
     )
-    size(result) == expected_size ||
-        throw(DimensionMismatch(
-            "Result has wrong size $(size(result)) != expected $(expected_size)"
-        ))
     return result
 end
 
@@ -269,7 +266,7 @@ function sweep1site!(
         Is = forwardsweep ? kronecker(tci.Iset[b], tci.localset[b]) : tci.Iset[b]
         Js = forwardsweep ? tci.Jset[b] : kronecker(tci.localset[b], tci.Jset[b])
         Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b),
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset[b], tci.Jset[b]),
             length(Is), length(Js))
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
@@ -302,9 +299,7 @@ function sweep1site!(
             (length(tci.localset[begin]), length(tci.Jset[begin]))
         end
         localtensor = reshape(_batchevaluate(
-                ValueType, f, tci.localset, tci.Iset, tci.Jset,
-                lastupdateindex, lastupdateindex
-            ), shape)
+            ValueType, f, tci.localset, tci.Iset[lastupdateindex], tci.Jset[lastupdateindex]), shape)
         setT!(tci, lastupdateindex, localtensor)
     end
     nothing
@@ -351,6 +346,34 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
+function _conservedcols(b, Jset, Jcombined)
+    Jset_b_conserved = Dict{MultiIndex,Int}()
+    for (gid, j) in enumerate(unique((j[2:end] for j in Jset[b-1])))
+        Jset_b_conserved[j] = gid
+    end
+    conservedcols = [Int[] for _ in Jset_b_conserved]
+    for (col, jpivot) in enumerate(Jcombined)
+        if jpivot ∈ keys(Jset_b_conserved)
+            push!(conservedcols[Jset_b_conserved[jpivot]], col)
+        end
+    end
+    filter(x -> length(x) > 0, conservedcols)
+end
+
+function _conservedrows(b, Iset, Jcombined)
+    Iset_b_conserved = Dict{MultiIndex,Int}()
+    for (gid, i) in enumerate(unique((i[1:end-1] for i in Iset[b+2])))
+        Iset_b_conserved[i] = gid
+    end
+    conservedrows = [Int[] for _ in Iset_b_conserved]
+    for (row, ipivot) in enumerate(Jcombined)
+        if ipivot ∈ keys(Iset_b_conserved)
+            push!(conservedrows[Iset_b_conserved[ipivot]], row)
+        end
+    end
+    filter(x -> length(x) > 0, conservedrows)
+end
+
 
 function updatepivots!(
     tci::TensorCI2{ValueType},
@@ -361,22 +384,40 @@ function updatepivots!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward,
-    pivotsearch::Symbol=:full
+    pivotsearch::Symbol=:full,
+    respectfullnesting::Bool=false,
 ) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localset[b])
     Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
     luci = if pivotsearch === :full
         Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset, tci.Jset, b, b + 1),
+            _batchevaluate(ValueType, f, tci.localset, tci.Iset[b], tci.Jset[b+1]),
             length(Icombined), length(Jcombined)
         )
+
+        conservedcols =
+        if sweepdirection == :forward && b - 1 > 0  && respectfullnesting
+            _conservedcols(b, tci.Jset, Jcombined)
+        else
+            Vector{Int}[]
+        end
+
+        conservedrows =
+        if sweepdirection == :backward && b + 2 <= length(tci.Iset) && respectfullnesting
+            _conservedrows(b, tci.Iset, Icombined)
+        else
+            Vector{Int}[]
+        end
+
         updatemaxsample!(tci, Pi)
         MatrixLUCI(
             Pi,
             reltol=reltol,
             abstol=abstol,
             maxrank=maxbonddim,
-            leftorthogonal=leftorthogonal
+            leftorthogonal=leftorthogonal,
+            conservedcols=conservedcols,
+            conservedrows=conservedrows
         )
     elseif pivotsearch === :rook
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
@@ -409,6 +450,7 @@ end
 function convergencecriterion(
     ranks::AbstractVector{Int},
     errors::AbstractVector{Float64},
+    nglobalpivots::AbstractVector{Int},
     tolerance::Float64,
     maxbonddim::Int,
     ncheckhistory::Int,
@@ -417,8 +459,10 @@ function convergencecriterion(
         return false
     end
     lastranks = last(ranks, ncheckhistory)
+    lastngpivots = last(nglobalpivots, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
+        all(lastngpivots .== 0) &&
         minimum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
 end
@@ -454,6 +498,8 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `10`.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `100`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -474,11 +520,18 @@ function optimize!(
     verbosity::Int=0,
     loginterval::Int=10,
     normalizeerror::Bool=true,
-    ncheckhistory=3
+    ncheckhistory::Int=3,
+    maxnglobalpivot::Int=10,
+    nsearchglobalpivot::Int=0,
+    tolmarginglobalsearch::Float64=10.0,
+    respectfullnesting::Bool=false
 ) where {ValueType}
     n = length(tci)
     errors = Float64[]
     ranks = Int[]
+    nglobalpivots = Int[]
+
+    tstart = time_ns()
 
     if maxbonddim >= typemax(Int) && tolerance <= 0
         throw(ArgumentError(
@@ -488,7 +541,32 @@ function optimize!(
 
     for iter in rank(tci)+1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+
+        if verbosity > 1
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
+        end
+
+        globalpivots = floatingzone!(
+            tci, f, tolmarginglobalsearch * pivottolerance * errornormalization;
+            verbosity=verbosity,
+            maxnglobalpivot=maxnglobalpivot,
+            nsearch=nsearchglobalpivot
+        )
+        push!(nglobalpivots, length(globalpivots))
+
+        #==
+        if checkglobalpivots && length(globalpivots) > 0
+            err = [abs(tci(p) - f(p)) for p in globalpivots]
+            if maximum(err) > pivottolerance * errornormalization
+                println("Warning, inserted global pivots removed by single-site sweep: ", maximum(err), " ", globalpivots[argmax(err)])
+            end
+        end
+        ==#
+
         flushpivoterror!(tci)
+        if verbosity > 1
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting two-site sweep")
+        end
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
                 updatepivots!(
@@ -496,7 +574,8 @@ function optimize!(
                     abstol=pivottolerance * errornormalization,
                     maxbonddim=maxbonddim,
                     sweepdirection=:forward,
-                    pivotsearch=pivotsearch
+                    pivotsearch=pivotsearch,
+                    respectfullnesting=respectfullnesting
                 )
             end
         else # backward sweep
@@ -506,18 +585,31 @@ function optimize!(
                     abstol=pivottolerance * errornormalization,
                     maxbonddim=maxbonddim,
                     sweepdirection=:backward,
-                    pivotsearch=pivotsearch
+                    pivotsearch=pivotsearch,
+                    respectfullnesting=respectfullnesting
                 )
             end
         end
+        if verbosity > 1
+            println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
+        end
+
+        #==
+        if checkglobalpivots && length(globalpivots) > 0
+            err = [abs(tci(p) - f(p)) for p in globalpivots]
+            if maximum(err) > pivottolerance * errornormalization
+                println("Warning, inserted global pivots removed by two-site sweep: ", maximum(err), " ", globalpivots[argmax(err)], [abs(tci(p) - f(p)) for p in globalpivots])
+            end
+        end
+        ==#
 
         push!(errors, pivoterror(tci))
         push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, loginterval) == 0
-            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue)")
+            println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue), nglobalpivot=$(length(globalpivots))")
         end
         if convergencecriterion(
-            ranks, errors, tolerance * errornormalization, maxbonddim, ncheckhistory
+            ranks, errors, nglobalpivots, tolerance * errornormalization, maxbonddim, ncheckhistory
         )
             break
         end
@@ -644,4 +736,106 @@ function insertglobalpivots!(
     end
 
     return nnewpivot
+end
+
+"""
+Seach & add global pivots beyond the given abstol
+"""
+function floatingzone!(
+    tci::TensorCI2{ValueType}, f, abstol;
+    verbosity::Int=0,
+    nsearch::Int = 100,
+    maxnglobalpivot::Int = 10
+)::Vector{MultiIndex} where {ValueType}
+    if nsearch == 0 || maxnglobalpivot == 0
+        return MultiIndex[]
+    end
+    pivots = Dict{Float64,MultiIndex}()
+    for _ in 1:nsearch
+        pivot, error = _floatingzone(tci, f, 0, 0, abstol)
+        if error > abstol
+            pivots[error] = pivot
+        end
+        if length(pivots) == maxnglobalpivot
+            break
+        end
+    end
+
+    if length(pivots) == 0
+        return MultiIndex[]
+    end
+
+    bonddim_prev = maximum(linkdims(tci))
+    addglobalpivots!(
+        tci, f, [p for (e,p) in pivots],
+        abstol=0.0, reltol=0.0 # Force add all the pivots
+    )
+    bonddim = maximum(linkdims(tci))
+
+    if verbosity > 1
+        maxerr = maximum(keys(pivots))
+        println("Added $(length(pivots)) global pivots: bonddim $(bonddim_prev) -> $(bonddim), max error $(maxerr)")
+    end
+
+    return [p for (e,p) in pivots]
+end
+
+
+function _floatingzone(
+    tci::TensorCI2{ValueType}, f,
+    nl, nr, abstol;
+    nsweeps=100
+)::Tuple{MultiIndex,Float64} where {ValueType}
+    nsweeps > 0 || error("nsweeps should be positive!")
+
+    localdims = [length(s) for s in tci.localset]
+
+    n = length(tci)
+
+    ttcache = TTCache(tci.T)
+
+    lengthzone = length(tci) - nl - nr
+
+    idxzone = [rand(1:d) for d in localdims[nl+1:nl+lengthzone]]
+
+    maxerror = 0.0
+    pivot::Union{Nothing,MultiIndex} = nothing
+
+    for isweep in 1:nsweeps
+        prev_maxerror = maxerror
+        for ipos in 1:lengthzone
+            zoneset = [vcat(idxzone[1:ipos-1], it, idxzone[ipos+1:end]) for it in tci.localset[ipos+nl]]
+            Jset = [vcat(z, j) for z in zoneset, j in tci.Jset[n-nr]]
+
+            exactdata = _batchevaluate(
+                ValueType,
+                f,
+                tci.localset,
+                tci.Iset[nl+1],
+                vec(Jset)
+            )
+            prediction = _batchevaluate(
+                ValueType,
+                ttcache,
+                tci.localset,
+                tci.Iset[nl+1],
+                vec(Jset)
+            )
+            err = reshape(abs.(exactdata .- prediction), length(tci.Iset[nl+1]), localdims[ipos+nl], length(tci.Jset[n-nr]))
+
+            maxerror = maximum(err)
+            argmax_ = argmax(err)
+            pivot = vcat(tci.Iset[nl+1][argmax_[1]], zoneset[argmax_[2]], tci.Jset[n-nr][argmax_[3]])
+
+            idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
+        end
+
+        if maxerror == prev_maxerror || maxerror > 10 * abstol # early stop
+            break
+        end
+    end
+
+    @assert pivot !== nothing
+
+    return pivot, maxerror
 end

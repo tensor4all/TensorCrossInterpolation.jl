@@ -19,10 +19,10 @@ import TensorCrossInterpolation as TCI
         f(x) = 1.0
         nint = 4
         N = 64*nint
-        cf = TCI.CachedFunction{Float64}(f, fill(2, N))
+        cf = TCI.CachedFunction{Float64,BigInt}(f, fill(2, N))
         x = ones(Int, N)
         @test cf(x) == 1.0
-        @test TCI._key(cf, x).size == nint
+        @test TCI._key(cf, x) == 0
     end
 
     function tobins(i, nbit)
