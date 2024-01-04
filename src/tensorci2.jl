@@ -49,7 +49,6 @@ function TensorCI2{ValueType}(
     return tci
 end
 
-
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
 
@@ -339,9 +338,9 @@ function _submatrix_batcheval(obj::SubMatrix{T}, f::BatchEvaluator{T}, irows::Ve
     Jset = [obj.cols[j] for j in icols]
     return batchevaluate(f, Iset, Jset, 0)
 end
- 
 
-function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where T
+
+function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
     res = _submatrix_batcheval(obj, obj.f, irows, icols)
     obj.maxsamplevalue = max(obj.maxsamplevalue, maximum(abs, res))
     return res
@@ -727,9 +726,9 @@ function insertglobalpivots!(
                 tci, f, [newpivot_];
                 abstol=tolerance * errornormalization,
                 reltol=0.0
-                )
+            )
             if verbosity > 0
-                nan =  [any(isnan.(t)) for t in tci.T]
+                nan = [any(isnan.(t)) for t in tci.T]
                 any(nan) && error("tt is $nan")
                 println("New linkdims is $(maximum(linkdims(tci))). New error is $(err(newpivot_)).")
             end

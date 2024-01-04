@@ -28,5 +28,6 @@ include("cachedtensortrain.jl")
 include("tensorci.jl")
 include("tensorci2.jl")
 include("tensortrain.jl")
+include("conversion.jl")
 
 end
