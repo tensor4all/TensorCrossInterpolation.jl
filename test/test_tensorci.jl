@@ -13,7 +13,6 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         for i in 1:n
             @test isempty(tci.Iset[i])
             @test isempty(tci.Jset[i])
-            @test tci.localset[i] == [1, 2]
             @test tci.T[i] == zeros(0, 2, 0)
             @test tci.P[i] == zeros(0, 0)
             @test isempty(tci.PiIset[i])
@@ -30,7 +29,6 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         for i in 1:n
             @test tci.Iset[i].fromint == [fill(1, i - 1)]
             @test tci.Jset[i].fromint == [fill(1, n - i)]
-            @test tci.localset[i] == [1, 2]
             @test tci.T[i] == ones(1, 2, 1)
             @test tci.P[i] == ones(1, 1)
             @test tci.PiIset[i].fromint == [[fill(1, i - 1)..., k] for k in 1:2]
@@ -49,7 +47,6 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
         for i in 1:n
             @test length(tci.Iset[i]) == 1
             @test length(tci.Jset[i]) == 1
-            @test tci.localset[i] == [1, 2]
             @test tci.T[i] == ones(1, 2, 1)
             @test tci.P[i] == ones(1, 1)
             @test length(tci.PiIset[i]) == 2

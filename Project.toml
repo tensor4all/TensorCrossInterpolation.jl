@@ -4,13 +4,8 @@ authors = ["Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de>, Hiroshi Shinaoka <
 version = "0.6.0"
 
 [deps]
+EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-
-#[weakdeps]
-#ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
-#
-#[extensions]
-#TCIITensorConversion = ["ITensors"]
 
 [compat]
 julia = "1.6"

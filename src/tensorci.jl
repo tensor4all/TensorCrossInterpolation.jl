@@ -6,7 +6,7 @@ Type that represents tensor cross interpolations created using the TCI1 algorith
 mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
     Jset::Vector{IndexSet{MultiIndex}}
-    localset::Vector{Vector{LocalIndex}}
+    localdims::Vector{Int}
 
     """
     The 3-leg ``T`` tensors from the TCI paper. First and last leg are links to adjacent ``P^{-1}`` matrices, and the second leg is the local index. The outermost vector iterates over the site index ``p``, such that `T[p]` is the ``p``-th site tensor.
@@ -37,13 +37,13 @@ mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     maxsamplevalue::Float64
 
     function TensorCI{ValueType}(
-        localdims::Union{Vector{Int},NTuple{N,Int}}
-    ) where {ValueType,N}
+        localdims::AbstractVector{Int}
+    ) where {ValueType}
         n = length(localdims)
         new{ValueType}(
             [IndexSet{MultiIndex}() for _ in 1:n],  # Iset
             [IndexSet{MultiIndex}() for _ in 1:n],  # Jset
-            [collect(1:d) for d in localdims],      # localset
+            collect(localdims),                     # localdims
             [zeros(0, d, 0) for d in localdims],    # T
             [zeros(0, 0) for _ in 1:n],             # P
             [MatrixACA(ValueType, 0, 0) for _ in 1:n],  # aca
@@ -54,6 +54,12 @@ mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
             0.0                                     # maxsample
         )
     end
+end
+
+function TensorCI{ValueType}(
+    localdims::NTuple{N,Int},
+) where {ValueType,N}
+    return TensorCI{ValueType}(collect(localdims))
 end
 
 function TensorCI{ValueType}(
@@ -144,13 +150,13 @@ end
 
 function getPiIset(tci::TensorCI{V}, p::Int) where {V}
     return IndexSet([
-        [is..., ups] for is in tci.Iset[p].fromint, ups in tci.localset[p]
+        [is..., ups] for is in tci.Iset[p].fromint, ups in 1:tci.localdims[p]
     ][:])
 end
 
 function getPiJset(tci::TensorCI{V}, p::Int) where {V}
     return IndexSet([
-        [up1s, js...] for up1s in tci.localset[p], js in tci.Jset[p].fromint
+        [up1s, js...] for up1s in 1:tci.localdims[p], js in tci.Jset[p].fromint
     ][:])
 end
 
@@ -186,7 +192,7 @@ function updateT!(
     tci.T[p] = reshape(
         new_T,
         length(tci.Iset[p]),
-        length(tci.localset[p]),
+        tci.localdims[p],
         length(tci.Jset[p]))
 end
 
