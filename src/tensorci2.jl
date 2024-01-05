@@ -7,7 +7,7 @@ Type that represents tensor cross interpolations created using the TCI2 algorith
 mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{Vector{MultiIndex}}
     Jset::Vector{Vector{MultiIndex}}
-    localset::Vector{Vector{LocalIndex}}
+    localdims::Vector{Int}
 
     T::Vector{Array{ValueType,3}}
 
@@ -29,7 +29,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
         new{ValueType}(
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
-            [collect(1:d) for d in localdims],      # localset
+            localdims,                              # localdims
             [zeros(0, d, 0) for d in localdims],    # T
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors, forward sweep
@@ -153,82 +153,43 @@ function addglobalpivots!(
 end
 
 
-# Default slow implementation
-function _batchevaluate_dispatch(
+function filltensor(
     ::Type{ValueType},
     f,
-    localset::Vector{Vector{LocalIndex}},
+    localdims::Vector{Int},
     Iset::Vector{MultiIndex},
     Jset::Vector{MultiIndex},
-)::Array{ValueType} where {ValueType}
+    ::Val{M}
+)::Array{ValueType,M+2} where {ValueType,M}
     if length(Iset) * length(Jset) == 0
-        return ValueType[]
+        return Array{ValueType,M}(undef, ntuple(i->0, M)...)
     end
-    N = length(localset)
+
+    N = length(localdims)
     nl = length(first(Iset))
     nr = length(first(Jset))
     ncent = N - nl - nr
-    return ValueType[
-        f(collect(Iterators.flatten(i)))
-        for i in Iterators.product(Iset, localset[nl+1:nl+ncent]..., Jset)
-    ]
-end
-
-
-function _batchevaluate_dispatch(
-    ::Type{ValueType},
-    f::BatchEvaluator{ValueType},
-    localset::Vector{Vector{LocalIndex}},
-    Iset::Vector{MultiIndex},
-    Jset::Vector{MultiIndex},
-)::Array{ValueType} where {ValueType}
-    if length(Iset) * length(Jset) == 0
-        return ValueType[]
-    end
-    N = length(localset)
-    nl = length(first(Iset))
-    nr = length(first(Jset))
-    ncent = N - nl - nr
-    return f(Iset, Jset, Val(ncent))
-end
-
-
-function _batchevaluate(
-    ::Type{ValueType},
-    f,
-    localset::Vector{Vector{LocalIndex}},
-    Iset::Vector{MultiIndex},
-    Jset::Vector{MultiIndex}
-) where {ValueType}
-    if length(Iset) * length(Jset) == 0
-        return ValueType[]
-    end
-
-    N = length(localset)
-    nl = length(first(Iset))
-    nr = length(first(Jset))
-    ncent = N - nl - nr
-    expected_size = (length(Iset), length.(localset[nl+1:nl+ncent])..., length(Jset))
-    result = reshape(
-        _batchevaluate_dispatch(ValueType, f, localset, Iset, Jset),
+    expected_size = (length(Iset), localdims[nl+1:nl+ncent]..., length(Jset))
+    M == ncent || error("Invalid number of central indices")
+    return reshape(
+        _batchevaluate_dispatch(ValueType, f, localdims, Iset, Jset, Val(ncent)),
         expected_size...
     )
-    return result
 end
 
 
 function kronecker(
     Iset::Union{Vector{MultiIndex},IndexSet{MultiIndex}},
-    localset::Vector{LocalIndex}
+    localdim::Int
 )
-    return MultiIndex[[is..., j] for is in Iset, j in localset][:]
+    return MultiIndex[[is..., j] for is in Iset, j in 1:localdim][:]
 end
 
 function kronecker(
-    localset::Vector{LocalIndex},
+    localdim::Int,
     Jset::Union{Vector{MultiIndex},IndexSet{MultiIndex}}
 )
-    return MultiIndex[[i, js...] for i in localset, js in Jset][:]
+    return MultiIndex[[i, js...] for i in 1:localdim, js in Jset][:]
 end
 
 function setT!(
@@ -237,7 +198,7 @@ function setT!(
     tci.T[b] = reshape(
         T,
         length(tci.Iset[b]),
-        length(tci.localset[b]),
+        tci.localdims[b],
         length(tci.Jset[b])
     )
 end
@@ -263,10 +224,10 @@ function sweep1site!(
 
     forwardsweep = sweepdirection === :forward
     for b in (forwardsweep ? (1:length(tci)-1) : (length(tci):-1:2))
-        Is = forwardsweep ? kronecker(tci.Iset[b], tci.localset[b]) : tci.Iset[b]
-        Js = forwardsweep ? tci.Jset[b] : kronecker(tci.localset[b], tci.Jset[b])
+        Is = forwardsweep ? kronecker(tci.Iset[b], tci.localdims[b]) : tci.Iset[b]
+        Js = forwardsweep ? tci.Jset[b] : kronecker(tci.localdims[b], tci.Jset[b])
         Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset[b], tci.Jset[b]),
+            filltensor(ValueType, f, tci.localdims, tci.Iset[b], tci.Jset[b], Val(1)),
             length(Is), length(Js))
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
@@ -294,12 +255,12 @@ function sweep1site!(
     if updatetensors
         lastupdateindex = forwardsweep ? length(tci) : 1
         shape = if forwardsweep
-            (length(tci.Iset[end]), length(tci.localset[end]))
+            (length(tci.Iset[end]), tci.localdims[end])
         else
-            (length(tci.localset[begin]), length(tci.Jset[begin]))
+            (tci.localdims[begin], length(tci.Jset[begin]))
         end
-        localtensor = reshape(_batchevaluate(
-            ValueType, f, tci.localset, tci.Iset[lastupdateindex], tci.Jset[lastupdateindex]), shape)
+        localtensor = reshape(filltensor(
+            ValueType, f, tci.localdims, tci.Iset[lastupdateindex], tci.Jset[lastupdateindex], Val(1)), shape)
         setT!(tci, lastupdateindex, localtensor)
     end
     nothing
@@ -387,11 +348,11 @@ function updatepivots!(
     pivotsearch::Symbol=:full,
     respectfullnesting::Bool=false,
 ) where {F,ValueType}
-    Icombined = kronecker(tci.Iset[b], tci.localset[b])
-    Jcombined = kronecker(tci.localset[b+1], tci.Jset[b+1])
+    Icombined = kronecker(tci.Iset[b], tci.localdims[b])
+    Jcombined = kronecker(tci.localdims[b+1], tci.Jset[b+1])
     luci = if pivotsearch === :full
         Pi = reshape(
-            _batchevaluate(ValueType, f, tci.localset, tci.Iset[b], tci.Jset[b+1]),
+            filltensor(ValueType, f, tci.localdims, tci.Iset[b], tci.Jset[b+1], Val(2)),
             length(Icombined), length(Jcombined)
         )
 
@@ -696,7 +657,7 @@ function insertglobalpivots!(
     normalizeerror::Bool=true,
     maxsweep::Int=1000
 )::Int where {ValueType}
-    localdims = [length(s) for s in tci.localset]
+    localdims = tci.localdims
 
     nnewpivot = 0
     for isearch in 1:nsearch
@@ -788,7 +749,7 @@ function _floatingzone(
 )::Tuple{MultiIndex,Float64} where {ValueType}
     nsweeps > 0 || error("nsweeps should be positive!")
 
-    localdims = [length(s) for s in tci.localset]
+    localdims = tci.localdims
 
     n = length(tci)
 
@@ -804,22 +765,24 @@ function _floatingzone(
     for isweep in 1:nsweeps
         prev_maxerror = maxerror
         for ipos in 1:lengthzone
-            zoneset = [vcat(idxzone[1:ipos-1], it, idxzone[ipos+1:end]) for it in tci.localset[ipos+nl]]
+            zoneset = [vcat(idxzone[1:ipos-1], it, idxzone[ipos+1:end]) for it in 1:tci.localdims[ipos+nl]]
             Jset = [vcat(z, j) for z in zoneset, j in tci.Jset[n-nr]]
 
-            exactdata = _batchevaluate(
+            exactdata = filltensor(
                 ValueType,
                 f,
-                tci.localset,
+                tci.localdims,
                 tci.Iset[nl+1],
-                vec(Jset)
+                vec(Jset),
+                Val(1)
             )
-            prediction = _batchevaluate(
+            prediction = filltensor(
                 ValueType,
                 ttcache,
-                tci.localset,
+                tci.localdims,
                 tci.Iset[nl+1],
-                vec(Jset)
+                vec(Jset),
+                Val(1)
             )
             err = reshape(abs.(exactdata .- prediction), length(tci.Iset[nl+1]), localdims[ipos+nl], length(tci.Jset[n-nr]))
 
@@ -827,7 +790,8 @@ function _floatingzone(
             argmax_ = argmax(err)
             pivot = vcat(tci.Iset[nl+1][argmax_[1]], zoneset[argmax_[2]], tci.Jset[n-nr][argmax_[3]])
 
-            idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
+            #idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
+            idxzone[ipos] = argmax_[2]
         end
 
         if maxerror == prev_maxerror || maxerror > 10 * abstol # early stop

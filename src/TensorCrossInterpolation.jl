@@ -1,6 +1,7 @@
 module TensorCrossInterpolation
 
 using LinearAlgebra
+using EllipsisNotation
 
 # To add a method for rank(tci)
 import LinearAlgebra: rank, diag
@@ -22,9 +23,10 @@ include("matrixaca.jl")
 include("matrixlu.jl")
 include("matrixluci.jl")
 include("indexset.jl")
-include("cachedfunction.jl")
 include("abstracttensortrain.jl")
 include("cachedtensortrain.jl")
+include("batcheval.jl")
+include("cachedfunction.jl")
 include("tensorci.jl")
 include("tensorci2.jl")
 include("tensortrain.jl")
