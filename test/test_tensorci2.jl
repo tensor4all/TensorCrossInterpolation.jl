@@ -164,6 +164,30 @@ import Random
 
     end
 
+    @testset "globalsearch" begin
+        Random.seed!(1234)
+
+        n = 10
+        fx(x) = exp(-10*x) * sin(2 * pi * 100 * x^1.1) # Nasty function
+        index_to_x(i) = (i-1) / 2^n # x ∈ [0, 1)
+        f(bitlist) = bitlist |> quantics_to_index |> index_to_x |> fx
+
+        localdims = fill(2, n)
+
+        # This checks only that the function runs without error
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            tolerance=1e-12,
+            maxbonddim=100,
+            maxiter=100,
+            nsearchglobalpivot=10
+        )
+
+        @test errors[end] < 1e-10
+    end
+
 
     @testset "crossinterpolate2_ttcache" begin
         ValueType = Float64

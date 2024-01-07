@@ -121,6 +121,9 @@ function (tt::TTCache{V})(
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
 )::Array{V,M + 2} where {V,M}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{V,M+2}(undef, ntuple(d->0, M+2)...)
+    end
     N = length(tt.T)
     nleft = length(leftindexset[1])
     nright = length(rightindexset[1])

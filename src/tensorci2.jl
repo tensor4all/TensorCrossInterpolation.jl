@@ -774,7 +774,7 @@ function _floatingzone(
                 tci.localdims,
                 tci.Iset[nl+1],
                 vec(Jset),
-                Val(1)
+                Val(0)
             )
             prediction = filltensor(
                 ValueType,
@@ -782,7 +782,7 @@ function _floatingzone(
                 tci.localdims,
                 tci.Iset[nl+1],
                 vec(Jset),
-                Val(1)
+                Val(0)
             )
             err = reshape(abs.(exactdata .- prediction), length(tci.Iset[nl+1]), localdims[ipos+nl], length(tci.Jset[n-nr]))
 
