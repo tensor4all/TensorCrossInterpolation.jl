@@ -134,9 +134,9 @@ x = [1, 1, 1, 1]
 ```
 
 ## Batch Evalaution
-By default, in TCI2, the function is designed to interpolate for a single index at a time. However, there may be a need to parallelize the code by evaluating the function across multiple index sets concurrently using several CPU cores. This type of custom optimization can be achieved through batch evaluation.
+By default, in TCI2, the function to be interpolated is evaluated for a single index at a time. However, there may be a need to parallelize the code by evaluating the function across multiple index sets concurrently using several CPU cores. This type of custom optimization can be achieved through batch evaluation.
 
-To utilize this feature, your function must inherit from  `TCI.BatchEvaluator{T}` and supports two additional types of function calles for evaluating $\mathrm{T}$ (one local index) and $\Pi$ tensors (two local indices):
+To utilize this feature, your function must inherit from  `TCI.BatchEvaluator{T}` and supports two additional types of function calls for evaluating $\mathrm{T}$ (one local index) and $\Pi$ tensors (two local indices):
 
 ```julia
 import TensorCrossInterpolation as TCI
@@ -201,5 +201,9 @@ let
     @assert f(leftindexset, rightindexset, Val(2)) ≈ [sum(vcat(l, s1, s2, r)) for l in leftindexset, s1 in 1:localdims[3], s2 in 1:localdims[4], r in rightindexset]
 end
 ```
+
+These two additional function calls can be parallelized internally, e.g., by using threads, MPI processes.
+
+`CachedFunction{T}`  can wrap a function inheriting from `BatchEvaluator{T}`. In such cases, `CachedFunction{T}`  caches the results of batch evaluation.
 
 TODO: Add parallelization example using threads
