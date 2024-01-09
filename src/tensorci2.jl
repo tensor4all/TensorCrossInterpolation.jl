@@ -347,14 +347,17 @@ function updatepivots!(
     sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
     respectfullnesting::Bool=false,
+    verbosity::Int=0
 ) where {F,ValueType}
     Icombined = kronecker(tci.Iset[b], tci.localdims[b])
     Jcombined = kronecker(tci.localdims[b+1], tci.Jset[b+1])
     luci = if pivotsearch === :full
+        t1 = time_ns()
         Pi = reshape(
             filltensor(ValueType, f, tci.localdims, tci.Iset[b], tci.Jset[b+1], Val(2)),
             length(Icombined), length(Jcombined)
         )
+        t2 = time_ns()
 
         conservedcols =
         if sweepdirection == :forward && b - 1 > 0  && respectfullnesting
@@ -371,7 +374,7 @@ function updatepivots!(
         end
 
         updatemaxsample!(tci, Pi)
-        MatrixLUCI(
+        luci = MatrixLUCI(
             Pi,
             reltol=reltol,
             abstol=abstol,
@@ -380,6 +383,12 @@ function updatepivots!(
             conservedcols=conservedcols,
             conservedrows=conservedrows
         )
+        t3 = time_ns()
+        if verbosity > 2
+            x, y = length(Icombined), length(Jcombined)
+            println("  Computing Pi ($x x $y): $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec")
+        end
+        luci
     elseif pivotsearch === :rook
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
         J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
@@ -504,7 +513,7 @@ function optimize!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
 
         if verbosity > 1
-            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
+            println("  Walltime $(1e-9*(time_ns() - tstart)) sec: starting floatingzone")
         end
 
         globalpivots = floatingzone!(
@@ -526,7 +535,7 @@ function optimize!(
 
         flushpivoterror!(tci)
         if verbosity > 1
-            println("Walltime $(1e-9*(time_ns() - tstart)) sec: starting two-site sweep")
+            println("  Walltime $(1e-9*(time_ns() - tstart)) sec: starting two-site sweep")
         end
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
@@ -536,7 +545,8 @@ function optimize!(
                     maxbonddim=maxbonddim,
                     sweepdirection=:forward,
                     pivotsearch=pivotsearch,
-                    respectfullnesting=respectfullnesting
+                    respectfullnesting=respectfullnesting,
+                    verbosity=verbosity
                 )
             end
         else # backward sweep
@@ -547,12 +557,13 @@ function optimize!(
                     maxbonddim=maxbonddim,
                     sweepdirection=:backward,
                     pivotsearch=pivotsearch,
-                    respectfullnesting=respectfullnesting
+                    respectfullnesting=respectfullnesting,
+                    verbosity=verbosity
                 )
             end
         end
         if verbosity > 1
-            println("Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
+            println("  Walltime $(1e-9*(time_ns() - tstart)) sec: done two-site sweep")
         end
 
         #==
