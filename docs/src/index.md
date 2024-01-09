@@ -106,4 +106,100 @@ tci, ranks, errors = TCI.crossinterpolate2(
 This algorithm optimizes the given index set (in this case `[1, 2, 3, 4, 5]`) by searching for a maximum absolute value, alternating through the dimensions. If no starting point is given, `[1, 1, ...]` is used.
 
 ## Caching
-TODO.
+During constructing a TCI, the function to be interpolated can be evaluated for the same index set multiple times.
+If an evaluation of the function to be interpolated is costly, i.e., takes more than 100 ns,
+it may be beneficial to cache the results of function evaluations.
+`CachedFunction{T}` provides this functionality.
+
+We can wrap your function as follows:
+
+```Julia
+import TensorCrossInterpolation as TCI
+
+# Local dimensions of TCI
+localdims = [2, 2, 2, 2]
+
+# Function to be interpolated. Evaluation take 2 seconds.
+f(x) = (sleep(2); sum(x))
+
+# Cached Function. `T` is the return type of the function.
+cf = TCI.CachedFunction{Float64}(f, localdims)
+
+# The first evaluation takes two seconds. The result will be cached.
+x = [1, 1, 1, 1]
+@time cf(x)
+
+# Cached value is returned (Really quick!).
+@time cf(x)
+```
+
+## Batch Evalaution
+By default, in TCI2, the function is designed to interpolate for a single index at a time. However, there may be a need to parallelize the code by evaluating the function across multiple index sets concurrently using several CPU cores. This type of custom optimization can be achieved through batch evaluation.
+
+To utilize this feature, your function must inherit from  `TCI.BatchEvaluator{T}` and supports two additional types of function calles for evaluating $\mathrm{T}$ (one local index) and $\Pi$ tensors (two local indices):
+
+```julia
+import TensorCrossInterpolation as TCI
+import TensorCrossInterpolation: MultiIndex
+
+struct TestFunction{T} <: TCI.BatchEvaluator{T}
+    localdims::Vector{Int}
+    function TestFunction{T}(localdims) where {T}
+        new{T}(localdims)
+    end
+end
+
+# Evaluation for a single index set
+function (obj::TestFunction{T})(indexset::MultiIndex)::T where {T}
+    return sum(indexset)
+end
+
+
+# Evaluaiton of a T tensor with one local index
+function (obj::TestFunction{T})(leftindexset::Vector{MultiIndex}, rightindexset::Vector{MultiIndex}, ::Val{1})::Array{T,3} where {T}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{T,3}(undef, 0, 0, 0, 0)
+    end
+
+    nl = length(leftindexset[1])
+    # This can be parallelized if you want
+    result = [obj(vcat(l, s1, r)) for l in leftindexset, s1 in 1:obj.localdims[nl+1], r in rightindexset]
+    return reshape(result, length(leftindexset), obj.localdims[nl+1], length(rightindexset))
+end
+
+
+# Evaluaiton of a Pi tensor with two local indices
+function (obj::TestFunction{T})(leftindexset::Vector{MultiIndex}, rightindexset::Vector{MultiIndex}, ::Val{2})::Array{T,4} where {T}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{T,4}(undef, 0, 0, 0, 0)
+    end
+
+    nl = length(leftindexset[1])
+    # This can be parallelized if you want
+    result = [obj(vcat(l, s1, s2, r)) for l in leftindexset, s1 in 1:obj.localdims[nl+1], s2 in 1:obj.localdims[nl+2], r in rightindexset]
+    return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+2]..., length(rightindexset))
+end
+
+localdims = [2, 2, 2, 2, 2]
+f = TestFunction{Float64}(localdims)
+
+# Compute T tensor
+let
+    leftindexset = [[1, 1, 1], [2, 2, 1], [2, 1, 1]]
+    rightindexset = [[1, 1], [2, 2], [1, 2]]
+
+    # The returned object has shape of (3, 2, 3)
+    @assert f(leftindexset, rightindexset, Val(1)) ≈ [sum(vcat(l, s1, r)) for l in leftindexset, s1 in 1:localdims[4], r in rightindexset]
+end
+
+# Compute Pi tensor
+let
+    leftindexset = [[1, 1], [2, 2], [2, 1]]
+    rightindexset = [[1, 1], [2, 2], [1, 2]]
+
+    # The returned object has shape of (3, 2, 2, 3)
+    @assert f(leftindexset, rightindexset, Val(2)) ≈ [sum(vcat(l, s1, s2, r)) for l in leftindexset, s1 in 1:localdims[3], s2 in 1:localdims[4], r in rightindexset]
+end
+```
+
+TODO: Add parallelization example using threads
