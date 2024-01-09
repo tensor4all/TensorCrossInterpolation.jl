@@ -162,7 +162,7 @@ function filltensor(
     ::Val{M}
 )::Array{ValueType,M+2} where {ValueType,M}
     if length(Iset) * length(Jset) == 0
-        return Array{ValueType,M}(undef, ntuple(i->0, M)...)
+        return Array{ValueType,M+2}(undef, ntuple(i->0, M+2)...)
     end
 
     N = length(localdims)
