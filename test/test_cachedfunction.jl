@@ -5,8 +5,8 @@ import TensorCrossInterpolation: BatchEvaluator, MultiIndex
 struct TestF <: TCI.BatchEvaluator{Float64}
 end
 
-function (f::TestF)(x)
-    return 1.0
+function (f::TestF)(x::T) where {T}
+    return one(T)
 end
 
 function (obj::TestF)(
@@ -26,15 +26,18 @@ function (obj::TestF)(
 end
 
 
-struct TestFunction <: TCI.BatchEvaluator{Float64}
+struct TestFunction{T} <: TCI.BatchEvaluator{T}
     localdims::Vector{Int}
-    function TestFunction(localdims)
-        new(localdims)
+    function TestFunction{T}(localdims) where {T}
+        new{T}(localdims)
     end
 end
 
-(obj::TestFunction)(indexset)::Float64 = sum(indexset)
-function (obj::TestFunction)(leftindexset, rightindexset, ::Val{M})::Array{Float64,M + 2} where {M}
+function (obj::TestFunction{T})(indexset)::T where {T}
+    return sum(indexset)
+end
+
+function (obj::TestFunction{T})(leftindexset, rightindexset, ::Val{M})::Array{T,M + 2} where {T,M}
     nl = length(first(leftindexset))
     result = [sum(vcat(l, collect(c), r)) for l in leftindexset, c in Iterators.product((1:d for d in obj.localdims[nl+1:nl+M])...), r in rightindexset]
     return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+M]..., length(rightindexset))
@@ -42,9 +45,9 @@ end
 
 
 @testset "Cached Function" begin
-    @testset "cache" begin
+    @testset "cache" for T in [Float64, ComplexF64]
         f(x) = 2 * (x[1] - 1) + (x[2] - 1)
-        cf = TCI.CachedFunction{Float64}(f, [4, 2])
+        cf = TCI.CachedFunction{T}(f, [4, 2])
 
         @test cf.f == f
         for i in 1:4, j in 1:2
@@ -76,14 +79,14 @@ end
     @testset "cache(non-batcheval)" begin
     end
     ==#
-    @testset "cache(batcheval)" begin
+    @testset "cache(batcheval)" for T in [Float64, ComplexF64]
         localdims = [2, 2, 2, 2, 2]
         leftindexset = [[1, 1] for _ in 1:100]
         rightindexset = [[1, 1] for _ in 1:100]
 
-        f = TCI.CachedFunction{Float64}(TestFunction(localdims), localdims)
+        f = TCI.CachedFunction{T}(TestFunction{T}(localdims), localdims)
         @assert TCI.isbatchevaluable(f)
-        result = TCI._batchevaluate_dispatch(Float64, f, localdims, leftindexset, rightindexset, Val(1))
+        result = TCI._batchevaluate_dispatch(T, f, localdims, leftindexset, rightindexset, Val(1))
         ref = [sum(vcat(l, c, r)) for l in leftindexset, c in 1:localdims[3], r in rightindexset]
 
         @test result ≈ ref

@@ -94,7 +94,7 @@ function _batcheval_imp_default(f::CachedFunction{V,K},
     nl = length(first(leftindexset))
     nr = length(first(rightindexset))
     L = length(f.localdims)
-    result = fill(NaN, length(leftindexset), f.localdims[nl+1:L-nr]..., length(rightindexset))
+    result = Array{V,M+2}(undef, length(leftindexset), f.localdims[nl+1:L-nr]..., length(rightindexset))
     for (j, rightindex) in enumerate(rightindexset)
         for k in Iterators.product(ntuple(x->1:f.localdims[nl+x], M)...)
             for (i, leftindex) in enumerate(leftindexset)
@@ -118,7 +118,7 @@ function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,K},
     nr = length(first(rightindexset))
     L = length(f.localdims)
 
-    result = fill(NaN, length(leftindexset), f.localdims[nl+1:L-nr]..., length(rightindexset))
+    result = fill(V(NaN), length(leftindexset), f.localdims[nl+1:L-nr]..., length(rightindexset))
 
     # Compute the values that are already in the cache, leaving the rest as NaN
     for (j, rightindex) in enumerate(rightindexset)
@@ -134,8 +134,8 @@ function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,K},
     end
 
     # Compute the values that are not in the cache and store them in the cache
-    leftindexset_ = [leftindex for (i, leftindex) in enumerate(leftindexset) if any(result[i, ..] .=== NaN)]
-    rightindexset_ = [rightindex for (j, rightindex) in enumerate(rightindexset) if any(result[..,j] .=== NaN)]
+    leftindexset_ = [leftindex for (i, leftindex) in enumerate(leftindexset) if any(result[i, ..] .=== V(NaN))]
+    rightindexset_ = [rightindex for (j, rightindex) in enumerate(rightindexset) if any(result[..,j] .=== V(NaN))]
     result_ = f.f(leftindexset_, rightindexset_, Val(M))
     for (j, rightindex) in enumerate(rightindexset_)
         for k in Iterators.product(ntuple(x->1:f.localdims[nl+x],M)...)
@@ -150,7 +150,7 @@ function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,K},
     for (j, rightindex) in enumerate(rightindexset)
         for k in Iterators.product(ntuple(x->1:f.localdims[nl+x], M)...)
             for (i, leftindex) in enumerate(leftindexset)
-                if result[i, k..., j] !== NaN
+                if result[i, k..., j] !== V(NaN)
                     continue
                 end
                 indexset = vcat(leftindex, collect(Iterators.flatten(k)), rightindex)
