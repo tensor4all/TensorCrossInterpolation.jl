@@ -202,8 +202,78 @@ let
 end
 ```
 
-These two additional function calls can be parallelized internally, e.g., by using threads, MPI processes.
-
 `CachedFunction{T}`  can wrap a function inheriting from `BatchEvaluator{T}`. In such cases, `CachedFunction{T}`  caches the results of batch evaluation.
 
-TODO: Add parallelization example using threads
+# Batch evaluation + parallelization
+The batch evalution can be combined with parallelization using threads, MPI, etc.
+The following sample code use `Threads` to parallelize function evaluations.
+Note that the function evaluation for a single index set must be thread-safe.
+
+We can run the code as (with 6 threads):
+
+```Bash
+julia --project=@. -t 6 samplecode.jl
+```
+
+```Julia
+import TensorCrossInterpolation as TCI
+import TensorCrossInterpolation: MultiIndex
+
+struct TestFunction{T} <: TCI.BatchEvaluator{T}
+    localdims::Vector{Int}
+    function TestFunction{T}(localdims) where {T}
+        new{T}(localdims)
+    end
+end
+
+# Evaluation for a single index set (takes 1 millisec)
+function (obj::TestFunction{T})(indexset::MultiIndex)::T where {T}
+    sleep(1e-3)
+    return sum(indexset)
+end
+
+
+# Batch evaluation (loop over all index sets)
+function (obj::TestFunction{T})(leftindexset::Vector{Vector{Int}}, rightindexset::Vector{Vector{Int}}, ::Val{M})::Array{T,M + 2} where {T,M}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{T,M+2}(undef, ntuple(i->0, M+2)...)
+    end
+
+    nl = length(first(leftindexset))
+
+    t = time_ns()
+    cindexset = vec(collect(Iterators.product(ntuple(i->1:obj.localdims[nl+i], M)...)))
+    elements = collect(Iterators.product(1:length(leftindexset), 1:length(cindexset), 1:length(rightindexset)))
+    result = Array{T,3}(undef, length(leftindexset), length(cindexset), length(rightindexset))
+    t2 = time_ns()
+
+    Threads.@threads for indices in elements
+        l, c, r = leftindexset[indices[1]], cindexset[indices[2]], rightindexset[indices[3]]
+        result[indices...] = obj(vcat(l, c..., r))
+    end
+    t3 = time_ns()
+    println("Time: ", (t2-t)/1e9, " ", (t3-t2)/1e9)
+    return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+M]..., length(rightindexset))
+end
+
+
+L = 20
+localdims = fill(2, L)
+f = TestFunction{Float64}(localdims)
+
+println("Number of threads: ", Threads.nthreads())
+
+# Compute Pi tensor
+nl = 10
+nr = L - nl - 2
+
+# 20 left index sets, 20 right index sets
+leftindexset = [[rand(1:d) for d in localdims[1:nl]] for _ in 1:20]
+rightindexset = [[rand(1:d) for d in localdims[nl+3:end]] for _ in 1:20]
+
+f(leftindexset, rightindexset, Val(2))
+
+for i in 1:4
+    @time f(leftindexset, rightindexset, Val(2))
+end
+```

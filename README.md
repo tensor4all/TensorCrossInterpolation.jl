@@ -64,6 +64,9 @@ The sum of all function values on the lattice can be obtained very efficiently f
 sumvalue = sum(tci)
 ```
 
+## Online user manual
+An example with more explanation can be found in the [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
+
 ## Related modules
 
 ### [TCIITensorConversion.jl](https://gitlab.com/tensors4fields/tciitensorconversion.jl)
