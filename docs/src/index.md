@@ -280,7 +280,7 @@ end
 
 If your function is thread-safe, you can parallelize your function readily using `ThreadedBatchEvaluator` as follows (the internal implementation is identical to the sample code shown above):
 
-```
+```Julia
 import TensorCrossInterpolation as TCI
 
 # Evaluation takes 1 millisecond, make sure the function is thread-safe.
