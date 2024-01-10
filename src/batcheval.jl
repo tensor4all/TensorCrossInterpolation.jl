@@ -52,3 +52,36 @@ function _batchevaluate_dispatch(
     ncent = N - nl - nr
     return f(Iset, Jset, Val(ncent))
 end
+
+
+"""
+ThreadedBatchEvaluator{T} is a wrapper for a function that supports batch evaluation parallelized over the index sets using threads.
+The function to be wrapped must be thread-safe.
+"""
+struct ThreadedBatchEvaluator{T} <: BatchEvaluator{T}
+    f::Function
+    localdims::Vector{Int}
+    function ThreadedBatchEvaluator{T}(f, localdims) where {T}
+        new{T}(f, localdims)
+    end
+end
+
+
+# Batch evaluation (loop over all index sets)
+function (obj::ThreadedBatchEvaluator{T})(leftindexset::Vector{Vector{Int}}, rightindexset::Vector{Vector{Int}}, ::Val{M})::Array{T,M + 2} where {T,M}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{T,M+2}(undef, ntuple(i->0, M+2)...)
+    end
+
+    nl = length(first(leftindexset))
+
+    cindexset = vec(collect(Iterators.product(ntuple(i->1:obj.localdims[nl+i], M)...)))
+    elements = collect(Iterators.product(1:length(leftindexset), 1:length(cindexset), 1:length(rightindexset)))
+    result = Array{T,3}(undef, length(leftindexset), length(cindexset), length(rightindexset))
+
+    Threads.@threads for indices in elements
+        l, c, r = leftindexset[indices[1]], cindexset[indices[2]], rightindexset[indices[3]]
+        result[indices...] = obj.f(vcat(l, c..., r))
+    end
+    return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+M]..., length(rightindexset))
+end

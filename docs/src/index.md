@@ -277,3 +277,38 @@ for i in 1:4
     @time f(leftindexset, rightindexset, Val(2))
 end
 ```
+
+If your function is thread-safe, you can parallelize your function readily using `ThreadedBatchEvaluator` as follows (the internal implementation is identical to the sample code shown above):
+
+```
+import TensorCrossInterpolation as TCI
+
+# Evaluation takes 1 millisecond, make sure the function is thread-safe.
+function f(x)
+    sleep(1e-3)
+    return sum(x)
+end
+
+
+L = 20
+localdims = fill(2, L)
+parf = TCI.ThreadedBatchEvaluator{Float64}(f, localdims)
+
+println("Number of threads: ", Threads.nthreads())
+
+# Compute Pi tensor
+nl = 10
+nr = L - nl - 2
+
+# 20 left index sets, 20 right index sets
+leftindexset = [[rand(1:d) for d in localdims[1:nl]] for _ in 1:20]
+rightindexset = [[rand(1:d) for d in localdims[nl+3:end]] for _ in 1:20]
+
+parf(leftindexset, rightindexset, Val(2))
+
+for i in 1:4
+    @time parf(leftindexset, rightindexset, Val(2))
+end
+```
+
+You can simply pass the wrapped function `parf` to `crossinterpolate2`.
