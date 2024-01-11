@@ -55,6 +55,8 @@ julia test:
         - "1.7"
         - "1.8"
         - "1.9"
+        - "1.10"
+        - "1" # the latest stable version of Julia
 .doctest:
   script:
     - |
@@ -91,3 +93,20 @@ pages:
       - public
   only:
     - main
+
+CompatHelper:
+  image: julia:1 # Set to the Julia version you want to use
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - |
+      julia --color=yes -e "
+        import Pkg;
+        name = \"CompatHelper\";
+        uuid = \"aa819f21-2bde-4658-8897-bab36330d9b7\";
+        version = \"3\";
+        Pkg.add(; name, uuid, version)"
+    - |
+      julia --color=yes -e "
+        import CompatHelper;
+        CompatHelper.main(;use_existing_registries=true)"
