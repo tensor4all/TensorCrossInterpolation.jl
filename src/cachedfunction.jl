@@ -166,10 +166,11 @@ function Base.setindex!(cf::CachedFunction{ValueType,K}, val::ValueType, indexse
     cf.cache[_key(cf, indexset)] = val
 end
 
-function _key(cf::CachedFunction{ValueType,K}, x::Vector{T})::K where {ValueType, T<:Number, K}
+function _key(cf::CachedFunction{ValueType,K}, indexset::Vector{T})::K where {ValueType, T<:Number, K}
     result = zero(K)
-    for i in 1:length(x)
-        result += cf.coeffs[i] * (x[i] - 1)
+    length(indexset) == length(cf.coeffs) || error("Invalid length of indexset")
+    @inbounds @fastmath for i in 1:length(indexset)
+        result += cf.coeffs[i] * (indexset[i] - 1)
     end
     return result
 end

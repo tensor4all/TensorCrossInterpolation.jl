@@ -131,4 +131,13 @@ end
         @test 24 < Base.summarysize(d) / databytes < 25
         @test 5 < Base.summarysize(cf.cache) / databytes < 7
     end
+
+    @testset "computekey boundary check" begin
+        L = 40
+        localdims = fill(2, L)
+        indexsets = [rand(1:d) for d in localdims]
+        cf = TCI.CachedFunction{ComplexF64}(x->1.0, localdims)
+        wrongindexset = fill(1, 2*L)
+        @test_throws ErrorException TCI._key(cf, wrongindexset)
+    end
 end
