@@ -35,6 +35,9 @@ function _batchevaluate_dispatch(
 end
 
 
+"""
+Calling `batchevaluate` on a function that supports batch evaluation will dispatch to this function.
+"""
 function _batchevaluate_dispatch(
     ::Type{V},
     f::BatchEvaluator{V},
@@ -54,7 +57,7 @@ function _batchevaluate_dispatch(
 end
 
 
-"""
+@doc """
 ThreadedBatchEvaluator{T} is a wrapper for a function that supports batch evaluation parallelized over the index sets using threads.
 The function to be wrapped must be thread-safe.
 """

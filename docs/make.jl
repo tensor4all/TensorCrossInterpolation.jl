@@ -14,7 +14,8 @@ makedocs(;
         prettyurls=get(ENV, "CI", "false") == "true",
         canonical="https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl",
         edit_link="main",
-        assets=String[]
+        assets=String[],
+        repolink="https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl"
     ),
     pages=[
         "Home" => "index.md",

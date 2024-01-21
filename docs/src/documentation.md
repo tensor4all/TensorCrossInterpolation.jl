@@ -7,16 +7,11 @@ Documentation of all types and methods in module [TensorCrossInterpolation](http
 
 ## Matrix approximation
 
-### Shared infrastructure
-```@autodocs
-Modules = [TensorCrossInterpolation]
-Pages = ["abstractmatrixci.jl"]
-```
 
 ### Matrix cross interpolation (MCI)
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["abstractmatrixci.jl", "matrixci.jl"]
+Pages = ["matrixci.jl"]
 ```
 
 ### Adaptive cross approximation (ACA)
@@ -55,6 +50,6 @@ Pages = ["tensorci2.jl"]
 ## Helpers and utility methods
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["cachedfunction.jl", "util.jl"]
+Pages = ["cachedfunction.jl", "batcheval.jl", "util.jl"]
 ```
 
