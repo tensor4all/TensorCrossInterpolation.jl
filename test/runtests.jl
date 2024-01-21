@@ -3,8 +3,6 @@ using Test
 using LinearAlgebra
 import ITensors
 
-include("_quantics.jl")
-
 include("test_util.jl")
 include("test_sweepstrategies.jl")
 include("test_indexset.jl")

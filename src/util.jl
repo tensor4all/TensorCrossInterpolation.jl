@@ -85,6 +85,7 @@ function optfirstpivot(
     valf = abs(f(firstpivot))
     pivot = copy(firstpivot)
 
+    # TODO: use batch evaluation
     for _ in 1:maxsweep
         valf_prev = valf
         for i in 1:n

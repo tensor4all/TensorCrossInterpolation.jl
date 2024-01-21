@@ -148,6 +148,9 @@ function _optimizerrlu!(
                    break
                 end
             end
+            if _count_cols_selected(lu, cols) == 0
+                println("Cannot add col $(cols) for conservedcols, npivot: $(lu.npivot), maxrank: $(maxrank)")
+            end
         end
     end
     if !exactlowrank && length(conservedrows) > 0

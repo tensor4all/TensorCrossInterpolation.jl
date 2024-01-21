@@ -1,8 +1,8 @@
 using Test
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots!,
-    evaluate, SweepStrategies, crossinterpolate2, pivoterror, tensortrain
+import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, SweepStrategies, crossinterpolate2, pivoterror, tensortrain
 import Random
+import QuanticsGrids as QD
 
 @testset "TensorCI2" begin
     @testset "kronecker util function" begin
@@ -23,6 +23,44 @@ import Random
         end
     end
 
+    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook]
+        # f(x) = exp(-x)
+        Random.seed!(1240)
+        R = 8
+        abstol = 1e-4
+
+        grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
+
+        #index_to_x(i) = (i - 1) / 2^R # x ∈ [0, 1)
+        fx(x) = exp(-x)
+        f(bitlist::MultiIndex) = fx(QD.quantics_to_origcoord(grid, bitlist)[1])
+
+        localdims = fill(2, R)
+        firstpivots = [ones(Int, R), vcat(1, fill(2, R - 1))]
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            firstpivots;
+            tolerance=abstol,
+            maxbonddim=1,
+            maxiter=2,
+            loginterval=1,
+            verbosity=0,
+            normalizeerror=false
+        )
+
+        @test all(TCI.linkdims(tci) .== 1)
+
+        for x in [0.1, 0.3, 0.6, 0.9]
+            indexset = QD.origcoord_to_quantics(
+                grid, (x,)
+            )
+            @test abs(TCI.evaluate(tci, indexset) - f(indexset)) < abstol
+        end
+
+    end
+
     @testset "trivial MPS" begin
         n = 5
         f(v) = sum(v) * 0.5
@@ -31,7 +69,6 @@ import Random
         @test length(tci) == n
         @test rank(tci) == 0
         @test linkdims(tci) == fill(0, n - 1)
-        #@test tci.localset == fill([1, 2], n)
         for i in 1:n
             @test isempty(tci.Iset[i])
             @test isempty(tci.Jset[i])
@@ -41,10 +78,9 @@ import Random
         @test length(tci) == n
         @test rank(tci) == 1
         @test linkdims(tci) == fill(1, n - 1)
-        #@test tci.localset == fill([1, 2], n)
     end
 
-    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for coeff in [1.0, 0.5-1.0im], pivotsearch in [:full, :rook]
+    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook]
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
 
@@ -66,7 +102,7 @@ import Random
         @test length(tci.Jset[end]) == 1
 
         globalpivot = [2, 9, 10, 5, 7]
-        addglobalpivots!(tci, f, [globalpivot], reltol=1e-12)
+        addglobalpivots1sitesweep!(tci, f, [globalpivot], reltol=1e-12)
         @test linkdims(tci) == fill(3, n - 1)
         @test rank(tci) == 3
         @test length(tci.Iset[1]) == 1
@@ -87,7 +123,7 @@ import Random
             pivottolerance=1e-8,
             maxiter=8,
             sweepstrategy=SweepStrategies.forward,
-            pivotsearch = pivotsearch 
+            pivotsearch=pivotsearch
         )
 
         #@test linkdims(tci) == linkdims(tci2) Too strict
@@ -138,39 +174,65 @@ import Random
         end
     end
 
-    @testset "insert_global_pivots" begin
-        Random.seed!(1234)
 
-        n = 10
-        fx(x) = exp(-10*x) * sin(2 * pi * 100 * x^1.1) # Nasty function
-        index_to_x(i) = (i-1) / 2^n # x ∈ [0, 1)
-        f(bitlist) = bitlist |> quantics_to_index |> index_to_x |> fx
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, partialnesting=$partialnesting, seed=$seed" for seed in [1234, 678, 23], pivotsearch in [:full, :rook], partialnesting in [false]
+        Random.seed!(seed)
 
-        localdims = fill(2, n)
+        R = 20
+        abstol = 1e-4
+        grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
+
+        rindex = [rand(1:2, R) for _ in 1:100]
+
+        f(bitlist) = fx(QD.quantics_to_origcoord(grid, bitlist)[1])
+        rpoint = Float64[QD.quantics_to_origcoord(grid, r)[1] for r in rindex]
+
+        function fx(x)
+            res = exp(-10 * x)
+            for r in rpoint
+                res += abs(x - r) < 1e-5 ? 2 * abstol : 0.0
+            end
+            res
+        end
+
+        localdims = fill(2, R)
+        firstpivot = ones(Int, R)
         tci, ranks, errors = crossinterpolate2(
             Float64,
             f,
             localdims,
-            tolerance=1e-12,
-            maxbonddim=8,
-            maxiter=10
+            [firstpivot];
+            tolerance=abstol,
+            maxbonddim=1000,
+            maxiter=20,
+            loginterval=1,
+            verbosity=0,
+            normalizeerror=false,
+            pivotsearch=pivotsearch,
+            partialnesting=partialnesting
         )
 
-        nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)
-        @test nglobalpivot > 0
+        TCI.addglobalpivots2sitesweep!(
+            tci, f, rindex,
+            tolerance=abstol,
+            normalizeerror=false,
+            maxbonddim=1000,
+            pivotsearch=pivotsearch,
+            verbosity=0,
+            partialnesting=partialnesting,
+            ntry = 10
+        )
 
-        nglobalpivot = TCI.insertglobalpivots!(tci, f, verbosity=0)
-        @test nglobalpivot == 0
-
+        @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
     end
 
     @testset "globalsearch" begin
         Random.seed!(1234)
 
         n = 10
-        fx(x) = exp(-10*x) * sin(2 * pi * 100 * x^1.1) # Nasty function
-        index_to_x(i) = (i-1) / 2^n # x ∈ [0, 1)
-        f(bitlist) = bitlist |> quantics_to_index |> index_to_x |> fx
+        fx(x) = exp(-10 * x) * sin(2 * pi * 100 * x^1.1) # Nasty function
+        f(bitlist) = fx(QD.quantics_to_origcoord(grid, bitlist)[1])
+        grid = QD.DiscretizedGrid{1}(n, (0.0,), (1.0,))
 
         localdims = fill(2, n)
 
