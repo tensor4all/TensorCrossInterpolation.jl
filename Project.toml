@@ -12,6 +12,7 @@ EllipsisNotation = "1"
 julia = "1.6"
 
 [extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 QuanticsGrids = "634c7f73-3e90-4749-a1bd-001b8efc642d"
@@ -20,4 +21,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Test", "Random", "ITensors", "Zygote", "Optim", "QuanticsGrids"]
+test = ["Aqua", "Test", "Random", "ITensors", "Zygote", "Optim", "QuanticsGrids"]
