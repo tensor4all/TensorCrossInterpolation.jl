@@ -48,7 +48,8 @@ import QuanticsGrids as QD
             loginterval=1,
             verbosity=0,
             normalizeerror=false,
-            nsearchglobalpivot=nsearchglobalpivot
+            nsearchglobalpivot=nsearchglobalpivot,
+            pivotsearch=pivotsearch
         )
 
         @test all(TCI.linkdims(tci) .== 1)
