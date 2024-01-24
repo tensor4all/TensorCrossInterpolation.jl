@@ -23,7 +23,7 @@ import QuanticsGrids as QD
         end
     end
 
-    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook]
+    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], partialnesting in [false, true], nsearchglobalpivot in [0, 10]
         # f(x) = exp(-x)
         Random.seed!(1240)
         R = 8
@@ -47,7 +47,8 @@ import QuanticsGrids as QD
             maxiter=2,
             loginterval=1,
             verbosity=0,
-            normalizeerror=false
+            normalizeerror=false,
+            nsearchglobalpivot=nsearchglobalpivot
         )
 
         @test all(TCI.linkdims(tci) .== 1)
