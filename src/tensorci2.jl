@@ -540,6 +540,10 @@ function updatepivots!(
     end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
+    if partialnesting
+        setT!(tci, b, left(luci))
+        setT!(tci, b + 1, right(luci))
+    end
     updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
     nothing
 end
@@ -720,7 +724,8 @@ function sweep2site!(
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    partialnesting::Bool=true
+    partialnesting::Bool=true,
+    fillsitetensors::Bool=true
 ) where {ValueType}
     invalidatesitetensors!(tci)
 
@@ -753,7 +758,10 @@ function sweep2site!(
         end
     end
 
-    fillsitetensors!(tci, f)
+    if fillsitetensors
+        fillsitetensors!(tci, f)
+    end
+    nothing
 end
 
 @doc raw"""
@@ -831,6 +839,10 @@ function searchglobalpivots(
 )::Vector{MultiIndex} where {ValueType}
     if nsearch == 0 || maxnglobalpivot == 0
         return MultiIndex[]
+    end
+
+    if !issitetensorsavailable(tci)
+        fillsitetensors!(tci, f)
     end
 
     pivots = Dict{Float64,MultiIndex}()
