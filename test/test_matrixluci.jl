@@ -65,11 +65,11 @@ import TensorCrossInterpolation: MatrixLUCI
         ]
 
         A = p * q
-        luci = TCI.luci(A)
+        luci = TCI.MatrixLUCI(A)
 
         @test TCI.npivots(luci) == 3
         @test TCI.left(luci) * TCI.right(luci) ≈ A
-        pivotmatrix = TCI.colmatrix(luci)[1:npivtos(luci), :]
+        pivotmatrix = TCI.colmatrix(luci)[1:TCI.npivots(luci), :]
         @test cond(pivotmatrix) < 1e12
     end
 end

@@ -86,84 +86,60 @@ function rrLU{T}(A::AbstractMatrix{T}; leftorthogonal::Bool=true) where {T}
     rrLU{T}(size(A)...; leftorthogonal=leftorthogonal)
 end
 
-function _addpivot!(lu, A, reltol, abstol; colmask::Function=x->true, rowmask::Function=x->true)::Tuple{Bool,Bool} # (break, exactlowrank)
-    k = lu.npivot + 1
-    newpivot = submatrixargmax(abs2, A, k; colmask=colmask, rowmask=rowmask)
-    if A[newpivot...] == 0
-        return (true, true)
+function swaprow!(lu::rrLU{T}, A::AbstractMatrix{T}, a, b) where {T}
+    lu.rowpermutation[[a, b]] = lu.rowpermutation[[b, a]]
+    A[[a, b], :] = A[[b, a], :]
+end
+
+function swapcol!(lu::rrLU{T}, A::AbstractMatrix{T}, a, b) where {T}
+    lu.colpermutation[[a, b]] = lu.colpermutation[[b, a]]
+    A[:, [a, b]] = A[:, [b, a]]
+end
+
+function addpivot!(lu::rrLU{T}, A::AbstractMatrix{T}, newpivot) where {T}
+    k = lu.npivot += 1
+    swaprow!(lu, A, k, newpivot[1])
+    swapcol!(lu, A, k, newpivot[2])
+
+    if lu.leftorthogonal
+        A[k+1:end, k] /= A[k, k]
+    else
+        A[k, k+1:end] /= A[k, k]
     end
-    addpivot!(lu, A, newpivot)
-    if abs(A[k, k]) < reltol * abs(A[1]) || abs(A[k, k]) < abstol
-        return (true, false)
+
+    # perform BLAS subroutine manually: A <- -x * transpose(y) + A
+    x = @view(A[k+1:end, k])
+    y = @view(A[k, k+1:end])
+    A = @view(A[k+1:end, k+1:end])
+    @inbounds for j in eachindex(axes(A, 2), y)
+        for i in eachindex(axes(A, 1), x)
+            # update `A[k+1:end, k+1:end]`
+            A[i, j] -= x[i] * y[j]
+        end
     end
-    return (false, false)
+    nothing
 end
 
 _count_cols_selected(lu, cols)::Int = sum([c ∈ lu.colpermutation[1:lu.npivot] for c ∈ cols])
 _count_rows_selected(lu, rows)::Int = sum([r ∈ lu.rowpermutation[1:lu.npivot] for r ∈ rows])
 
-"""
-We add at least one column in each entry of `conservedcols` if numerically stable. The same applies to `conservedrows`.
-"""
 function _optimizerrlu!(
     lu::rrLU{T},
     A::AbstractMatrix{T};
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
-    abstol::Number=0.0,
-    conservedcols::Vector{Vector{Int}} = Vector{Int}[],
-    conservedrows::Vector{Vector{Int}} = Vector{Int}[]
+    abstol::Number=0.0
 ) where {T}
-    if length(conservedcols) > 0
-        allunique(vcat(conservedcols...)) || error("Duplicate in conservedcols")
-    end
-    if length(conservedrows) > 0
-        allunique(vcat(conservedrows...)) || error("Duplicate in conservedrows")
-    end
-
     maxrank = min(maxrank, size(A)...)
-
-    exactlowrank = false
     while lu.npivot < maxrank
-        terminated, exactlowrank = _addpivot!(lu, A, reltol, abstol)
-        if terminated
+        k = lu.npivot + 1
+        newpivot = submatrixargmax(abs2, A, k)
+        lu.error = abs(A[newpivot...])
+        if abs(lu.error) < reltol * abs(A[1]) || abs(lu.error) < abstol
             break
         end
-    end
-
-    # Error estimate must be done additional pivots are forcely added
-    if exactlowrank || lu.npivot == min(size(lu)...)
-        lu.error = zero(T)
-    else
-        lu.error = lu.leftorthogonal ? abs(A[lu.npivot, lu.npivot]) : abs(A[lu.npivot, lu.npivot])
-    end
-
-    if !exactlowrank && length(conservedcols) > 0
-        for cols in conservedcols
-            mask = fill(false, size(A, 2))
-            mask[cols] .= true
-            while lu.npivot < maxrank && _count_cols_selected(lu, cols) == 0
-                terminated_, _ = _addpivot!(lu, A, 1e-14, 0.0; colmask=x->mask[x])
-                if terminated_
-                   break
-                end
-            end
-            if _count_cols_selected(lu, cols) == 0
-                println("Cannot add col $(cols) for conservedcols, npivot: $(lu.npivot), maxrank: $(maxrank)")
-            end
-        end
-    end
-    if !exactlowrank && length(conservedrows) > 0
-        for rows in conservedrows
-            mask = fill(false, size(A, 1))
-            mask[rows] .= true
-            while lu.npivot < maxrank && _count_rows_selected(lu, rows) == 0
-                terminated_, _ = _addpivot!(lu, A, 1e-14, 0.0; rowmask=x->mask[x])
-                if terminated_
-                   break
-                end
-            end
-        end
+        addpivot!(lu, A, newpivot)
+        lu.error = 0
     end
 
     lu.L = tril(A[:, 1:lu.npivot])
@@ -199,12 +175,10 @@ function rrlu!(
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0,
-    leftorthogonal::Bool=true,
-    conservedcols::Vector{Vector{Int}} = Vector{Int}[],
-    conservedrows::Vector{Vector{Int}} = Vector{Int}[],
+    leftorthogonal::Bool=true
 )::rrLU{T} where {T}
     lu = rrLU{T}(A, leftorthogonal=leftorthogonal)
-    _optimizerrlu!(lu, A; maxrank=maxrank, reltol=reltol, abstol=abstol, conservedcols=conservedcols, conservedrows=conservedrows)
+    _optimizerrlu!(lu, A; maxrank=maxrank, reltol=reltol, abstol=abstol)
     return lu
 end
 
@@ -224,11 +198,9 @@ function rrlu(
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0,
-    leftorthogonal::Bool=true,
-    conservedcols::Vector{Vector{Int}} = Vector{Int}[],
-    conservedrows::Vector{Vector{Int}} = Vector{Int}[],
+    leftorthogonal::Bool=true
 )::rrLU{T} where {T}
-    return rrlu!(copy(A); maxrank, reltol, abstol, leftorthogonal, conservedcols, conservedrows)
+    return rrlu!(copy(A); maxrank, reltol, abstol, leftorthogonal)
 end
 
 function arrlu(
@@ -344,40 +316,6 @@ function rows2Umatrix!(R::AbstractMatrix, P::AbstractMatrix, leftorthogonal::Boo
         R[k+1:end, :] -= P[k+1:end, k] * transpose(R[k, :])
     end
     return R
-end
-
-function swaprow!(lu::rrLU{T}, A::AbstractMatrix{T}, a, b) where {T}
-    lu.rowpermutation[[a, b]] = lu.rowpermutation[[b, a]]
-    A[[a, b], :] = A[[b, a], :]
-end
-
-function swapcol!(lu::rrLU{T}, A::AbstractMatrix{T}, a, b) where {T}
-    lu.colpermutation[[a, b]] = lu.colpermutation[[b, a]]
-    A[:, [a, b]] = A[:, [b, a]]
-end
-
-function addpivot!(lu::rrLU{T}, A::AbstractMatrix{T}, newpivot) where {T}
-    k = lu.npivot += 1
-    swaprow!(lu, A, k, newpivot[1])
-    swapcol!(lu, A, k, newpivot[2])
-
-    if lu.leftorthogonal
-        A[k+1:end, k] /= A[k, k]
-    else
-        A[k, k+1:end] /= A[k, k]
-    end
-
-    # perform BLAS subroutine manually: A <- -x * transpose(y) + A
-    x = @view(A[k+1:end, k])
-    y = @view(A[k, k+1:end])
-    A = @view(A[k+1:end, k+1:end])
-    @inbounds for j in eachindex(axes(A, 2), y)
-        for i in eachindex(axes(A, 1), x)
-            # update `A[k+1:end, k+1:end]`
-            A[i, j] -= x[i] * y[j]
-        end
-    end
-    nothing
 end
 
 function size(lu::rrLU{T}) where {T}
