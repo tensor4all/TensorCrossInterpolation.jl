@@ -44,4 +44,32 @@ import TensorCrossInterpolation: MatrixLUCI
         @test length(TCI.colindices(luci)) < size(A, 2)
         @test maximum(abs.(TCI.left(luci) * TCI.right(luci) .- A)) < 1e-2
     end
+
+    @testset "luci for exact low-rank matrix" begin
+        p = [
+            0.284975 0.505168 0.570921
+            0.302884 0.475901 0.645776
+            0.622955 0.361755 0.99539
+            0.748447 0.354849 0.431366
+            0.28338 0.0378148 0.994162
+            0.643177 0.74173 0.802733
+            0.58113 0.526715 0.879048
+            0.238002 0.557812 0.251512
+            0.458861 0.141355 0.0306212
+            0.490269 0.810266 0.7946
+        ]
+        q = [
+            0.239552   0.306094  0.299063  0.0382492  0.185462  0.0334971  0.697561   0.389596  0.105665  0.0912763
+            0.0570609  0.56623   0.97183   0.994184   0.371695  0.284437   0.993251   0.902347  0.572944  0.0531369
+            0.45002    0.461168  0.6086    0.613702   0.543997  0.759954   0.0959818  0.638499  0.407382  0.482592
+        ]
+
+        A = p * q
+        luci = TCI.MatrixLUCI(A)
+
+        @test TCI.npivots(luci) == 3
+        @test TCI.left(luci) * TCI.right(luci) ≈ A
+        pivotmatrix = TCI.colmatrix(luci)[1:TCI.npivots(luci), :]
+        @test cond(pivotmatrix) < 1e12
+    end
 end
