@@ -215,7 +215,7 @@ function arrlu(
     reltol::Number=1e-14,
     abstol::Number=0.0,
     leftorthogonal::Bool=true,
-    numrookiter::Int=3,
+    numrookiter::Int=5,
     usebatcheval::Bool=false
 )::rrLU{ValueType} where {ValueType}
     lu = rrLU{ValueType}(matrixsize...; leftorthogonal)
