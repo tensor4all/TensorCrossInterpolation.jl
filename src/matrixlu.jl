@@ -131,13 +131,15 @@ function _optimizerrlu!(
     abstol::Number=0.0
 ) where {T}
     maxrank = min(maxrank, size(A)...)
+    maxerror = 0.0
     while lu.npivot < maxrank
         k = lu.npivot + 1
         newpivot = submatrixargmax(abs2, A, k)
         lu.error = abs(A[newpivot...])
-        if abs(lu.error) < reltol * abs(A[1]) || abs(lu.error) < abstol
+        if abs(lu.error) < reltol * maxerror || abs(lu.error) < abstol
             break
         end
+        maxerror = max(maxerror, lu.error)
         addpivot!(lu, A, newpivot)
         lu.error = 0
     end
@@ -213,7 +215,7 @@ function arrlu(
     reltol::Number=1e-14,
     abstol::Number=0.0,
     leftorthogonal::Bool=true,
-    numrookiter::Int=3,
+    numrookiter::Int=5,
     usebatcheval::Bool=false
 )::rrLU{ValueType} where {ValueType}
     lu = rrLU{ValueType}(matrixsize...; leftorthogonal)
