@@ -207,6 +207,22 @@ function existaspivot(
 end
 
 
+function isinterpolated(
+    tci::TensorCI2{ValueType},
+    indexset::MultiIndex) where {ValueType}
+    Iset_nested = Vector{MultiIndex}[]
+    Jset_nested = Vector{MultiIndex}[]
+    for (i, Isetb) in enumerate(tci.Iset)
+        if length(Isetb[1]) == 0
+            push!(Iset_nested, Isetb)
+            continue
+        end
+        push!(Iset_nested, filter(x -> x[1:end-1] ∈ tci.Iset[i-1], Isetb))
+    end
+    @show Iset_nested
+end
+
+
 """
 Add global pivots to index sets and perform a 2site sweep.
 Retry until all pivots are added or until `ntry` iterations are reached.
@@ -503,6 +519,17 @@ function updatepivots!(
             length(Icombined), length(Jcombined)
         )
         t2 = time_ns()
+        indexset = [1, 2, 2, 2, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2, 2, 1, 2, 1]
+        nl = length(first(Icombined))
+        nr = length(first(Jcombined))
+        left = indexset[1:nl]
+        right = indexset[nl+1:end]
+        before = left ∈ Icombined && right ∈ Jcombined
+        println("before b=$b",  left ∈ Icombined && right ∈ Jcombined)
+        #end
+        #if left ∈ Icombined && right ∈ Jcombined
+        #end
+        #println("b=$b ", Pi)
 
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
@@ -516,6 +543,14 @@ function updatepivots!(
         if verbosity > 2
             x, y = length(Icombined), length(Jcombined)
             println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec")
+        end
+        after = left ∈ Icombined[rowindices(luci)] && right ∈ Jcombined[colindices(luci)]
+        if b == 4
+            println(Pi)
+        end
+        println("after b=$b",  left ∈ Icombined[rowindices(luci)] && right ∈ Jcombined[colindices(luci)])
+        if before && !after
+            println("ERRROR ", b)
         end
         luci
     elseif pivotsearch === :rook
@@ -543,6 +578,14 @@ function updatepivots!(
     if partialnesting
         setT!(tci, b, left(luci))
         setT!(tci, b + 1, right(luci))
+    else
+        fillsitetensors!(tci, f)
+        indexset = [1, 2, 2, 2, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2, 2, 1, 2, 1]
+        if abs(evaluate(tci, indexset) - f(indexset)) > 2e-4
+            println("after b=$b",  left ∈ tci.Iset[b+1] && right ∈ tci.Jset[b])
+            println("error ", abs(evaluate(tci, indexset) - f(indexset)))
+            println("AAAAA", b)
+        end
     end
     updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
     nothing
@@ -937,9 +980,9 @@ end
 
 function fillsitetensors!(
     tci::TensorCI2{ValueType}, f) where {ValueType}
-    for b in 1:length(tci)-1
-       rmbadpivots!(tci, f, b)
-    end
+    #for b in 1:length(tci)-1
+       #rmbadpivots!(tci, f, b)
+    #end
     for b in 1:length(tci)
        setT!(tci, f, b)
     end

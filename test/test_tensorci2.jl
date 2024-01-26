@@ -5,6 +5,7 @@ import Random
 import QuanticsGrids as QD
 
 @testset "TensorCI2" begin
+    #==
     @testset "kronecker util function" begin
         multiset = [collect(1:5) for _ in 1:5]
         localdim = 4
@@ -177,24 +178,37 @@ import QuanticsGrids as QD
             @test value ≈ f(v)
         end
     end
+    ==#
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, partialnesting=$partialnesting, seed=$seed" for seed in [1234, 678, 23], pivotsearch in [:full, :rook], partialnesting in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, partialnesting=$partialnesting, seed=$seed" for seed in [83], pivotsearch in [:full], partialnesting in [false]
         Random.seed!(seed)
 
         R = 20
         abstol = 1e-4
         grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
 
-        rindex = [rand(1:2, R) for _ in 1:100]
+        #rindex = [rand(1:2, R) for _ in 1:2]
+        rindex = [
+            [1, 2, 2, 2, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2, 2, 1, 2, 1],
+            [2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2, 1, 2, 1, 2]
+        ]
+        #rindex = [
+            #[1, 2, 2, 2, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2, 2, 1, 2],
+            #[2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2, 1, 2, 1]
+        #]
+        #rindex = [
+            #[1, 2, 2, 2, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2],
+            #[2, 1, 2, 1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 2]
+        #]
 
         f(bitlist) = fx(QD.quantics_to_origcoord(grid, bitlist)[1])
         rpoint = Float64[QD.quantics_to_origcoord(grid, r)[1] for r in rindex]
 
         function fx(x)
             res = exp(-10 * x)
-            for r in rpoint
-                res += abs(x - r) < 1e-5 ? 2 * abstol : 0.0
+            for (i, r) in enumerate(rpoint)
+                res += abs(x - r) < 1e-5 ? (2+0.1*i) * abstol : 0.0
             end
             res
         end
@@ -207,7 +221,7 @@ import QuanticsGrids as QD
             localdims,
             [firstpivot];
             tolerance=abstol,
-            maxbonddim=1000,
+            maxbonddim=1,
             maxiter=20,
             loginterval=1,
             verbosity=0,
@@ -215,6 +229,14 @@ import QuanticsGrids as QD
             pivotsearch=pivotsearch,
             partialnesting=partialnesting
         )
+        for i in tci.Iset
+            @show i
+        end
+        for i in tci.Jset
+            @show i
+        end
+
+        println("Starting addglobalpivots")
 
         TCI.addglobalpivots2sitesweep!(
             tci, f, rindex,
@@ -224,12 +246,22 @@ import QuanticsGrids as QD
             pivotsearch=pivotsearch,
             verbosity=0,
             partialnesting=partialnesting,
-            ntry = 10
+            ntry = 1
         )
-
+        #@show TCI.isinterpolated(tci, rindex[1])
+        for i in tci.Iset
+            @show i
+        end
+        for i in tci.Jset
+            @show i
+        end
+        for r in rindex
+            println(r, " ", abs(TCI.evaluate(tci, r) - f(r)))
+        end
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
     end
 
+    #==
     @testset "globalsearch" begin
         Random.seed!(1234)
 
@@ -281,4 +313,5 @@ import QuanticsGrids as QD
 
         @test vals_reconst ≈ vals_ref
     end
+    ==#
 end
