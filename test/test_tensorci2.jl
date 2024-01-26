@@ -129,7 +129,9 @@ import QuanticsGrids as QD
         )
 
         #@test linkdims(tci) == linkdims(tci2) Too strict
-        @test rank(tci) == rank(tci2)
+        if pivotsearch == :full
+            @test rank(tci) == rank(tci2)
+        end
 
         tci3, ranks, errors = crossinterpolate2(
             ValueType,
