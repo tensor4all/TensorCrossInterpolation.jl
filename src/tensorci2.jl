@@ -23,7 +23,8 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     "Maximum sample for error normalization."
     maxsamplevalue::Float64
 
-    cache::Vector{Dict{MultiIndex,Matrix{ValueType}}}
+    Iset_history::Vector{Vector{Vector{MultiIndex}}}
+    Jset_history::Vector{Vector{Vector{MultiIndex}}}
 
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
@@ -37,7 +38,9 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors, forward sweep
             zeros(length(localdims) - 1),           # bonderrors, backward sweep
-            0.0                                     # maxsample
+            0.0,                                    # maxsample
+            Vector{Vector{MultiIndex}}[],           # Iset_history
+            Vector{Vector{MultiIndex}}[],           # Jset_history
         )
     end
 end
@@ -483,17 +486,14 @@ function updatepivots!(
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
-    partialnesting::Bool=true,
-    verbosity::Int=0
+    verbosity::Int=0,
+    extraIset::Vector{MultiIndex}=MultiIndex[],
+    extraJset::Vector{MultiIndex}=MultiIndex[],
 ) where {F,ValueType}
     invalidatesitetensors!(tci)
 
-    Icombined = partialnesting ?
-        kronecker(tci.Iset[b], tci.localdims[b]) :
-        union(kronecker(tci.Iset[b], tci.localdims[b]), tci.Iset[b+1])
-    Jcombined = partialnesting ?
-        kronecker(tci.localdims[b+1], tci.Jset[b+1]) :
-        union(kronecker(tci.localdims[b+1], tci.Jset[b+1]), tci.Jset[b])
+    Icombined = union(kronecker(tci.Iset[b], tci.localdims[b]), extraIset)
+    Jcombined = union(kronecker(tci.localdims[b+1], tci.Jset[b+1]), extraJset)
 
     luci = if pivotsearch === :full
         t1 = time_ns()
@@ -540,7 +540,7 @@ function updatepivots!(
     end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
-    if partialnesting
+    if length(extraIset) == 0 && length(extraJset) == 0
         setT!(tci, b, left(luci))
         setT!(tci, b + 1, right(luci))
     end
@@ -730,6 +730,20 @@ function sweep2site!(
     invalidatesitetensors!(tci)
 
     n = length(tci)
+
+    extraIset = [MultiIndex[] for _ in 1:n]
+    extraJset = [MultiIndex[] for _ in 1:n]
+    if !partialnesting
+        extraIset = tci.Iset
+        extraJset = tci.Jset
+        if length(tci.Iset_history) > 0
+            extraIset = union(extraIset, tci.Iset_history[end])
+            extraJset = union(extraJset, tci.Jset_history[end])
+        end
+    end
+
+    push!(tci.Iset_history, deepcopy(tci.Iset))
+    push!(tci.Jset_history, deepcopy(tci.Jset))
     for iter in iter1:iter1+niter-1
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
@@ -739,8 +753,9 @@ function sweep2site!(
                     maxbonddim=maxbonddim,
                     sweepdirection=:forward,
                     pivotsearch=pivotsearch,
-                    partialnesting=partialnesting,
-                    verbosity=verbosity
+                    verbosity=verbosity,
+                    extraIset=extraIset[bondindex+1],
+                    extraJset=extraJset[bondindex],
                 )
             end
         else # backward sweep
@@ -751,8 +766,9 @@ function sweep2site!(
                     maxbonddim=maxbonddim,
                     sweepdirection=:backward,
                     pivotsearch=pivotsearch,
-                    partialnesting=partialnesting,
-                    verbosity=verbosity
+                    verbosity=verbosity,
+                    extraIset=extraIset[bondindex+1],
+                    extraJset=extraJset[bondindex],
                 )
             end
         end
