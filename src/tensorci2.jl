@@ -538,6 +538,28 @@ function updatepivots!(
     else
         throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
     end
+    println("b=$b")
+    for (idx, i) in enumerate(Icombined)
+        println(idx, " ", i)
+    end
+    println(rowindices(luci))
+    for (idx, j) in enumerate(Jcombined)
+        println(idx, " ", j)
+    end
+    println(colindices(luci))
+    if b == 19
+        Pi = reshape(
+            filltensor(ValueType, f, tci.localdims,
+            Icombined, Jcombined, Val(0)),
+            length(Icombined), length(Jcombined)
+        )
+        for (idx, i) in enumerate(Icombined)
+            for (jdx, j) in enumerate(Jcombined)
+                println(idx, " ", jdx, " ", vcat(i,j), " ", Pi[idx, jdx])
+            end
+        end
+    end
+
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
     if partialnesting
@@ -937,9 +959,9 @@ end
 
 function fillsitetensors!(
     tci::TensorCI2{ValueType}, f) where {ValueType}
-    for b in 1:length(tci)-1
-       rmbadpivots!(tci, f, b)
-    end
+    #for b in 1:length(tci)-1
+       #rmbadpivots!(tci, f, b)
+    #end
     for b in 1:length(tci)
        setT!(tci, f, b)
     end
