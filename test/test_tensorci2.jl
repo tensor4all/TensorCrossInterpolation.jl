@@ -179,11 +179,12 @@ import QuanticsGrids as QD
     end
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, partialnesting=$partialnesting, seed=$seed" for seed in [1234, 678, 23], pivotsearch in [:full, :rook], partialnesting in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, partialnesting=$partialnesting, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], partialnesting in [false]
         Random.seed!(seed)
 
         R = 20
         abstol = 1e-4
+        δ = 10.0/2^R # Peaks are wider than 1/2^R.
         grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
 
         rindex = [rand(1:2, R) for _ in 1:100]
@@ -194,7 +195,7 @@ import QuanticsGrids as QD
         function fx(x)
             res = exp(-10 * x)
             for r in rpoint
-                res += abs(x - r) < 1e-5 ? 2 * abstol : 0.0
+                res += abs(x - r) < δ ? 2 * abstol : 0.0
             end
             res
         end
@@ -224,7 +225,7 @@ import QuanticsGrids as QD
             pivotsearch=pivotsearch,
             verbosity=0,
             partialnesting=partialnesting,
-            ntry = 10
+            ntry = pivotsearch == :full ? 1 : 10
         )
 
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
