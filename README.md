@@ -76,7 +76,7 @@ For this conversion, simply call the `MPS` constructor on the object:
 mps = MPS(tci)
 ```
 
-### [tensors4fields.jl](https://gitlab.com/tensors4fields/tensors4fields.jl)
+### [QuanticsTCI.jl](https://gitlab.com/tensors4fields/QuanticsTCI.jl)
 A module that implements the *quantics representation* and combines it with TCI for exponentially efficient interpolation of functions with scale separation.
 
 ## Contributions
