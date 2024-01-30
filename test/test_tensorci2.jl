@@ -54,12 +54,17 @@ import QuanticsGrids as QD
 
         @test all(TCI.linkdims(tci) .== 1)
 
+        # Conversion to TT
+        tt = TCI.TensorTrain(tci)
+
         for x in [0.1, 0.3, 0.6, 0.9]
             indexset = QD.origcoord_to_quantics(
                 grid, (x,)
             )
             @test abs(TCI.evaluate(tci, indexset) - f(indexset)) < abstol
+            @test abs(TCI.evaluate(tt, indexset) - f(indexset)) < abstol
         end
+
 
     end
 
