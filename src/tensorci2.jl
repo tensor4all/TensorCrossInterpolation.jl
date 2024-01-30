@@ -461,7 +461,7 @@ end
 function _submatrix_batcheval(obj::SubMatrix{T}, f::BatchEvaluator{T}, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
     Iset = [obj.rows[i] for i in irows]
     Jset = [obj.cols[j] for j in icols]
-    return batchevaluate(f, Iset, Jset, 0)
+    return f(Iset, Jset, Val(0))
 end
 
 
