@@ -582,9 +582,9 @@ end
         loginterval::Int=10,
         normalizeerror::Bool=true,
         ncheckhistory=3,
-        maxnglobalpivot::Int=10,
+        maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=0,
-        tolmarginglobalsearch::Float64=1.0,
+        tolmarginglobalsearch::Float64=10.0,
         partialnesting::Bool=true
     ) where {ValueType}
 
@@ -605,9 +605,9 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `10`.
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `1.0`.
+- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `partialnesting::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
 
 Notes:
@@ -630,14 +630,21 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
-    maxnglobalpivot::Int=10,
+    maxnglobalpivot::Int=5,
     nsearchglobalpivot::Int=0,
-    tolmarginglobalsearch::Float64=1.0,
+    tolmarginglobalsearch::Float64=10.0,
     partialnesting::Bool=true
 ) where {ValueType}
     errors = Float64[]
     ranks = Int[]
     nglobalpivots = Int[]
+
+    #if maxnglobalpivot > 0 && nsearchglobalpivot > 0 
+        #!partialnesting || error("nglobalpivots > 0 requires partialnesting=false!")
+    #end
+    if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
+        error("nsearchglobalpivot < maxnglobalpivot!")
+    end
 
     tstart = time_ns()
 
@@ -678,7 +685,7 @@ function optimize!(
         push!(errors, pivoterror(tci))
 
         if verbosity > 1
-            println("  Walltime $(1e-9*(time_ns() - tstart)) sec: searching global pivots")
+            println("  Walltime $(1e-9*(time_ns() - tstart)) sec: start searching global pivots")
             flush(stdout)
         end
 
@@ -692,6 +699,11 @@ function optimize!(
         )
         addglobalpivots!(tci, globalpivots)
         push!(nglobalpivots, length(globalpivots))
+
+        if verbosity > 1
+            println("  Walltime $(1e-9*(time_ns() - tstart)) sec: done searching global pivots")
+            flush(stdout)
+        end
 
         push!(ranks, rank(tci))
         if verbosity > 0 && mod(iter, loginterval) == 0
@@ -796,9 +808,9 @@ end
         loginterval::Int=10,
         normalizeerror::Bool=true,
         ncheckhistory=3,
-        maxnglobalpivot::Int=10,
+        maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=0,
-        tolmarginglobalsearch::Float64=1.0,
+        tolmarginglobalsearch::Float64=10.0,
         partialnesting::Bool=true
     ) where {ValueType,N}
 
@@ -819,9 +831,9 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `10`.
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `1.0`.
+- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `partialnesting::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
 
 Notes:
@@ -851,7 +863,7 @@ function searchglobalpivots(
     tci::TensorCI2{ValueType}, f, abstol;
     verbosity::Int=0,
     nsearch::Int = 100,
-    maxnglobalpivot::Int = 10
+    maxnglobalpivot::Int = 5
 )::Vector{MultiIndex} where {ValueType}
     if nsearch == 0 || maxnglobalpivot == 0
         return MultiIndex[]
@@ -863,7 +875,7 @@ function searchglobalpivots(
 
     pivots = Dict{Float64,MultiIndex}()
     for _ in 1:nsearch
-        pivot, error = _floatingzone(tci, f, 0, 0, abstol)
+        pivot, error = _floatingzone(tci, f, 10 * abstol)
         if error > abstol
             pivots[error] = pivot
         end
@@ -889,8 +901,7 @@ end
 
 
 function _floatingzone(
-    tci::TensorCI2{ValueType}, f,
-    nl, nr, abstol;
+    tci::TensorCI2{ValueType}, f, abstol;
     nsweeps=100
 )::Tuple{MultiIndex,Float64} where {ValueType}
     nsweeps > 0 || error("nsweeps should be positive!")
@@ -901,51 +912,38 @@ function _floatingzone(
 
     ttcache = TTCache(tci.T)
 
-    lengthzone = length(tci) - nl - nr
+    pivot = [rand(1:d) for d in localdims]
 
-    idxzone = [rand(1:d) for d in localdims[nl+1:nl+lengthzone]]
-
-    maxerror = 0.0
-    pivot::Union{Nothing,MultiIndex} = nothing
+    maxerror = abs(f(pivot) - ttcache(pivot))
 
     for isweep in 1:nsweeps
         prev_maxerror = maxerror
-        for ipos in 1:lengthzone
-            zoneset = [vcat(idxzone[1:ipos-1], it, idxzone[ipos+1:end]) for it in 1:tci.localdims[ipos+nl]]
-            Jset = [vcat(z, j) for z in zoneset, j in tci.Jset[n-nr]]
-
+        for ipos in 1:n
             exactdata = filltensor(
                 ValueType,
                 f,
                 tci.localdims,
-                tci.Iset[nl+1],
-                vec(Jset),
-                Val(0)
+                [pivot[1:ipos-1]],
+                [pivot[ipos+1:end]],
+                Val(1)
             )
             prediction = filltensor(
                 ValueType,
                 ttcache,
                 tci.localdims,
-                tci.Iset[nl+1],
-                vec(Jset),
-                Val(0)
+                [pivot[1:ipos-1]],
+                [pivot[ipos+1:end]],
+                Val(1)
             )
-            err = reshape(abs.(exactdata .- prediction), length(tci.Iset[nl+1]), localdims[ipos+nl], length(tci.Jset[n-nr]))
-
+            err = vec(abs.(exactdata .- prediction))
+            pivot[ipos] = argmax(err)
             maxerror = maximum(err)
-            argmax_ = argmax(err)
-            pivot = vcat(tci.Iset[nl+1][argmax_[1]], zoneset[argmax_[2]], tci.Jset[n-nr][argmax_[3]])
-
-            #idxzone[ipos] = tci.localset[ipos+nl][argmax_[2]]
-            idxzone[ipos] = argmax_[2]
         end
 
-        if maxerror == prev_maxerror || maxerror > 10 * abstol # early stop
+        if maxerror == prev_maxerror || maxerror > abstol # early stop
             break
         end
     end
-
-    @assert pivot !== nothing
 
     return pivot, maxerror
 end
