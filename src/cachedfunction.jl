@@ -76,7 +76,7 @@ function (f::CachedFunction{V,K})(
     ::Val{M}
 )::Array{V,M + 2} where {V,K,M}
     if length(leftindexset) * length(rightindexset) == 0
-        return Array{V,M}(undef, ntuple(d->0, M)...)
+        return Array{V,M+2}(undef, ntuple(d->0, M+2)...)
     end
     if isbatchevaluable(f.f)
        return _batcheval_imp_for_batchevaluator(f, leftindexset, rightindexset, Val(M))
