@@ -519,9 +519,11 @@ function updatepivots!(
         end
         luci
     elseif pivotsearch === :rook
+        t1 = time_ns()
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
         J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
         Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
+        t2 = time_ns()
         res = MatrixLUCI(
             ValueType,
             Pif,
@@ -534,6 +536,31 @@ function updatepivots!(
             usebatcheval=true
         )
         updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
+
+        t3 = time_ns()
+
+        # Fall back to full search if rook search fails
+        if npivots(res) == 0
+            Pi = reshape(
+                filltensor(ValueType, f, tci.localdims,
+                Icombined, Jcombined, Val(0)),
+                length(Icombined), length(Jcombined)
+            )
+            updatemaxsample!(tci, Pi)
+            res = MatrixLUCI(
+                Pi,
+                reltol=reltol,
+                abstol=abstol,
+                maxrank=maxbonddim,
+                leftorthogonal=leftorthogonal
+            )
+        end
+
+        t4 = time_ns()
+        if verbosity > 2
+            x, y = length(Icombined), length(Jcombined)
+            println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+        end
         res
     else
         throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
@@ -951,9 +978,11 @@ end
 
 function fillsitetensors!(
     tci::TensorCI2{ValueType}, f) where {ValueType}
+    #==
     for b in 1:length(tci)-1
        rmbadpivots!(tci, f, b)
     end
+    ==#
     for b in 1:length(tci)
        setT!(tci, f, b)
     end
