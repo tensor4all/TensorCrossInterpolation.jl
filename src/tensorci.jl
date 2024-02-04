@@ -59,7 +59,7 @@ end
 function TensorCI{ValueType}(
     localdims::NTuple{N,Int},
 ) where {ValueType,N}
-    return TensorCI{ValueType}(collect(localdims))
+    return TensorCI{ValueType}(collect(localdims)::Vector{Int})
 end
 
 function TensorCI{ValueType}(
@@ -130,7 +130,7 @@ end
 function PinvtimesT(tci::TensorCI{V}, p::Int) where {V}
     T = tci.T[p]
     shape = size(T)
-    PinvT = AinvtimesB(tci.P[p-1], reshape(shape[1], shape[2] * shape[3]))
+    PinvT = AinvtimesB(tci.P[p-1], reshape(T, shape[1], shape[2] * shape[3]))
     return reshape(PinvT, shape)
 end
 
@@ -278,11 +278,11 @@ function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f
 end
 
 """
-    function addpivot!(tci::TensorCI{V}, p::Int, tolerance::T=T()) where {V,T<:Real}
+    function addpivot!(tci::TensorCI{V}, p::Int, tolerance::1e-12) where {V,F}
 
 Add a pivot to the TCI at site `p`. Do not add a pivot if the error is below tolerance.
 """
-function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::T=T()) where {V,T<:Real,F}
+function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::Float64=1e-12) where {V,F}
     if (p < 1) || (p > length(tci) - 1)
         throw(BoundsError(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))

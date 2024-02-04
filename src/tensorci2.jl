@@ -33,7 +33,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
         new{ValueType}(
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
-            localdims,                              # localdims
+            collect(localdims),                              # localdims
             [zeros(0, d, 0) for d in localdims],    # T
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors, forward sweep

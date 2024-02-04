@@ -71,8 +71,8 @@ end
     findnewpivot(
         a::AbstractMatrix{T},
         ci::MatrixCrossInterpolation{T},
-        row_indices::Union{Vector{Int},Colon},
-        col_indices::Union{Vector{Int},Colon})
+        row_indices::Union{Vector{Int}},
+        col_indices::Union{Vector{Int}})
 
 Finds the pivot that maximizes the local error across all components of `a` and `ci` within
 the subset given by `rowindices` and `colindices`. By default, all avalable rows of `ci`
@@ -81,8 +81,8 @@ will be considered.
 function findnewpivot(
     ci::AbstractMatrixCI{T},
     a::AbstractMatrix{T},
-    rowindices::Union{Vector{Int},Colon}=availablerows(ci),
-    colindices::Union{Vector{Int},Colon}=availablecols(ci)
+    rowindices::Union{Vector{Int}}=availablerows(ci),
+    colindices::Union{Vector{Int}}=availablecols(ci)
 ) where {T}
     if rank(ci) == minimum(size(a))
         throw(ArgumentError(
