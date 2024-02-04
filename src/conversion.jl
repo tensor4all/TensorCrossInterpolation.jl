@@ -57,7 +57,7 @@ function TensorCI{ValueType}(
 end
 
 function TensorCI2{ValueType}(tci1::TensorCI{ValueType}) where {ValueType}
-    tci2 = TensorCI2{ValueType}(vcat(sitedims(tci1)...))
+    tci2 = TensorCI2{ValueType}(vcat(sitedims(tci1)...)::Vector{Int})
     tci2.Iset = [i.fromint for i in tci1.Iset]
     tci2.Jset = [j.fromint for j in tci1.Jset]
     tci2.localset = tci1.localset

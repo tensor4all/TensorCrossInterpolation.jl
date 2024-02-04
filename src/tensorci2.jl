@@ -33,7 +33,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
         new{ValueType}(
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
-            localdims,                              # localdims
+            collect(localdims),                              # localdims
             [zeros(0, d, 0) for d in localdims],    # T
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors, forward sweep
@@ -520,8 +520,8 @@ function updatepivots!(
         luci
     elseif pivotsearch === :rook
         t1 = time_ns()
-        I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))
-        J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))
+        I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))::Vector{Int}
+        J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))::Vector{Int}
         Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
         t2 = time_ns()
         res = MatrixLUCI(
