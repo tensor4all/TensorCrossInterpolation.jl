@@ -4,6 +4,7 @@ using LinearAlgebra
 import ITensors
 
 include("test_with_aqua.jl")
+include("test_with_jet.jl")
 include("test_util.jl")
 include("test_sweepstrategies.jl")
 include("test_indexset.jl")
