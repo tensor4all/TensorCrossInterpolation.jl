@@ -72,6 +72,53 @@ import QuanticsGrids as QD
 
     end
 
+    @testset "trivial MPS(exp), small maxbonddim" begin
+        pivotsearch = :full
+        partialnesting = false
+        nsearchglobalpivot = 10
+
+        # f(x) = exp(-x)
+        Random.seed!(1240)
+        R = 8
+        abstol = 1e-10
+
+        grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
+
+        fx(x) = exp(-x) + 1e-4 * exp(-2x)
+        f(bitlist::MultiIndex) = fx(QD.quantics_to_origcoord(grid, bitlist)[1])
+
+        localdims = fill(2, R)
+        firstpivots = [ones(Int, R), vcat(1, fill(2, R - 1))]
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            firstpivots;
+            tolerance=abstol,
+            maxbonddim=1,
+            maxiter=10,
+            loginterval=1,
+            verbosity=0,
+            normalizeerror=false,
+            nsearchglobalpivot=nsearchglobalpivot,
+            pivotsearch=pivotsearch,
+            partialnesting=partialnesting
+        )
+
+        @test all(TCI.linkdims(tci) .== 1)
+
+        # Conversion to TT
+        tt = TCI.TensorTrain(tci)
+
+        for x in [0.1, 0.3, 0.6, 0.9]
+            indexset = QD.origcoord_to_quantics(
+                grid, (x,)
+            )
+            @test abs(TCI.evaluate(tci, indexset) - f(indexset)) < 1e-4
+            @test abs(TCI.evaluate(tt, indexset) - f(indexset)) < 1e-4
+        end
+    end
+
     @testset "trivial MPS" begin
         n = 5
         f(v) = sum(v) * 0.5

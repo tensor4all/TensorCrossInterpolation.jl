@@ -744,6 +744,19 @@ function optimize!(
         end
     end
 
+    if rank(tci) > maxbonddim
+        errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+        abstol = pivottolerance * errornormalization;
+        sweep2site!(
+            tci, f, 1;
+            abstol=abstol,
+            maxbonddim=maxbonddim,
+            pivotsearch=pivotsearch,
+            partialnesting=partialnesting,
+            verbosity=verbosity
+            )
+    end
+
     if !issitetensorsavailable(tci)
         fillsitetensors!(tci, f)
     end
