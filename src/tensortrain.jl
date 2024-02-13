@@ -15,52 +15,41 @@ The corresponding function is:
 Evaluates the tensor train `tt` at indices given by `indexset`.
 """
 mutable struct TensorTrain{ValueType,N} <: AbstractTensorTrain{ValueType}
-    T::Vector{Array{ValueType,N}}
+    sitetensors::Vector{Array{ValueType,N}}
 
-    function TensorTrain{ValueType,N}(T::Vector{Array{ValueType,N}}) where {ValueType,N}
-        for i in 1:length(T)-1
-            if (last(size(T[i])) != size(T[i+1], 1))
+    function TensorTrain{ValueType,N}(sitetensors::AbstractVector{<:AbstractArray{ValueType,N}}) where {ValueType,N}
+        for i in 1:length(sitetensors)-1
+            if (last(size(sitetensors[i])) != size(sitetensors[i+1], 1))
                 throw(ArgumentError(
                     "The tensors at $i and $(i+1) must have consistent dimensions for a tensor train."
                 ))
             end
         end
 
-        new{ValueType,N}(T)
+        new{ValueType,N}(sitetensors)
     end
 end
 
 """
-    function TensorTrain(T::Vector{Array{V, 3}}) where {V}
+    function TensorTrain(sitetensors::Vector{Array{V, 3}}) where {V}
 
 Create a tensor train out of a vector of tensors. Each tensor should have links to the
 previous and next tensor as dimension 1 and 3, respectively; the local index ("physical
 index" for MPS in physics) is dimension 2.
 """
-function TensorTrain(T::Vector{Array{V,N}}) where {V,N}
-    return TensorTrain{V,N}(T)
+function TensorTrain(sitetensors::AbstractVector{<:AbstractArray{V,N}}) where {V,N}
+    return TensorTrain{V,N}(sitetensors)
 end
 
 """
-    function TensorTrain(tci::TensorCI{V}) where {V}
+    function TensorTrain(tci::AbstractTensorTrain{V}) where {V}
 
-Convert the TCI object into a tensor train, also known as an MPS.
+Convert a tensor-train-like object into a tensor train. This includes TCI1 and TCI2 objects.
 
-See also: [`crossinterpolate`](@ref), [`TensorCI`](@ref)
+See also: [`TensorCI`](@ref), [`TensorCI2`](@ref).
 """
-function TensorTrain(tci::TensorCI{V})::TensorTrain{V,3} where {V}
-    return TensorTrain{V,3}(TtimesPinv.(tci, 1:length(tci)))
-end
-
-"""
-    function TensorTrain(tci::TensorCI2{V}) where {V}
-
-Convert the TCI2 object into a tensor train, also known as an MPS.
-
-See also: [`crossinterpolate2`](@ref), [`TensorCI2`](@ref)
-"""
-function TensorTrain(tci::TensorCI2{V})::TensorTrain{V,3} where {V}
-    return TensorTrain(tci.T)
+function TensorTrain(tci::AbstractTensorTrain{V})::TensorTrain{V,3} where {V}
+    return TensorTrain{V,3}(sitetensors(tci))
 end
 
 function tensortrain(tci)
