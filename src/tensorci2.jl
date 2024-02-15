@@ -29,6 +29,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
     ) where {ValueType,N}
+        length(localdims) > 1 || error("localdims should have at least 2 elements!")
         n = length(localdims)
         new{ValueType}(
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
@@ -52,6 +53,8 @@ function TensorCI2{ValueType}(
 ) where {F,ValueType,N}
     tci = TensorCI2{ValueType}(localdims)
     addglobalpivots!(tci, initialpivots)
+    tci.maxsamplevalue = maximum(abs, func.(initialpivots))
+    abs(tci.maxsamplevalue) > 0.0 || error("maxsamplevalue is zero!")
     invalidatesitetensors!(tci)
     return tci
 end
