@@ -23,6 +23,21 @@ import QuanticsGrids as QD
         end
     end
 
+    @testset "pivoterrors" begin
+        diags = [1.0, 1e-5, 0.0]
+        f(x) = (x[1] == x[2] ? diags[x[1]] : 0.0)
+        localdims = [3, 3]
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            [[1, 1]];
+            tolerance=1e-8,
+        )
+        @test tci.pivoterrors == diags
+    end
+
+
     @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], partialnesting in [false, true], nsearchglobalpivot in [0, 10]
         if nsearchglobalpivot > 0 && partialnesting
             continue
