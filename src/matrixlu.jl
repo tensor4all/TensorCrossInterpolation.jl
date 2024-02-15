@@ -141,7 +141,6 @@ function _optimizerrlu!(
         end
         maxerror = max(maxerror, lu.error)
         addpivot!(lu, A, newpivot)
-        lu.error = 0
     end
 
     lu.L = tril(A[:, 1:lu.npivot])
@@ -156,6 +155,10 @@ function _optimizerrlu!(
         lu.L[diagind(lu.L)] .= one(T)
     else
         lu.U[diagind(lu.U)] .= one(T)
+    end
+
+    if lu.npivot >= minimum(size(A))
+        lu.error = 0
     end
 
     nothing
