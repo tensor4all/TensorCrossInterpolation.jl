@@ -298,10 +298,12 @@ import QuanticsGrids as QD
         localdims = fill(2, n)
 
         # This checks only that the function runs without error
+        firstpivot = TCI.optfirstpivot(f, localdims, [rand(1:d) for d in localdims])
         tci, ranks, errors = crossinterpolate2(
             Float64,
             f,
             localdims,
+            [firstpivot];
             tolerance=1e-12,
             maxbonddim=100,
             maxiter=100,
