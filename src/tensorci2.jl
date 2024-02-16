@@ -62,6 +62,9 @@ function printnestinginfo(tci::TensorCI2{T}) where {T}
     printnestinginfo(stdout, tci)
 end
 
+function linkdims(tci::TensorCI2{T})::Vector{Int} where {T}
+    return [length(tci.Iset[b+1]) for b in 1:length(tci)-1]
+end
 
 """
 Invalidate the site tensor at bond `b`.
