@@ -70,19 +70,19 @@ end
 
 function TensorTrainFit{ValueType}(indexsets, values, tt) where {ValueType}
     offsets = [0]
-    for n in 1:length(tt.T)
-        push!(offsets, offsets[end] + length(tt.T[n]))
+    for n in 1:length(tt)
+        push!(offsets, offsets[end] + length(tt[n]))
     end
     return TensorTrainFit{ValueType}(indexsets, values, tt, offsets)
 end
 
-flatten(obj::TensorTrain{ValueType}) where {ValueType} = vcat(vec.(obj.T)...)
+flatten(obj::TensorTrain{ValueType}) where {ValueType} = vcat(vec.(sitetensors(obj))...)
 
 function to_tensors(obj::TensorTrainFit{ValueType}, x::Vector{ValueType}) where {ValueType}
     return [
         reshape(
             x[obj.offsets[n]+1:obj.offsets[n+1]],
-            size(obj.tt.T[n])
+            size(obj.tt[n])
             )
         for n in 1:length(obj.tt)
     ]

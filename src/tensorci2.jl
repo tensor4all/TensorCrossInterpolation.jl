@@ -49,7 +49,6 @@ function TensorCI2{ValueType}(
 ) where {F,ValueType,N}
     tci = TensorCI2{ValueType}(localdims)
     addglobalpivots!(tci, initialpivots)
-    fillsitetensors!(tci, func)
     return tci
 end
 

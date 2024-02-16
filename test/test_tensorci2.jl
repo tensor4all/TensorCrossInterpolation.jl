@@ -322,7 +322,7 @@ import QuanticsGrids as QD
         localdims = [2, 3, 3, 2]
 
         tt = TCI.TensorTrain{ValueType,3}([rand(bonddims[n], localdims[n], bonddims[n+1]) for n in 1:N])
-        ttc = TCI.TTCache(tt.T)
+        ttc = TCI.TTCache(tt)
 
         tci2, ranks, errors = TCI.crossinterpolate2(
             ValueType,

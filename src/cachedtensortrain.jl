@@ -132,7 +132,7 @@ function (tt::TTCache{V})(
         error("Invalid parameter M: $(M)")
     end
 
-    DL = nleft == 0 ? 1 : linkdim(tt, nleft)
+    DL = nleft == 0 ? 1 : size(tt[nleft], 3)
     lenv = ones(V, nleftindexset, DL)
     if nleft > 0
         for (il, lindex) in enumerate(leftindexset)
