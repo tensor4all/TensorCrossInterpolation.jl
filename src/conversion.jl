@@ -62,8 +62,8 @@ function TensorCI2{ValueType}(tci1::TensorCI{ValueType}) where {ValueType}
     tci2.Jset = [j.fromint for j in tci1.Jset]
     tci2.localset = tci1.localset
     L = length(tci1)
-    tci2.T[1:L-1] = TtimesPinv.(tci1, 1:L-1)
-    tci2.T[end] = tci1.T[end]
+    tci2.sitetensors[1:L-1] = TtimesPinv.(tci1, 1:L-1)
+    tci2.sitetensors[end] = tci1.T[end]
     tci2.pivoterrors = Float64[]
     tci2.bonderrorsforward = tci1.pivoterrors
     tci2.bonderrorsbackward = tci1.pivoterrors

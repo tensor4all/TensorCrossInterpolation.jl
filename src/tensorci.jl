@@ -134,6 +134,38 @@ function PinvtimesT(tci::TensorCI{V}, p::Int) where {V}
     return reshape(PinvT, shape)
 end
 
+function sitetensor(tci::TensorCI{V}, p::Int) where {V}
+    return TtimesPinv(tci, p)
+end
+
+function sitetensor(tci::TensorCI{V}, p) where {V}
+    return sitetensor.(tci, p)
+end
+
+function sitetensors(tci::TensorCI{V}) where {V}
+    return [sitetensor(tci, p) for p in 1:length(tci.T)]
+end
+
+function length(tci::TensorCI{V}) where {V}
+    return length(tci.T)
+end
+
+function linkdims(tci::TensorCI{V}) where {V}
+    return [size(T, 1) for T in tci.T[2:end]]
+end
+
+function linkdim(tci::TensorCI{V}, i::Int) where {V}
+    return size(tci.T[i+1], 1)
+end
+
+function sitedims(tci::TensorCI{V}) where {V}
+    return [size(T)[2:end-1] for T in tci.T]
+end
+
+function sitedim(tci::TensorCI{V}, i::Int) where {V}
+    return size(tci.T[i])[2:end-1]
+end
+
 """
     function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
 
