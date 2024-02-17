@@ -38,7 +38,7 @@ end
 Bond dimensions at the link between tensor ``T_i`` and ``T_{i+1}`` in the tensor train.
 """
 function linkdim(tt::AbstractTensorTrain{V}, i::Int)::Int where {V}
-    return size(tt.T[i+1], 1)
+    return size(sitetensor(tt, i+1), 1)
 end
 
 """
@@ -56,7 +56,7 @@ end
 Dimension of the `i`th site index along the tensor train.
 """
 function sitedim(tt::AbstractTensorTrain{V}, i::Int)::Vector{Int} where {V}
-    return collect(size(tt.T[i])[2:end-1])
+    return collect(size(sitetensor(tt, i))[2:end-1])
 end
 
 """
@@ -71,28 +71,46 @@ function rank(tt::AbstractTensorTrain{V}) where {V}
 end
 
 """
+    sitetensors(tt::AbstractTensorTrain{V}) where {V}
+
+The tensors that make up the tensor train.
+"""
+function sitetensors(tt::AbstractTensorTrain{V}) where {V}
+    return tt.sitetensors
+end
+
+"""
+    sitetensors(tt::AbstractTensorTrain{V}, i) where {V}
+
+The tensor at site i of the tensor train.
+"""
+function sitetensor(tt::AbstractTensorTrain{V}, i) where {V}
+    return tt.sitetensors[i]
+end
+
+"""
     function length(tt::AbstractTensorTrain{V}) where {V}
 
 Length of the tensor train, i.e. the number of tensors in the tensor train.
 """
 function length(tt::AbstractTensorTrain{V}) where {V}
-    return length(tt.T)
+    return length(sitetensors(tt))
 end
 
 function Base.iterate(tt::AbstractTensorTrain{V}) where {V}
-    return iterate(tt.T)
+    return iterate(sitetensors(tt))
 end
 
 function Base.iterate(tt::AbstractTensorTrain{V}, state) where {V}
-    return iterate(tt.T, state)
+    return iterate(sitetensors(tt), state)
 end
 
 function Base.getindex(tt::AbstractTensorTrain{V}, i) where {V}
-    return getindex(tt.T, i)
+    return sitetensor(tt, i)
 end
 
 function Base.lastindex(tt::AbstractTensorTrain{V}) where {V}
-    return lastindex(tt.T)
+    return lastindex(sitetensors(tt))
 end
 
 """

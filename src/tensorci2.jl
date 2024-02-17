@@ -9,10 +9,7 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     Jset::Vector{Vector{MultiIndex}}
     localdims::Vector{Int}
 
-    # TODO: rename to sitetensors
-    # Site tensors of the tensor train
-    # Updated after each sweep
-    T::Vector{Array{ValueType,3}}
+    sitetensors::Vector{Array{ValueType,3}}
 
     "Error estimate for backtruncation of bonds."
     pivoterrors::Vector{Float64}
@@ -69,13 +66,12 @@ function linkdims(tci::TensorCI2{T})::Vector{Int} where {T}
     return [length(tci.Iset[b+1]) for b in 1:length(tci)-1]
 end
 
-
 """
 Invalidate the site tensor at bond `b`.
 """
 function invalidatesitetensors!(tci::TensorCI2{T}) where {T}
     for b in 1:length(tci)
-        tci.T[b] = zeros(T, 0, 0, 0)
+        tci.sitetensors[b] = zeros(T, 0, 0, 0)
     end
     nothing
 end
@@ -84,7 +80,7 @@ end
 Return if site tensors are available
 """
 function issitetensorsavailable(tci::TensorCI2{T}) where {T}
-    return all(length(tci.T[b]) != 0 for b in 1:length(tci))
+    return all(length(tci.sitetensors[b]) != 0 for b in 1:length(tci))
 end
 
 
@@ -299,7 +295,7 @@ end
 function setT!(
     tci::TensorCI2{ValueType}, b::Int, T::AbstractArray{ValueType,N}
 ) where {ValueType,N}
-    tci.T[b] = reshape(
+    tci.sitetensors[b] = reshape(
         T,
         length(tci.Iset[b]),
         tci.localdims[b],
@@ -309,7 +305,7 @@ end
 
 
 function rmbadpivots!(
-    tci::TensorCI2{ValueType}, f, b::Int; 
+    tci::TensorCI2{ValueType}, f, b::Int;
     reltol=1e-14, abstol=0.0
 ) where {ValueType}
     invalidatesitetensors!(tci)
@@ -336,7 +332,7 @@ function setT!(
     tci::TensorCI2{ValueType}, f, b::Int; leftorthogonal=true
 ) where {ValueType}
     leftorthogonal || error("leftorthogonal==false is not supported!")
-    
+
     Is = leftorthogonal ? kronecker(tci.Iset[b], tci.localdims[b]) : tci.Iset[b]
     Js = leftorthogonal ? tci.Jset[b] : kronecker(tci.localdims[b], tci.Jset[b])
     Pi1 = reshape(
@@ -347,7 +343,7 @@ function setT!(
     if (leftorthogonal && b == length(tci)) ||
         (!leftorthogonal && b == 1)
         setT!(tci, b, Pi1)
-        return tci.T[b]
+        return tci.sitetensors[b]
     end
 
     P = reshape(
@@ -355,8 +351,8 @@ function setT!(
         length(tci.Iset[b+1]), length(tci.Jset[b]))
 
     Tmat = transpose(transpose(P) \ transpose(Pi1))
-    tci.T[b] = reshape(Tmat, length(tci.Iset[b]), tci.localdims[b], length(tci.Iset[b+1]))
-    return tci.T[b]
+    tci.sitetensors[b] = reshape(Tmat, length(tci.Iset[b]), tci.localdims[b], length(tci.Iset[b+1]))
+    return tci.sitetensors[b]
 end
 
 
@@ -402,7 +398,7 @@ function sweep1site!(
         if updatetensors
             setT!(tci, b, forwardsweep ? left(luci) : right(luci))
         end
-        if any(isnan.(tci.T[b]))
+        if any(isnan.(tci.sitetensors[b]))
             error("Error: NaN in tensor T[$b]")
         end
         updateerrors!(
@@ -662,7 +658,7 @@ function optimize!(
     ranks = Int[]
     nglobalpivots = Int[]
 
-    #if maxnglobalpivot > 0 && nsearchglobalpivot > 0 
+    #if maxnglobalpivot > 0 && nsearchglobalpivot > 0
         #!partialnesting || error("nglobalpivots > 0 requires partialnesting=false!")
     #end
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
@@ -946,7 +942,7 @@ function _floatingzone(
 
     n = length(tci)
 
-    ttcache = TTCache(tci.T)
+    ttcache = TTCache(tci)
 
     pivot = [rand(1:d) for d in localdims]
 
