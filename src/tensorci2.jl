@@ -112,7 +112,7 @@ end
 
 
 function updatebonderror!(
-    tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
+    tci::TensorCI2{T}, b::Int, error::Float64
 ) where {T}
     tci.bonderrors[b] = error
     nothing
@@ -143,12 +143,10 @@ end
 function updateerrors!(
     tci::TensorCI2{T},
     b::Int,
-    sweepdirection::Symbol,
-    errors::AbstractVector{Float64},
-    lastpivoterror::Float64
+    errors::AbstractVector{Float64}
 ) where {T}
-    updatebonderror!(tci, b, sweepdirection, lastpivoterror)
-    updatepivoterror!(tci, vcat(errors, lastpivoterror))
+    updatebonderror!(tci, b, last(errors))
+    updatepivoterror!(tci, errors)
     nothing
 end
 
@@ -402,8 +400,8 @@ function sweep1site!(
             error("Error: NaN in tensor T[$b]")
         end
         updateerrors!(
-            tci, b - !forwardsweep, sweepdirection,
-            pivoterrors(luci), lastpivoterror(luci)
+            tci, b - !forwardsweep,
+            pivoterrors(luci),
         )
     end
 
@@ -563,7 +561,7 @@ function updatepivots!(
         setT!(tci, b, left(luci))
         setT!(tci, b + 1, right(luci))
     end
-    updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
+    updateerrors!(tci, b, pivoterrors(luci))
     nothing
 end
 

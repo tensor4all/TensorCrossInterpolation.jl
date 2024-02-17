@@ -378,7 +378,7 @@ function npivots(lu::rrLU{T}) where {T}
 end
 
 function pivoterrors(lu::rrLU{T}) where {T}
-    return abs.(diag(lu))
+    return vcat(abs.(diag(lu)), lu.error)
 end
 
 """

@@ -169,7 +169,7 @@ using LinearAlgebra
             0.0 1.0
         ]
         LU1 = TCI.rrlu(A)
-        @test TCI.pivoterrors(LU1) == [1.0, 1.0]
+        @test TCI.pivoterrors(LU1) == [1.0, 1.0, 0.0]
         @test TCI.lastpivoterror(LU1) == 0.0
     end
 
@@ -183,7 +183,7 @@ using LinearAlgebra
         ]
 
         lu = TCI.rrlu(A, maxrank=2)
-        @test length(TCI.pivoterrors(lu)) == 2
+        @test length(TCI.pivoterrors(lu)) == 3
         @test TCI.lastpivoterror(lu) > 0
 
         lu2 = TCI.rrlu(A, abstol=0.5)
