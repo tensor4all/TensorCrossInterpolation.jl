@@ -32,11 +32,11 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
             collect(localdims),                              # localdims
-            [zeros(0, d, 0) for d in localdims],    # T
+            [zeros(0, d, 0) for d in localdims],    # sitetensors
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors, forward sweep
             zeros(length(localdims) - 1),           # bonderrors, backward sweep
-            0.0,                                    # maxsample
+            0.0,                                    # maxsamplevalue
             Vector{Vector{MultiIndex}}[],           # Iset_history
             Vector{Vector{MultiIndex}}[],           # Jset_history
         )
