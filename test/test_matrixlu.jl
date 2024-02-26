@@ -169,7 +169,27 @@ using LinearAlgebra
             0.0 1.0
         ]
         LU1 = TCI.rrlu(A)
-        @test TCI.pivoterrors(LU1) == [1.0, 1.0]
+        @test TCI.pivoterrors(LU1) == [1.0, 1.0, 0.0]
         @test TCI.lastpivoterror(LU1) == 0.0
+    end
+
+    @testset "lastpivoterror for limited maxrank or tolerance" begin
+        A = [
+            0.433088   0.956638   0.0907974  0.0447859  0.0196053
+            0.855517   0.782503   0.291197   0.540828   0.358579
+            0.37455    0.536457   0.205479   0.75896    0.701206
+            0.47272    0.0172539  0.518177   0.242864   0.461635
+            0.0676373  0.450878   0.672335   0.77726    0.540691
+        ]
+
+        lu = TCI.rrlu(A, maxrank=2)
+        @test length(TCI.pivoterrors(lu)) == 3
+        @test TCI.lastpivoterror(lu) > 0
+
+        lu2 = TCI.rrlu(A, abstol=0.5)
+        @test TCI.lastpivoterror(lu2) < 0.5
+
+        lu3 = TCI.rrlu(A, abstol=0.0)
+        @test TCI.lastpivoterror(lu3) == 0.0
     end
 end

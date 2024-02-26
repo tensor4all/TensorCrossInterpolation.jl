@@ -13,11 +13,9 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
 
     "Error estimate for backtruncation of bonds."
     pivoterrors::Vector{Float64}
-    "Error estimate per bond from last forward sweep."
-    bonderrorsforward::Vector{Float64}
-    "Error estimate per bond from last backward sweep."
-    bonderrorsbackward::Vector{Float64}
-    "Maximum sample for error normalization."
+    #"Error estimate per bond by 2site sweep."
+    bonderrors::Vector{Float64}
+    #"Maximum sample for error normalization."
     maxsamplevalue::Float64
 
     Iset_history::Vector{Vector{Vector{MultiIndex}}}
@@ -31,11 +29,10 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
         new{ValueType}(
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
-            collect(localdims),                              # localdims
+            collect(localdims),                     # localdims
             [zeros(0, d, 0) for d in localdims],    # sitetensors
             [],                                     # pivoterrors
-            zeros(length(localdims) - 1),           # bonderrors, forward sweep
-            zeros(length(localdims) - 1),           # bonderrors, backward sweep
+            zeros(length(localdims) - 1),           # bonderrors
             0.0,                                    # maxsamplevalue
             Vector{Vector{MultiIndex}}[],           # Iset_history
             Vector{Vector{MultiIndex}}[],           # Jset_history
@@ -115,18 +112,14 @@ end
 
 
 function updatebonderror!(
-    tci::TensorCI2{T}, b::Int, sweepdirection::Symbol, error::Float64
+    tci::TensorCI2{T}, b::Int, error::Float64
 ) where {T}
-    if sweepdirection === :forward
-        tci.bonderrorsforward[b] = error
-    elseif sweepdirection === :backward
-        tci.bonderrorsbackward[b] = error
-    end
+    tci.bonderrors[b] = error
     nothing
 end
 
 function maxbonderror(tci::TensorCI2{T}) where {T}
-    return max(maximum(tci.bonderrorsforward), maximum(tci.bonderrorsbackward))
+    return maximum(tci.bonderrors)
 end
 
 function updatepivoterror!(tci::TensorCI2{T}, errors::AbstractVector{Float64}) where {T}
@@ -150,11 +143,9 @@ end
 function updateerrors!(
     tci::TensorCI2{T},
     b::Int,
-    sweepdirection::Symbol,
-    errors::AbstractVector{Float64},
-    lastpivoterror::Float64
+    errors::AbstractVector{Float64}
 ) where {T}
-    updatebonderror!(tci, b, sweepdirection, lastpivoterror)
+    updatebonderror!(tci, b, last(errors))
     updatepivoterror!(tci, errors)
     nothing
 end
@@ -409,8 +400,8 @@ function sweep1site!(
             error("Error: NaN in tensor T[$b]")
         end
         updateerrors!(
-            tci, b - !forwardsweep, sweepdirection,
-            pivoterrors(luci), lastpivoterror(luci)
+            tci, b - !forwardsweep,
+            pivoterrors(luci),
         )
     end
 
@@ -570,7 +561,7 @@ function updatepivots!(
         setT!(tci, b, left(luci))
         setT!(tci, b + 1, right(luci))
     end
-    updateerrors!(tci, b, sweepdirection, pivoterrors(luci), lastpivoterror(luci))
+    updateerrors!(tci, b, pivoterrors(luci))
     nothing
 end
 
@@ -685,7 +676,6 @@ function optimize!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         abstol = pivottolerance * errornormalization;
 
-        flushpivoterror!(tci)
         if verbosity > 1
             println("  Walltime $(1e-9*(time_ns() - tstart)) sec: starting 2site sweep")
             flush(stdout)
@@ -796,6 +786,7 @@ function sweep2site!(
     push!(tci.Iset_history, deepcopy(tci.Iset))
     push!(tci.Jset_history, deepcopy(tci.Jset))
     for iter in iter1:iter1+niter-1
+        flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
                 updatepivots!(

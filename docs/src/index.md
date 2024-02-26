@@ -79,7 +79,7 @@ println("Is this below tolerance? $(last(errors) < tolerance)")
 Plotting `errors` against `ranks` shows convergence behavior. In most cases, convergence will become exponential after some initial iterations. Furthermore, `tci.pivoterrors[D]` contains the error that a truncation to bond dimension `D` would incur. Plotting both, we see tha
 ```@example simple
 plot(ranks, errors, yscale=:log10, seriestype=:scatter)
-plot!(1:TCI.rank(tci), tci.pivoterrors / tci.maxsamplevalue, yscale=:log10)
+plot!(tci.pivoterrors / tci.maxsamplevalue, yscale=:log10)
 ylims!(1e-10, 2)
 xlabel!(L"D_\max")
 ylabel!(L"\varepsilon")
