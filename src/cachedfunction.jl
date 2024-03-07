@@ -10,7 +10,6 @@ struct CachedFunction{ValueType,K<:Union{UInt32,UInt64,UInt128,BigInt}} <: Batch
     localdims::Vector{Int}
     cache::Dict{K,ValueType}
     coeffs::Vector{K}
-    localset::Vector{Vector{Int}}
     function CachedFunction{ValueType,K}(f, localdims, cache) where {ValueType,K}
         coeffs = ones(K, length(localdims))
         for n in 2:length(localdims)
@@ -19,7 +18,7 @@ struct CachedFunction{ValueType,K<:Union{UInt32,UInt64,UInt128,BigInt}} <: Batch
         if K != BigInt
             sum(coeffs .* (localdims .- 1)) < typemax(K) || error("Too many dimensions. Use BigInt instead of UInt128.")
         end
-        new(f, localdims, cache, coeffs, [collect(1:d) for d in localdims])
+        new(f, localdims, cache, coeffs)
     end
 end
 
@@ -173,6 +172,25 @@ function _key(cf::CachedFunction{ValueType,K}, indexset::Vector{T})::K where {Va
         result += cf.coeffs[i] * (indexset[i] - 1)
     end
     return result
+end
+
+encodecachekey(cf::CachedFunction{ValueType,K}, index::Vector{Int}) where {ValueType, K} = _key(cf, index)
+
+function decodecachekey(cf::CachedFunction{ValueType,K}, key::K) where {ValueType, K}
+    N = length(cf.localdims)
+    index = Vector{Int}(undef, N)
+    for i in 1:N
+        key, r = divrem(key, cf.localdims[i])
+        index[i] = r + 1
+    end
+    return index
+end
+
+"""
+Get all cached data of a `CachedFunction` object.
+"""
+function cachedata(cf::CachedFunction{ValueType,K}) where {ValueType, K}
+    return Dict(decodecachekey(cf, k) => v for (k, v) in cf.cache)
 end
 
 Base.in(x::Vector{T}, cf::CachedFunction{ValueType,K}) where {ValueType, T<:Number, K} = _key(cf, x) ∈ keys(cf.cache)
