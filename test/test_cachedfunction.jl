@@ -136,8 +136,24 @@ end
         L = 40
         localdims = fill(2, L)
         indexsets = [rand(1:d) for d in localdims]
-        cf = TCI.CachedFunction{ComplexF64}(x->1.0, localdims)
-        wrongindexset = fill(1, 2*L)
+        cf = TCI.CachedFunction{ComplexF64}(x -> 1.0, localdims)
+        wrongindexset = fill(1, 2 * L)
         @test_throws ErrorException TCI._key(cf, wrongindexset)
+    end
+
+    @testset "encode and decode cachekey" begin
+        localdims = [2, 3, 4]
+        cf = TCI.CachedFunction{ComplexF64}(x -> Float64(sum(x)), localdims)
+        for i1 in 1:localdims[1], i2 in 1:localdims[2], i3 in 1:localdims[3]
+            x = [i1, i2, i3]
+            cf(x) # fill cache
+            key = TCI.encodecachekey(cf, x)
+            @test TCI.decodecachekey(cf, key) == x
+        end
+
+        cachedata = TCI.cachedata(cf)
+        for (x, v) in cachedata
+            @test cf(x) == v
+        end
     end
 end
