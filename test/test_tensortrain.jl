@@ -118,4 +118,10 @@ end
     ttadd = TCI.add(tt1, tt2)
     indices = [[i, j, k] for i in 1:2, j in 1:2, k in 1:2]
     @test ttadd.(indices) ≈ [tt1(v) + tt2(v) for v in indices]
+
+    ttshort = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L-1])
+    @test_throws DimensionMismatch TCI.add(tt1, ttshort)
+
+    ttmultileg = TCI.TensorTrain{T,4}([randn(T, linkdims[n], localdims[n], localdims[n], linkdims[n+1]) for n in 1:L-1])
+    @test_throws DimensionMismatch TCI.add(tt1, ttmultileg)
 end

@@ -174,7 +174,7 @@ end
 
 function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=false) where {V}
     if ndims(A) != ndims(B)
-        error("Elementwise addition only works if both tensors have the same indices, but A and B have different numbers ($(ndims(A)) and $(ndims(B))) of indices.")
+        throw(DimensionMismatch("Elementwise addition only works if both tensors have the same indices, but A and B have different numbers ($(ndims(A)) and $(ndims(B))) of indices."))
     end
     nd = ndims(A)
     offset1 = lefttensor ? 0 : size(A, 1)
@@ -187,7 +187,7 @@ end
 
 function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     if length(lhs) != length(rhs)
-        errors("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise.")
+        throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
     end
     L = length(lhs)
     return tensortrain(
