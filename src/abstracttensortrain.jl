@@ -171,3 +171,29 @@ function sum(tt::AbstractTensorTrain{V}) where {V}
     end
     return only(v)
 end
+
+function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=false) where {V}
+    if ndims(A) != ndims(B)
+        throw(DimensionMismatch("Elementwise addition only works if both tensors have the same indices, but A and B have different numbers ($(ndims(A)) and $(ndims(B))) of indices."))
+    end
+    nd = ndims(A)
+    offset1 = lefttensor ? 0 : size(A, 1)
+    offset3 = righttensor ? 0 : size(A, nd)
+    C = zeros(V, offset1 + size(B, 1), size(A)[2:nd-1]..., offset3 + size(B, nd))
+    C[1:size(A, 1), :, 1:size(A, nd)] = A
+    C[offset1+1:end, :, offset3+1:end] = B
+    return C
+end
+
+function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+    if length(lhs) != length(rhs)
+        throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
+    end
+    L = length(lhs)
+    return tensortrain(
+        [
+            _addtttensor(lhs[ell], rhs[ell]; lefttensor=(ell==1), righttensor=(ell==L))
+            for ell in 1:L
+        ]
+    )
+end
