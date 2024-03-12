@@ -186,10 +186,12 @@ function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=fa
     return C
 end
 
-"""
+@doc raw"""
     function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
 
-Addition of two tensor trains. If `c = add(a, b)`, then `c(v) ≈ a(v) + b(v)` at each index set `v`.
+Addition of two tensor trains. If `c = add(a, b)`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. In many cases, it is advisable to recompress/truncate the resulting tensor train afterwards.
+
+See also: [`+`](@ref)
 """
 function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     if length(lhs) != length(rhs)
@@ -204,6 +206,13 @@ function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     )
 end
 
+@doc raw"""
+    function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+
+Addition of two tensor trains. If `c = a + b`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. In many cases, it is advisable to recompress/truncate the resulting tensor train afterwards.
+
+See also: [`add`](@ref)
+"""
 function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     return add(lhs, rhs)
 end
