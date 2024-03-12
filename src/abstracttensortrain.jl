@@ -179,12 +179,20 @@ function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=fa
     nd = ndims(A)
     offset1 = lefttensor ? 0 : size(A, 1)
     offset3 = righttensor ? 0 : size(A, nd)
+    localindices = fill(Colon(), nd - 2)
     C = zeros(V, offset1 + size(B, 1), size(A)[2:nd-1]..., offset3 + size(B, nd))
-    C[1:size(A, 1), :, 1:size(A, nd)] = A
-    C[offset1+1:end, :, offset3+1:end] = B
+    C[1:size(A, 1), localindices..., 1:size(A, nd)] = A
+    C[offset1+1:end, localindices..., offset3+1:end] = B
     return C
 end
 
+@doc raw"""
+    function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+
+Addition of two tensor trains. If `c = add(a, b)`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. In many cases, it is advisable to recompress/truncate the resulting tensor train afterwards.
+
+See also: [`+`](@ref)
+"""
 function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     if length(lhs) != length(rhs)
         throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
@@ -196,4 +204,15 @@ function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
             for ell in 1:L
         ]
     )
+end
+
+@doc raw"""
+    function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+
+Addition of two tensor trains. If `c = a + b`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. In many cases, it is advisable to recompress/truncate the resulting tensor train afterwards.
+
+See also: [`add`](@ref)
+"""
+function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+    return add(lhs, rhs)
 end
