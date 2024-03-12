@@ -10,31 +10,11 @@ This algorithm is used in the *quantics tensor cross interpolation* (QTCI) metho
 
 ## Installation
 
-The easiest way to install TensorCrossInterpolation.jl is to use the [private registry](https://gitlab.com/tensors4fields/tensors4fieldsregistry) of the Tensors4Fields group:
-```
+`TensorCrossInterpolation.jl` has been registered to the General registry. Installing the package is as simple as
+```julia
 ]
-registry add git@gitlab.com:tensors4fields/tensors4fieldsregistry.git
 add TensorCrossInterpolation
 ```
-
----
-
-If this doesn't work, use the following instructions.
-
-1. Clone the repository to some convenient path
-```sh
-$ cd ./convenient/path
-$ git clone git@gitlab.com:tensors4fields/tensorcrossinterpolation.jl.git
-```
-2. In a julia REPL, press `]`. Your prompt shoud switch to `(@v1.7) pkg>` or similar (possibly with a different enviroment instead of `@v1.7`). Tell julia where you put the package by typing:
-```
-(@v1.7) pkg> dev ./convenient/path/tensorcrossinterpolation.jl
-```
-3. Press backspace to return to the `julia>` prompt. You should now be able to import the module.
-```julia
-julia> import TensorCrossInterpolation as TCI
-```
----
 
 ## Usage
 
