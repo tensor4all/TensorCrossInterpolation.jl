@@ -179,12 +179,18 @@ function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=fa
     nd = ndims(A)
     offset1 = lefttensor ? 0 : size(A, 1)
     offset3 = righttensor ? 0 : size(A, nd)
+    localindices = fill(Colon(), nd - 2)
     C = zeros(V, offset1 + size(B, 1), size(A)[2:nd-1]..., offset3 + size(B, nd))
-    C[1:size(A, 1), :, 1:size(A, nd)] = A
-    C[offset1+1:end, :, offset3+1:end] = B
+    C[1:size(A, 1), localindices..., 1:size(A, nd)] = A
+    C[offset1+1:end, localindices..., offset3+1:end] = B
     return C
 end
 
+"""
+    function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+
+Addition of two tensor trains. If `c = add(a, b)`, then `c(v) ≈ a(v) + b(v)` at each index set `v`.
+"""
 function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     if length(lhs) != length(rhs)
         throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
@@ -196,4 +202,8 @@ function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
             for ell in 1:L
         ]
     )
+end
+
+function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+    return add(lhs, rhs)
 end
