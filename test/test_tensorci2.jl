@@ -302,6 +302,44 @@ import QuanticsGrids as QD
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
     end
 
+    @testset "insert_global_pivots" begin
+        Random.seed!(1234)
+
+        R = 20
+        abstol = 1e-4
+
+        f(q) = (all(q .== 1) || all(q .== 2)) ? 1.0 : 0.0
+
+        localdims = fill(2, R)
+        firstpivot = ones(Int, R)
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            [firstpivot];
+            tolerance=abstol,
+            maxbonddim=1000,
+            maxiter=20,
+            loginterval=1,
+            verbosity=0,
+            normalizeerror=false,
+            partialnesting=false
+        )
+
+        r = fill(2, R)
+
+        TCI.addglobalpivots2sitesweep!(
+            tci, f, [r],
+            tolerance=abstol,
+            normalizeerror=false,
+            maxbonddim=1000,
+            verbosity=0,
+            partialnesting=false
+        )
+
+        @test TCI.evaluate(tci, r) ≈ f(r)
+    end
+
     @testset "globalsearch" begin
         Random.seed!(1234)
 
