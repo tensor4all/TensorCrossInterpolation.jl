@@ -1,9 +1,9 @@
 """
-    mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
+    mutable struct TensorCI1{ValueType} <: AbstractTensorTrain{ValueType}
 
 Type that represents tensor cross interpolations created using the TCI1 algorithm. Users may want to create these using [`crossinterpolate`](@ref) rather than calling a constructor directly.
 """
-mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
+mutable struct TensorCI1{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
     Jset::Vector{IndexSet{MultiIndex}}
     localdims::Vector{Int}
@@ -36,7 +36,7 @@ mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     pivoterrors::Vector{Float64}
     maxsamplevalue::Float64
 
-    function TensorCI{ValueType}(
+    function TensorCI1{ValueType}(
         localdims::AbstractVector{Int}
     ) where {ValueType}
         n = length(localdims)
@@ -56,25 +56,25 @@ mutable struct TensorCI{ValueType} <: AbstractTensorTrain{ValueType}
     end
 end
 
-function TensorCI{ValueType}(
+function TensorCI1{ValueType}(
     localdims::NTuple{N,Int},
 ) where {ValueType,N}
-    return TensorCI{ValueType}(collect(localdims)::Vector{Int})
+    return TensorCI1{ValueType}(collect(localdims)::Vector{Int})
 end
 
-function TensorCI{ValueType}(
+function TensorCI1{ValueType}(
     localdim::Int,
     length::Int
 ) where {ValueType}
-    return TensorCI{ValueType}(fill(localdim, length))
+    return TensorCI1{ValueType}(fill(localdim, length))
 end
 
-function TensorCI{ValueType}(
+function TensorCI1{ValueType}(
     func::F,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     firstpivot::Vector{Int}
 ) where {F,ValueType,N}
-    tci = TensorCI{ValueType}(localdims)
+    tci = TensorCI1{ValueType}(localdims)
     f = x -> convert(ValueType, func(x)) # Avoid type instability
 
     tci.maxsamplevalue = abs(f(firstpivot))
@@ -108,71 +108,71 @@ function TensorCI{ValueType}(
     return tci
 end
 
-function Base.broadcastable(tci::TensorCI{V}) where {V}
+function Base.broadcastable(tci::TensorCI1{V}) where {V}
     return Ref(tci)
 end
 
-function lastsweeppivoterror(tci::TensorCI{V}) where {V}
+function lastsweeppivoterror(tci::TensorCI1{V}) where {V}
     return maximum(tci.pivoterrors)
 end
 
-function updatemaxsample!(tci::TensorCI{V}, samples::Array{V}) where {V}
+function updatemaxsample!(tci::TensorCI1{V}, samples::Array{V}) where {V}
     tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
 
-function TtimesPinv(tci::TensorCI{V}, p::Int) where {V}
+function TtimesPinv(tci::TensorCI1{V}, p::Int) where {V}
     T = tci.T[p]
     shape = size(T)
     TPinv = AtimesBinv(reshape(T, (shape[1] * shape[2], shape[3])), tci.P[p])
     return reshape(TPinv, shape)
 end
 
-function PinvtimesT(tci::TensorCI{V}, p::Int) where {V}
+function PinvtimesT(tci::TensorCI1{V}, p::Int) where {V}
     T = tci.T[p]
     shape = size(T)
     PinvT = AinvtimesB(tci.P[p-1], reshape(T, shape[1], shape[2] * shape[3]))
     return reshape(PinvT, shape)
 end
 
-function sitetensor(tci::TensorCI{V}, p::Int) where {V}
+function sitetensor(tci::TensorCI1{V}, p::Int) where {V}
     return TtimesPinv(tci, p)
 end
 
-function sitetensor(tci::TensorCI{V}, p) where {V}
+function sitetensor(tci::TensorCI1{V}, p) where {V}
     return sitetensor.(tci, p)
 end
 
-function sitetensors(tci::TensorCI{V}) where {V}
+function sitetensors(tci::TensorCI1{V}) where {V}
     return [sitetensor(tci, p) for p in 1:length(tci.T)]
 end
 
-function length(tci::TensorCI{V}) where {V}
+function length(tci::TensorCI1{V}) where {V}
     return length(tci.T)
 end
 
-function linkdims(tci::TensorCI{V}) where {V}
+function linkdims(tci::TensorCI1{V}) where {V}
     return [size(T, 1) for T in tci.T[2:end]]
 end
 
-function linkdim(tci::TensorCI{V}, i::Int) where {V}
+function linkdim(tci::TensorCI1{V}, i::Int) where {V}
     return size(tci.T[i+1], 1)
 end
 
-function sitedims(tci::TensorCI{V}) where {V}
+function sitedims(tci::TensorCI1{V}) where {V}
     return [size(T)[2:end-1] for T in tci.T]
 end
 
-function sitedim(tci::TensorCI{V}, i::Int) where {V}
+function sitedim(tci::TensorCI1{V}, i::Int) where {V}
     return size(tci.T[i])[2:end-1]
 end
 
 """
-    function evaluate(tci::TensorCI{V}, indexset::AbstractVector{LocalIndex}) where {V}
+    function evaluate(tci::TensorCI1{V}, indexset::AbstractVector{LocalIndex}) where {V}
 
 Evaluate the TCI at a specific set of indices. This method is inefficient; to evaluate many points, first convert the TCI object into a tensor train using `tensortrain(tci)`.
 """
 function evaluate(
-    tci::TensorCI{V},
+    tci::TensorCI1{V},
     indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}}
 )::V where {N,V}
     return prod(
@@ -180,13 +180,13 @@ function evaluate(
         for p in 1:length(tci))[1, 1]
 end
 
-function getPiIset(tci::TensorCI{V}, p::Int) where {V}
+function getPiIset(tci::TensorCI1{V}, p::Int) where {V}
     return IndexSet([
         [is..., ups] for is in tci.Iset[p].fromint, ups in 1:tci.localdims[p]
     ][:])
 end
 
-function getPiJset(tci::TensorCI{V}, p::Int) where {V}
+function getPiJset(tci::TensorCI1{V}, p::Int) where {V}
     return IndexSet([
         [up1s, js...] for up1s in 1:tci.localdims[p], js in tci.Jset[p].fromint
     ][:])
@@ -197,7 +197,7 @@ end
 
 Build a 4-legged ``\\Pi`` tensor at site `p`. Indices are in the order ``i, u_p, u_{p + 1}, j``, as in the TCI paper.
 """
-function getPi(tci::TensorCI{V}, p::Int, f::F) where {V,F}
+function getPi(tci::TensorCI1{V}, p::Int, f::F) where {V,F}
     iset = tci.PiIset[p]
     jset = tci.PiJset[p+1]
     res = [f([is..., js...]) for is in iset.fromint, js in jset.fromint]
@@ -205,7 +205,7 @@ function getPi(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     return res
 end
 
-function getcross(tci::TensorCI{V}, p::Int) where {V}
+function getcross(tci::TensorCI1{V}, p::Int) where {V}
     # Translate to order at site p from adjacent sites.
     iset = pos(tci.PiIset[p], tci.Iset[p+1].fromint)
     jset = pos(tci.PiJset[p+1], tci.Jset[p].fromint)
@@ -217,7 +217,7 @@ function getcross(tci::TensorCI{V}, p::Int) where {V}
 end
 
 function updateT!(
-    tci::TensorCI{V},
+    tci::TensorCI1{V},
     p::Int,
     new_T::AbstractArray{V}
 ) where {V}
@@ -228,7 +228,7 @@ function updateT!(
         length(tci.Jset[p]))
 end
 
-function updatePirows!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
+function updatePirows!(tci::TensorCI1{V}, p::Int, f::F) where {V,F}
     newIset = getPiIset(tci, p)
     diffIset = setdiff(newIset.fromint, tci.PiIset[p].fromint)
     newPi = Matrix{V}(undef, length(newIset), size(tci.Pi[p], 2))
@@ -250,7 +250,7 @@ function updatePirows!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
     setrows!(tci.aca[p], Tp, permutation)
 end
 
-function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
+function updatePicols!(tci::TensorCI1{V}, p::Int, f::F) where {V,F}
     newJset = getPiJset(tci, p + 1)
     diffJset = setdiff(newJset.fromint, tci.PiJset[p+1].fromint)
     newPi = Matrix{V}(undef, size(tci.Pi[p], 1), length(newJset))
@@ -274,11 +274,11 @@ function updatePicols!(tci::TensorCI{V}, p::Int, f::F) where {V,F}
 end
 
 """
-    function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
+    function addpivotrow!(tci::TensorCI1{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
 
 Add the row with index `newi` as a pivot row to bond `p`.
 """
-function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
+function addpivotrow!(tci::TensorCI1{V}, cross::MatrixCI{V}, p::Int, newi::Int, f) where {V}
     addpivotrow!(tci.aca[p], tci.Pi[p], newi)
     addpivotrow!(cross, tci.Pi[p], newi)
     push!(tci.Iset[p+1], tci.PiIset[p][newi])
@@ -292,11 +292,11 @@ function addpivotrow!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newi::Int, f
 end
 
 """
-    function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
+    function addpivotcol!(tci::TensorCI1{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
 
 Add the column with index `newj` as a pivot row to bond `p`.
 """
-function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
+function addpivotcol!(tci::TensorCI1{V}, cross::MatrixCI{V}, p::Int, newj::Int, f) where {V}
     addpivotcol!(tci.aca[p], tci.Pi[p], newj)
     addpivotcol!(cross, tci.Pi[p], newj)
     push!(tci.Jset[p], tci.PiJset[p+1][newj])
@@ -310,11 +310,11 @@ function addpivotcol!(tci::TensorCI{V}, cross::MatrixCI{V}, p::Int, newj::Int, f
 end
 
 """
-    function addpivot!(tci::TensorCI{V}, p::Int, tolerance::1e-12) where {V,F}
+    function addpivot!(tci::TensorCI1{V}, p::Int, tolerance::1e-12) where {V,F}
 
 Add a pivot to the TCI at site `p`. Do not add a pivot if the error is below tolerance.
 """
-function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::Float64=1e-12) where {V,F}
+function addpivot!(tci::TensorCI1{V}, p::Int, f::F, tolerance::Float64=1e-12) where {V,F}
     if (p < 1) || (p > length(tci) - 1)
         throw(BoundsError(
             "Pi tensors can only be built at sites 1 to length - 1 = $(length(tci) - 1)."))
@@ -337,7 +337,7 @@ function addpivot!(tci::TensorCI{V}, p::Int, f::F, tolerance::Float64=1e-12) whe
     addpivotrow!(tci, cross, p, newpivot[1], f)
 end
 
-function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 where {T}
+function crosserror(tci::TensorCI1{T}, f, x::MultiIndex, y::MultiIndex)::Float64 where {T}
     if isempty(x) || isempty(y)
         return 0.0
     end
@@ -359,7 +359,7 @@ function crosserror(tci::TensorCI{T}, f, x::MultiIndex, y::MultiIndex)::Float64 
 end
 
 function updateIproposal(
-    tci::TensorCI{T},
+    tci::TensorCI1{T},
     f,
     newpivot::Vector{Int},
     newI::Vector{MultiIndex},
@@ -395,7 +395,7 @@ function updateIproposal(
 end
 
 function updateJproposal(
-    tci::TensorCI{T},
+    tci::TensorCI1{T},
     f,
     newpivot::Vector{Int},
     newI::Vector{MultiIndex},
@@ -431,7 +431,7 @@ function updateJproposal(
 end
 
 function addglobalpivot!(
-    tci::TensorCI{T},
+    tci::TensorCI1{T},
     f,
     newpivot::Vector{Int},
     abstol::Float64
@@ -517,7 +517,7 @@ function crossinterpolate(
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
     normalizeerror::Bool=true
 ) where {ValueType,N}
-    tci = TensorCI{ValueType}(f, localdims, firstpivot)
+    tci = TensorCI1{ValueType}(f, localdims, firstpivot)
     n = length(tci)
     errors = Float64[]
     ranks = Int[]

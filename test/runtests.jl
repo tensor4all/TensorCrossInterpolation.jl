@@ -14,7 +14,7 @@ include("test_matrixaca.jl")
 include("test_matrixlu.jl")
 include("test_matrixluci.jl")
 include("test_batcheval.jl")
-include("test_tensorci.jl")
+include("test_tensorci1.jl")
 include("test_tensorci2.jl")
 include("test_tensortrain.jl")
 

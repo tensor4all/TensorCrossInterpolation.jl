@@ -1,5 +1,5 @@
 using Test
-import TensorCrossInterpolation: TensorCI, TensorCI2, sitedims, linkdims, rank,
+import TensorCrossInterpolation: TensorCI1, TensorCI2, sitedims, linkdims, rank,
     addglobalpivot!, SweepStrategies, crossinterpolate, optimize!, MatrixACA, rrlu,
     nrows, ncols, evaluate, left, right
 
@@ -23,7 +23,7 @@ end
 @testset "Conversion between TCI1 and TCI2" begin
     d = 3
     n = 4
-    tci1 = TensorCI{ComplexF64}(fill(d, n))
+    tci1 = TensorCI1{ComplexF64}(fill(d, n))
     tci2 = TensorCI2{ComplexF64}(tci1)
 
     @test length(tci2) == length(tci1)
@@ -34,7 +34,7 @@ end
     @test all(isempty.(tci2.T))
 
     globalpivot = [2, 2, 3, 1]
-    tci1 = TensorCI{ComplexF64}(rand, fill(d, n), globalpivot)
+    tci1 = TensorCI1{ComplexF64}(rand, fill(d, n), globalpivot)
     tci2 = TensorCI2{ComplexF64}(tci1)
     @test rank(tci2) == 1
     @test linkdims(tci2) == linkdims(tci1)
@@ -51,7 +51,7 @@ end
         sweepstrategy=SweepStrategies.forward
     )
     tci2 = TensorCI2{ComplexF64}(tci1)
-    tci1_backconverted = TensorCI{ComplexF64}(tci2, f)
+    tci1_backconverted = TensorCI1{ComplexF64}(tci2, f)
     tci2_backconverted = TensorCI2{ComplexF64}(tci1_backconverted)
     @test rank(tci2) == rank(tci1)
     @test rank(tci1_backconverted) == rank(tci1)

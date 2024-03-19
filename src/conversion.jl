@@ -20,13 +20,13 @@ function MatrixACA(lu::rrLU{T}) where {T}
     return aca
 end
 
-function TensorCI{ValueType}(
+function TensorCI1{ValueType}(
     tci2::TensorCI2{ValueType},
     f;
     kwargs...
 ) where {ValueType}
     L = length(tci2)
-    tci1 = TensorCI{ValueType}(length.(tci2.localset))
+    tci1 = TensorCI1{ValueType}(length.(tci2.localset))
     tci1.Iset = IndexSet.(tci2.Iset)
     tci1.Jset = IndexSet.(tci2.Jset)
     tci1.PiIset = getPiIset.(Ref(tci1), 1:L)
@@ -56,7 +56,7 @@ function TensorCI{ValueType}(
     return tci1
 end
 
-function TensorCI2{ValueType}(tci1::TensorCI{ValueType}) where {ValueType}
+function TensorCI2{ValueType}(tci1::TensorCI1{ValueType}) where {ValueType}
     tci2 = TensorCI2{ValueType}(vcat(sitedims(tci1)...)::Vector{Int})
     tci2.Iset = [i.fromint for i in tci1.Iset]
     tci2.Jset = [j.fromint for j in tci1.Jset]
