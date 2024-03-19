@@ -214,7 +214,7 @@ function addglobalpivots2sitesweep!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     ntry::Int=10,
-    partialnesting::Bool=true
+    strictlynested::Bool=true
 )::Int where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
@@ -233,7 +233,7 @@ function addglobalpivots2sitesweep!(
             abstol=abstol,
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
-            partialnesting=partialnesting,
+            strictlynested=strictlynested,
             verbosity=verbosity)
 
         newpivots = [p for p in pivots if abs(evaluate(tci, p) - f(p)) > abstol]
@@ -602,7 +602,7 @@ end
         maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=0,
         tolmarginglobalsearch::Float64=10.0,
-        partialnesting::Bool=true
+        strictlynested::Bool=true
     ) where {ValueType}
 
 Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
@@ -625,7 +625,7 @@ Arguments:
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `partialnesting::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
+- `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -650,14 +650,14 @@ function optimize!(
     maxnglobalpivot::Int=5,
     nsearchglobalpivot::Int=0,
     tolmarginglobalsearch::Float64=10.0,
-    partialnesting::Bool=true
+    strictlynested::Bool=false
 ) where {ValueType}
     errors = Float64[]
     ranks = Int[]
     nglobalpivots = Int[]
 
     #if maxnglobalpivot > 0 && nsearchglobalpivot > 0
-        #!partialnesting || error("nglobalpivots > 0 requires partialnesting=false!")
+        #!strictlynested || error("nglobalpivots > 0 requires strictlynested=false!")
     #end
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
@@ -687,7 +687,7 @@ function optimize!(
             abstol=abstol,
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
-            partialnesting=partialnesting,
+            strictlynested=strictlynested,
             verbosity=verbosity,
             sweepstrategy=sweepstrategy
             )
@@ -741,7 +741,7 @@ function optimize!(
             abstol=abstol,
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
-            partialnesting=partialnesting,
+            strictlynested=strictlynested,
             verbosity=verbosity
             )
     end
@@ -765,7 +765,7 @@ function sweep2site!(
     sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    partialnesting::Bool=true,
+    strictlynested::Bool=true,
     fillsitetensors::Bool=true
 ) where {ValueType}
     invalidatesitetensors!(tci)
@@ -774,7 +774,7 @@ function sweep2site!(
 
     extraIset = [MultiIndex[] for _ in 1:n]
     extraJset = [MultiIndex[] for _ in 1:n]
-    if !partialnesting
+    if !strictlynested
         extraIset = tci.Iset
         extraJset = tci.Jset
         if length(tci.Iset_history) > 0
@@ -841,7 +841,7 @@ end
         maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=0,
         tolmarginglobalsearch::Float64=10.0,
-        partialnesting::Bool=true
+        strictlynested::Bool=true
     ) where {ValueType,N}
 
 Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
@@ -864,7 +864,7 @@ Arguments:
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `partialnesting::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
+- `strictlynested::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.

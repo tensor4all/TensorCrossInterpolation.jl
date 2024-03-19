@@ -38,8 +38,8 @@ import QuanticsGrids as QD
     end
 
 
-    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], partialnesting in [false, true], nsearchglobalpivot in [0, 10]
-        if nsearchglobalpivot > 0 && partialnesting
+    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10]
+        if nsearchglobalpivot > 0 && strictlynested
             continue
         end
         # f(x) = exp(-x)
@@ -68,7 +68,7 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            partialnesting=partialnesting
+            strictlynested=strictlynested
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -89,7 +89,7 @@ import QuanticsGrids as QD
 
     @testset "trivial MPS(exp), small maxbonddim" begin
         pivotsearch = :full
-        partialnesting = false
+        strictlynested = false
         nsearchglobalpivot = 10
 
         # f(x) = exp(-x)
@@ -117,7 +117,7 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            partialnesting=partialnesting
+            strictlynested=strictlynested
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -250,7 +250,7 @@ import QuanticsGrids as QD
     end
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, partialnesting=$partialnesting, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], partialnesting in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], strictlynested in [false]
         Random.seed!(seed)
 
         R = 20
@@ -285,7 +285,7 @@ import QuanticsGrids as QD
             verbosity=0,
             normalizeerror=false,
             pivotsearch=pivotsearch,
-            partialnesting=partialnesting
+            strictlynested=strictlynested
         )
 
         TCI.addglobalpivots2sitesweep!(
@@ -295,7 +295,7 @@ import QuanticsGrids as QD
             maxbonddim=1000,
             pivotsearch=pivotsearch,
             verbosity=0,
-            partialnesting=partialnesting,
+            strictlynested=strictlynested,
             ntry = pivotsearch == :full ? 1 : 10
         )
 
@@ -323,7 +323,7 @@ import QuanticsGrids as QD
             loginterval=1,
             verbosity=0,
             normalizeerror=false,
-            partialnesting=false
+            strictlynested=false
         )
 
         r = fill(2, R)
@@ -334,7 +334,7 @@ import QuanticsGrids as QD
             normalizeerror=false,
             maxbonddim=1000,
             verbosity=0,
-            partialnesting=false
+            strictlynested=false
         )
 
         @test TCI.evaluate(tci, r) ≈ f(r)
@@ -361,7 +361,7 @@ import QuanticsGrids as QD
             maxbonddim=100,
             maxiter=100,
             nsearchglobalpivot=10,
-            partialnesting=false
+            strictlynested=false
         )
 
         @test errors[end] < 1e-10
