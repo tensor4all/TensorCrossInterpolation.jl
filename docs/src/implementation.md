@@ -15,7 +15,7 @@ follows.
 
 This function takes a target function to be approximated and constructs a TCI up to some specified tolerance using a sweeping algorithm. The steps are as follows:
 
-- Initialize the TCI structure ([`TensorCI`](@ref)) using `f(firstpivot)`.
+- Initialize the TCI structure ([`TensorCI1`](@ref)) using `f(firstpivot)`.
 - Iterate for `iter = 1...maxiter`
     - If `iter` is odd, sweep forward, else, sweep backward. During the sweep, add one pivot to each link using [`addpivot!`](@ref).
     - Update `errornormalization` to the maximum sample so far.

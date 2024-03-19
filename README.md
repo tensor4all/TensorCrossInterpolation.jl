@@ -34,7 +34,7 @@ Note:
 - The return type of `f` (`Float64` in this case) must be stated explicitly in the call to `crossinterpolate2`.
 
 The resulting `TensorCI2` object can be further manipulated, see [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
-To evaluate the TCI interpolation, simply call your `TensorCI` object like you would call the original function:
+To evaluate the TCI interpolation, simply call your `TensorCI1` object like you would call the original function:
 ```julia
 originalvalue = f([1, 2, 3, 4, 5, 6, 7, 8])
 interpolatedvalue = tci([1, 2, 3, 4, 5, 6, 7, 8])
@@ -50,7 +50,7 @@ An example with more explanation can be found in the [user manual](https://tenso
 ## Related modules
 
 ### [TCIITensorConversion.jl](https://gitlab.com/tensors4fields/tciitensorconversion.jl)
-A small helper module for easy conversion of `TensorCI`, `TensorCI2` and `TensorTrain` objects into ITensors `MPS` objects. This should be helpful for those integrating TCI into a larger tensor network algorithm.
+A small helper module for easy conversion of `TensorCI1`, `TensorCI2` and `TensorTrain` objects into ITensors `MPS` objects. This should be helpful for those integrating TCI into a larger tensor network algorithm.
 For this conversion, simply call the `MPS` constructor on the object:
 ```julia
 mps = MPS(tci)
