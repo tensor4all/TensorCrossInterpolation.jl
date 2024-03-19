@@ -46,7 +46,7 @@ end
 
 Convert a tensor-train-like object into a tensor train. This includes TCI1 and TCI2 objects.
 
-See also: [`TensorCI`](@ref), [`TensorCI2`](@ref).
+See also: [`TensorCI1`](@ref), [`TensorCI2`](@ref).
 """
 function TensorTrain(tci::AbstractTensorTrain{V})::TensorTrain{V,3} where {V}
     return TensorTrain{V,3}(sitetensors(tci))

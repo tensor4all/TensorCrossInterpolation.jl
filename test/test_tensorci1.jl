@@ -1,14 +1,14 @@
 using TensorCrossInterpolation
 using Test
 using LinearAlgebra
-import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI, linkdims, addpivot!, addglobalpivot!, evaluate
+import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI1, linkdims, addpivot!, addglobalpivot!, evaluate
 
-@testset "TensorCI" begin
+@testset "TensorCI1" begin
     @testset "trivial MPS" begin
         n = 5
         f(v) = 1
 
-        tci = TensorCI{Int}(fill(2, n))
+        tci = TensorCI1{Int}(fill(2, n))
 
         for i in 1:n
             @test isempty(tci.Iset[i])
@@ -24,7 +24,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
             @test tci.pivoterrors[i] == Inf
         end
 
-        tci = TensorCI{Int}(f, fill(2, n), fill(1, n))
+        tci = TensorCI1{Int}(f, fill(2, n), fill(1, n))
 
         for i in 1:n
             @test tci.Iset[i].fromint == [fill(1, i - 1)]
@@ -64,7 +64,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI,
 
         ValueType = typeof(coeff)
 
-        tci = TensorCI{ValueType}(
+        tci = TensorCI1{ValueType}(
             f,
             fill(10, n),
             ones(Int, n)

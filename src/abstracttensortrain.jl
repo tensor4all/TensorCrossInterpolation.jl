@@ -13,7 +13,7 @@ Abstract type that is a supertype to all tensor train types found in this module
 
 When iterated over, the tensor train will return each of the tensors in order.
 
-Implementations: [`TensorTrain`](@ref), [`TensorCI2`](@ref), [`TensorCI`](@ref)
+Implementations: [`TensorTrain`](@ref), [`TensorCI2`](@ref), [`TensorCI1`](@ref)
 """
 abstract type AbstractTensorTrain{V} <: Function end
 
