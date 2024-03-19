@@ -1,6 +1,6 @@
 using Test
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, SweepStrategies, crossinterpolate2, pivoterror, tensortrain
+import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain
 import Random
 import QuanticsGrids as QD
 
@@ -195,7 +195,7 @@ import QuanticsGrids as QD
             tolerance=1e-8,
             pivottolerance=1e-8,
             maxiter=8,
-            sweepstrategy=SweepStrategies.forward,
+            sweepstrategy=:forward,
             pivotsearch=pivotsearch
         )
 

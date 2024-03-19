@@ -476,7 +476,7 @@ end
         firstpivot::MultiIndex=ones(Int, length(localdims));
         tolerance::Float64=1e-8,
         maxiter::Int=200,
-        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.back_and_forth,
+        sweepstrategy::Symbol=:backandforth,
         pivottolerance::Float64=1e-12,
         verbosity::Int=0,
         additionalpivots::Vector{MultiIndex}=MultiIndex[],
@@ -492,7 +492,7 @@ Arguments:
 - `firstpivot::MultiIndex` is the first pivot, used by the TCI algorithm for initialization. Default: `[1, 1, ...]`.
 - `tolerance::Float64` is a float specifying the tolerance for the interpolation. Default: `1e-8`.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
 - `pivottolerance::Float64` specifies the tolerance below which no new pivot will be added to each tensor. Default: `1e-12`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `additionalpivots::Vector{MultiIndex}` is a vector of additional pivots that the algorithm should add to the initial pivot before starting optimization. This is not necessary in most cases.
@@ -502,7 +502,7 @@ Notes:
 - Convergence may depend on the choice of first pivot. A good rule of thumb is to choose `firstpivot` close to the largest structure in `f`, or on a maximum of `f`. If the structure of `f` is not known in advance, [`optfirstpivot`](@ref) may be helpful.
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
-See also: [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate2`](@ref)
+See also: [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate2`](@ref)
 """
 function crossinterpolate(
     ::Type{ValueType},
@@ -511,7 +511,7 @@ function crossinterpolate(
     firstpivot::MultiIndex=ones(Int, length(localdims));
     tolerance::Float64=1e-8,
     maxiter::Int=200,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+    sweepstrategy::Symbol=:backandforth,
     pivottolerance::Float64=1e-12,
     verbosity::Int=0,
     additionalpivots::Vector{MultiIndex}=MultiIndex[],
