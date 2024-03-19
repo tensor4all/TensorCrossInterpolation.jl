@@ -105,7 +105,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI1
             ones(Int, n);
             tolerance=1e-8,
             maxiter=8,
-            sweepstrategy=SweepStrategies.forward
+            sweepstrategy=:forward
         )
 
         @test linkdims(tci) == linkdims(tci2)

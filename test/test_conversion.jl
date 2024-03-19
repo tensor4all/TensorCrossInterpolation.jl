@@ -1,6 +1,6 @@
 using Test
 import TensorCrossInterpolation: TensorCI1, TensorCI2, sitedims, linkdims, rank,
-    addglobalpivot!, SweepStrategies, crossinterpolate, optimize!, MatrixACA, rrlu,
+    addglobalpivot!, crossinterpolate, optimize!, MatrixACA, rrlu,
     nrows, ncols, evaluate, left, right
 
 @testset "Conversion between rrLU and ACA" begin
@@ -48,7 +48,7 @@ end
         tolerance=1e-6,
         pivottolerance=1e-8,
         maxiter=4,
-        sweepstrategy=SweepStrategies.forward
+        sweepstrategy=:forward
     )
     tci2 = TensorCI2{ComplexF64}(tci1)
     tci1_backconverted = TensorCI1{ComplexF64}(tci2, f)

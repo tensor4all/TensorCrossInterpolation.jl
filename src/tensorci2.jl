@@ -593,7 +593,7 @@ end
         pivottolerance::Float64=tolerance,
         maxbonddim::Int=typemax(Int),
         maxiter::Int=200,
-        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+        sweepstrategy::Symbol=:backandforth,
         pivotsearch::Symbol=:full,
         verbosity::Int=0,
         loginterval::Int=10,
@@ -616,7 +616,7 @@ Arguments:
 - `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
 - `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
 - `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
@@ -632,7 +632,7 @@ Notes:
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
 
-See also: [`crossinterpolate2`](@ref), [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+See also: [`crossinterpolate2`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
 """
 function optimize!(
     tci::TensorCI2{ValueType},
@@ -641,7 +641,7 @@ function optimize!(
     pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
     maxiter::Int=20,
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+    sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     loginterval::Int=10,
@@ -762,7 +762,7 @@ function sweep2site!(
     iter1::Int=1,
     abstol::Float64=1e-8,
     maxbonddim::Int=typemax(Int),
-    sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+    sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     strictlynested::Bool=true,
@@ -832,7 +832,7 @@ end
         pivottolerance::Float64=tolerance,
         maxbonddim::Int=typemax(Int),
         maxiter::Int=200,
-        sweepstrategy::SweepStrategies.SweepStrategy=SweepStrategies.backandforth,
+        sweepstrategy::Symbol=:backandforth,
         pivotsearch::Symbol=:full,
         verbosity::Int=0,
         loginterval::Int=10,
@@ -855,7 +855,7 @@ Arguments:
 - `pivottolerance::Float64` is a float that specifies the tolerance for adding new pivots, i.e. the truncation of tensor train bonds. It should be <= tolerance, otherwise convergence may be impossible. Default: `tolerance`.
 - `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::SweepStrategies.SweepStrategy` specifies whether to sweep forward, backward, or back and forth during optimization. Default: `SweepStrategies.back_and_forth`.
+- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
 - `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
@@ -871,7 +871,7 @@ Notes:
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
 
-See also: [`optimize!`](@ref), [`SweepStrategies`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+See also: [`optimize!`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
 """
 function crossinterpolate2(
     ::Type{ValueType},

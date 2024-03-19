@@ -12,7 +12,7 @@ import Base: ==, +
 import Base: isempty, iterate, getindex, lastindex, broadcastable
 import Base: length, size, sum
 
-export crossinterpolate, crossinterpolate2, optfirstpivot, SweepStrategies
+export crossinterpolate, crossinterpolate2, optfirstpivot
 export tensortrain
 
 include("util.jl")

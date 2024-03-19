@@ -37,13 +37,13 @@ Pages = ["abstracttensortrain.jl", "tensortrain.jl"]
 ### Tensor cross interpolation (TCI)
 Note: In most cases, it is advantageous to use [`TensorCrossInterpolation.TensorCI2`](@ref) instead.
 ```@autodocs
-Modules = [TensorCrossInterpolation, TensorCrossInterpolation.SweepStrategies]
+Modules = [TensorCrossInterpolation]
 Pages = ["tensorci1.jl", "indexset.jl", "sweepstrategies.jl"]
 ```
 
 ### Tensor cross interpolation 2 (TCI2)
 ```@autodocs
-Modules = [TensorCrossInterpolation, TensorCrossInterpolation.SweepStrategies]
+Modules = [TensorCrossInterpolation]
 Pages = ["tensorci2.jl"]
 ```
 
