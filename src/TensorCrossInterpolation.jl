@@ -2,6 +2,7 @@ module TensorCrossInterpolation
 
 using LinearAlgebra
 using EllipsisNotation
+import QuadGK
 
 # To add a method for rank(tci)
 import LinearAlgebra: rank, diag
@@ -31,5 +32,6 @@ include("tensorci1.jl")
 include("tensorci2.jl")
 include("tensortrain.jl")
 include("conversion.jl")
+include("integration.jl")
 
 end
