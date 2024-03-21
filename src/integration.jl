@@ -11,13 +11,14 @@ function integrate(
     nodes1d, weights1d, _ = QuadGK.kronrod(order ÷ 2, -1, +1)
     nodes = @. (b - a) * (nodes1d' + 1) / 2 + a
     weights = @. (b - a) * weights1d' / 2
+    normalization = order^length(a)
 
     localdims = fill(length(nodes1d), length(a))
 
     function F(indices)
         x = [nodes[n, i] for (n, i) in enumerate(indices)]
         w = prod(weights[n, i] for (n, i) in enumerate(indices))
-        return w * f(x)
+        return w * f(x) * normalization
     end
 
     tci2, ranks, errors = crossinterpolate2(
@@ -27,5 +28,5 @@ function integrate(
         tolerance
     )
 
-    return sum(tci2)
+    return sum(tci2) / normalization
 end
