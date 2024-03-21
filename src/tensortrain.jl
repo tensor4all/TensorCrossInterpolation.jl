@@ -56,6 +56,30 @@ function tensortrain(tci)
     return TensorTrain(tci)
 end
 
+function recompress!(
+    tt::AbstractTensorTrain{V};
+    tolerance::Float64=1e-12, maxbonddim=typemax(Int),
+    method::Symbol=:LU
+) where {V}
+    if method !== :LU
+        error("Not implemented yet.")
+    end
+
+    for ell in 1:length(tt)-1
+        shapel = size(tt.sitetensors[ell])
+        lu = rrlu(
+            reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]);
+            abstol=tolerance,
+            maxrank=maxbonddim
+        )
+        tt.sitetensors[ell] = reshape(left(lu), shapel[1:end-1]..., npivots(lu))
+        shaper = size(tt.sitetensors[ell+1])
+        nexttensor = right(lu) * reshape(tt.sitetensors[ell+1], shaper[1], prod(shaper[2:end]))
+        tt.sitetensors[ell+1] = reshape(nexttensor, npivots(lu), shaper[2:end]...)
+    end
+    nothing
+end
+
 
 """
 Fitting data with a TensorTrain object.
