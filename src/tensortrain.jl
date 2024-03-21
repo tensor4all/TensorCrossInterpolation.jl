@@ -61,21 +61,33 @@ function recompress!(
     tolerance::Float64=1e-12, maxbonddim=typemax(Int),
     method::Symbol=:LU
 ) where {V}
-    if method !== :LU
-        error("Not implemented yet.")
+    function factorize(A::Matrix{V})
+        if method === :LU
+            factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
+            return left(factorization), right(factorization), npivots(factorization)
+        elseif method === :CI
+            factorization = MatrixLUCI(A, abstol=tolerance, maxrank=maxbonddim)
+            return left(factorization), right(factorization), npivots(factorization)
+        elseif method === :SVD
+            factorization = LinearAlgebra.svd(A)
+            trunci = min(findlast(>(tolerance), factorization.S), maxbonddim)
+            return (
+                factorization.U[:, 1:trunci],
+                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+                trunci
+            )
+        else
+            error("Not implemented yet.")
+        end
     end
 
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])
-        lu = rrlu(
-            reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]);
-            abstol=tolerance,
-            maxrank=maxbonddim
-        )
-        tt.sitetensors[ell] = reshape(left(lu), shapel[1:end-1]..., npivots(lu))
+        left, right, newbonddim = factorize(reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]))
+        tt.sitetensors[ell] = reshape(left, shapel[1:end-1]..., newbonddim)
         shaper = size(tt.sitetensors[ell+1])
-        nexttensor = right(lu) * reshape(tt.sitetensors[ell+1], shaper[1], prod(shaper[2:end]))
-        tt.sitetensors[ell+1] = reshape(nexttensor, npivots(lu), shaper[2:end]...)
+        nexttensor = right * reshape(tt.sitetensors[ell+1], shaper[1], prod(shaper[2:end]))
+        tt.sitetensors[ell+1] = reshape(nexttensor, newbonddim, shaper[2:end]...)
     end
     nothing
 end
@@ -107,7 +119,7 @@ function to_tensors(obj::TensorTrainFit{ValueType}, x::Vector{ValueType}) where 
         reshape(
             x[obj.offsets[n]+1:obj.offsets[n+1]],
             size(obj.tt[n])
-            )
+        )
         for n in 1:length(obj.tt)
     ]
 end
@@ -116,5 +128,5 @@ _evaluate(tt, indexset) = only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
 
 function (obj::TensorTrainFit{ValueType})(x::Vector{ValueType}) where {ValueType}
     tensors = to_tensors(obj, x)
-    return sum((abs2(_evaluate(tensors, indexset)  - obj.values[i]) for (i, indexset) in enumerate(obj.indexsets)))
+    return sum((abs2(_evaluate(tensors, indexset) - obj.values[i]) for (i, indexset) in enumerate(obj.indexsets)))
 end

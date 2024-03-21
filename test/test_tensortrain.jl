@@ -23,7 +23,7 @@ using Optim
     end
     @test gsum ≈ TCI.sum(tt)
 
-    for method in [:LU] #, :SVD, :CI]
+    for method in [:LU, :CI, :SVD]
         ttcompressed = deepcopy(tt)
         TCI.recompress!(ttcompressed; maxbonddim=5, tolerance=1e-2, method)
         @test TCI.rank(ttcompressed) <= 5
