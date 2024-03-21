@@ -56,10 +56,11 @@ function tensortrain(tci)
     return TensorTrain(tci)
 end
 
-function recompress!(
-    tt::AbstractTensorTrain{V};
-    tolerance::Float64=1e-12, maxbonddim=typemax(Int),
-    method::Symbol=:LU
+function compress!(
+    tt::AbstractTensorTrain{V},
+    method::Symbol=:LU;
+    tolerance::Float64=1e-12,
+    maxbonddim=typemax(Int)
 ) where {V}
     function factorize(A::Matrix{V})
         if method === :LU

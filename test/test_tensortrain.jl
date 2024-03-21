@@ -25,8 +25,14 @@ using Optim
 
     for method in [:LU, :CI, :SVD]
         ttcompressed = deepcopy(tt)
-        TCI.recompress!(ttcompressed; maxbonddim=5, tolerance=1e-2, method)
+        TCI.compress!(ttcompressed, method; maxbonddim=5)
         @test TCI.rank(ttcompressed) <= 5
+    end
+
+    for method in [:LU, :CI, :SVD]
+        ttcompressed = deepcopy(tt)
+        TCI.compress!(ttcompressed, method; tolerance=1.0)
+        @test TCI.rank(ttcompressed) <= TCI.rank(tt)
     end
 end
 
