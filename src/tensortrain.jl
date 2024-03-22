@@ -56,40 +56,61 @@ function tensortrain(tci)
     return TensorTrain(tci)
 end
 
+function _factorize(
+    A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int
+) where {V}
+    if method === :LU
+        factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
+        return left(factorization), right(factorization), npivots(factorization)
+    elseif method === :CI
+        factorization = MatrixLUCI(A, abstol=tolerance, maxrank=maxbonddim)
+        return left(factorization), right(factorization), npivots(factorization)
+    elseif method === :SVD
+        factorization = LinearAlgebra.svd(A)
+        trunci = min(
+            replacenothing(findlast(>(tolerance), factorization.S), 1),
+            maxbonddim
+        )
+        return (
+            factorization.U[:, 1:trunci],
+            Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+            trunci
+        )
+    else
+        error("Not implemented yet.")
+    end
+end
+
 function compress!(
-    tt::AbstractTensorTrain{V},
+    tt::TensorTrain{V, N},
     method::Symbol=:LU;
     tolerance::Float64=1e-12,
     maxbonddim=typemax(Int)
-) where {V}
-    function factorize(A::Matrix{V})
-        if method === :LU
-            factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
-            return left(factorization), right(factorization), npivots(factorization)
-        elseif method === :CI
-            factorization = MatrixLUCI(A, abstol=tolerance, maxrank=maxbonddim)
-            return left(factorization), right(factorization), npivots(factorization)
-        elseif method === :SVD
-            factorization = LinearAlgebra.svd(A)
-            trunci = min(findlast(>(tolerance), factorization.S), maxbonddim)
-            return (
-                factorization.U[:, 1:trunci],
-                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
-                trunci
-            )
-        else
-            error("Not implemented yet.")
-        end
-    end
-
+) where {V, N}
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])
-        left, right, newbonddim = factorize(reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]))
+        left, right, newbonddim = _factorize(
+            reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]),
+            method; tolerance, maxbonddim
+        )
         tt.sitetensors[ell] = reshape(left, shapel[1:end-1]..., newbonddim)
         shaper = size(tt.sitetensors[ell+1])
         nexttensor = right * reshape(tt.sitetensors[ell+1], shaper[1], prod(shaper[2:end]))
         tt.sitetensors[ell+1] = reshape(nexttensor, newbonddim, shaper[2:end]...)
     end
+
+    for ell in length(tt):-1:2
+        shaper = size(tt.sitetensors[ell])
+        left, right, newbonddim = _factorize(
+            reshape(tt.sitetensors[ell], shaper[1], prod(shaper[2:end])),
+            method; tolerance, maxbonddim
+        )
+        tt.sitetensors[ell] = reshape(right, newbonddim, shaper[2:end]...)
+        shapel = size(tt.sitetensors[ell-1])
+        nexttensor = reshape(tt.sitetensors[ell-1], prod(shapel[1:end-1]), shapel[end]) * left
+        tt.sitetensors[ell-1] = reshape(nexttensor, shapel[1:end-1]..., newbonddim)
+    end
+
     nothing
 end
 
