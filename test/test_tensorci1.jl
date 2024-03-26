@@ -98,7 +98,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI1
             @test rank(tci) == iter
         end
 
-        tci2, ranks, errors = crossinterpolate(
+        tci2, ranks, errors = crossinterpolate1(
             ValueType,
             f,
             fill(10, n),
@@ -111,7 +111,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI1
         @test linkdims(tci) == linkdims(tci2)
         @test rank(tci) == rank(tci2)
 
-        tci3, ranks, errors = crossinterpolate(
+        tci3, ranks, errors = crossinterpolate1(
             ValueType,
             f,
             fill(10, n),
@@ -124,7 +124,7 @@ import TensorCrossInterpolation: IndexSet, MultiIndex, CachedFunction, TensorCI1
         @test all(linkdims(tci3) .<= 200)
         @test rank(tci3) <= 200
 
-        tci4, ranks, errors = crossinterpolate(
+        tci4, ranks, errors = crossinterpolate1(
             ValueType,
             f,
             fill(10, n),

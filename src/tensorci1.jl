@@ -1,7 +1,7 @@
 """
     mutable struct TensorCI1{ValueType} <: AbstractTensorTrain{ValueType}
 
-Type that represents tensor cross interpolations created using the TCI1 algorithm. Users may want to create these using [`crossinterpolate`](@ref) rather than calling a constructor directly.
+Type that represents tensor cross interpolations created using the TCI1 algorithm. Users may want to create these using [`crossinterpolate1`](@ref) rather than calling a constructor directly.
 """
 mutable struct TensorCI1{ValueType} <: AbstractTensorTrain{ValueType}
     Iset::Vector{IndexSet{MultiIndex}}
@@ -469,7 +469,7 @@ end
 
 
 @doc raw"""
-    function crossinterpolate(
+    function crossinterpolate1(
         ::Type{ValueType},
         f,
         localdims::Union{Vector{Int},NTuple{N,Int}},
@@ -504,7 +504,7 @@ Notes:
 
 See also: [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate2`](@ref)
 """
-function crossinterpolate(
+function crossinterpolate1(
     ::Type{ValueType},
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
@@ -550,4 +550,31 @@ function crossinterpolate(
 
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
     return tci, ranks, errors ./ errornormalization
+end
+
+@doc raw"""
+    function crossinterpolate(
+        ::Type{ValueType},
+        f,
+        localdims::Union{Vector{Int},NTuple{N,Int}},
+        firstpivot::MultiIndex=ones(Int, length(localdims));
+        tolerance::Float64=1e-8,
+        maxiter::Int=200,
+        sweepstrategy::Symbol=:backandforth,
+        pivottolerance::Float64=1e-12,
+        verbosity::Int=0,
+        additionalpivots::Vector{MultiIndex}=MultiIndex[],
+        normalizeerror::Bool=true
+    ) where {ValueType, N}
+
+Deprecated, and only included for backward compatibility. Please use [`crossinterpolate1`](@ref) instead.
+"""
+function crossinterpolate(
+    ::Type{ValueType},
+    f,
+    localdims::Union{Vector{Int},NTuple{N,Int}},
+    firstpivot::MultiIndex=ones(Int, length(localdims));
+    kwargs...
+) where {ValueType, N}
+    return crossinterpolate1(ValueType, f, localdims, firstpivot; kwargs...)
 end

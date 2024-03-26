@@ -7,7 +7,7 @@ using Optim
     g(v) = 1 / (sum(v .^ 2) + 1)
     localdims = (6, 6, 6, 6)
     tolerance = 1e-8
-    tci, ranks, errors = TCI.crossinterpolate(Float64, g, localdims; tolerance=tolerance)
+    tci, ranks, errors = TCI.crossinterpolate1(Float64, g, localdims; tolerance=tolerance)
     tt = TCI.TensorTrain(tci)
     @test rank(tci) == rank(tt)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
