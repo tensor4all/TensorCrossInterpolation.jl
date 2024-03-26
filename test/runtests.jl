@@ -1,7 +1,6 @@
 import TensorCrossInterpolation as TCI
 using Test
 using LinearAlgebra
-import ITensors
 
 include("test_with_aqua.jl")
 include("test_with_jet.jl")

@@ -25,7 +25,7 @@ function integrate(
     tolerance=1e-8,
     GKorder::Int=15
 ) where {ValueType}
-    if iseven(order)
+    if iseven(GKorder)
         error("Gauss--Kronrod order must be odd, e.g. 15 or 61.")
     end
 
