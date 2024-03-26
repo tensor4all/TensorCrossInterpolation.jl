@@ -69,11 +69,11 @@ Optimize the first pivot for a tensor cross interpolation.
 
 Arguments:
 - `f` is function to be interpolated.
-- `localdims::Union{Vector{Int},NTuple{N,Int}}` determines the local dimensions of the function parameters (see [`crossinterpolate`](@ref)).
+- `localdims::Union{Vector{Int},NTuple{N,Int}}` determines the local dimensions of the function parameters (see [`crossinterpolate1`](@ref)).
 - `fistpivot::MultiIndex=ones(Int, length(localdims))` is the starting point for the optimization. It is advantageous to choose it close to a global maximum of the function.
 - `maxsweep` is the maximum number of optimization sweeps. Default: `1000`.
 
-See also: [`crossinterpolate`](@ref)
+See also: [`crossinterpolate1`](@ref)
 """
 function optfirstpivot(
     f,
