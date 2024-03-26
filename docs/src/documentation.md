@@ -2,9 +2,6 @@
 
 Documentation of all types and methods in module [TensorCrossInterpolation](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl).
 
-```@index
-```
-
 ## Matrix approximation
 
 
@@ -45,6 +42,12 @@ Pages = ["tensorci1.jl", "indexset.jl", "sweepstrategies.jl"]
 ```@autodocs
 Modules = [TensorCrossInterpolation]
 Pages = ["tensorci2.jl"]
+```
+
+### Integration
+```@autodocs
+Modules = [TensorCrossInterpolation]
+Pages = ["integration.jl"]
 ```
 
 ## Helpers and utility methods
