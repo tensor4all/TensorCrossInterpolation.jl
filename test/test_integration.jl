@@ -2,7 +2,7 @@ using Test
 import TensorCrossInterpolation as TCI
 import Random
 
-@testset "Integration" begin
+@testset "Integrate polynomials" begin
     Random.seed!(1234)
 
     coefficients = [
@@ -24,4 +24,13 @@ import Random
     a = rand(N)
     exactval = prod(polynomialintegral.(b) .- polynomialintegral.(a))
     @test TCI.integrate(Float64, f, a, b) ≈ exactval
+end
+
+@testset "Integrate 10d function" begin
+    function f(x)
+        return 1000 * cos(10 * sum(x .^ 2)) * exp(-sum(x)^4 / 1000)
+    end
+    I15 = TCI.integrate(Float64, f, fill(-1.0, 10), fill(+1.0, 10); GKorder=15, tolerance=1e-8)
+    Iref = -5.4960415218049
+    @test abs(I15 - Iref) < 1e-3
 end
