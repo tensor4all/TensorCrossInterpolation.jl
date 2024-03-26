@@ -778,8 +778,8 @@ function sweep2site!(
         extraIset = tci.Iset
         extraJset = tci.Jset
         if length(tci.Iset_history) > 0
-            extraIset = union(extraIset, tci.Iset_history[end])
-            extraJset = union(extraJset, tci.Jset_history[end])
+            extraIset = union.(extraIset, tci.Iset_history[end])
+            extraJset = union.(extraJset, tci.Jset_history[end])
         end
     end
 
