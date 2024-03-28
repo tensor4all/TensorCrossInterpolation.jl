@@ -302,7 +302,7 @@ function setT!(
 end
 
 
-function rmbadpivots!(
+function sweep0site!(
     tci::TensorCI2{ValueType}, f, b::Int;
     reltol=1e-14, abstol=0.0
 ) where {ValueType}
@@ -325,6 +325,8 @@ function rmbadpivots!(
     return nothing
 end
 
+# Backward compatibility
+const rmbadpivots! = sweep0site!
 
 function setT!(
     tci::TensorCI2{ValueType}, f, b::Int; leftorthogonal=true
