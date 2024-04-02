@@ -4,16 +4,16 @@ using Zygote
 using Optim
 
 @testset "tensor train" begin
-    g(v) = 1 / (sum(v .^ 2) + 1)
+    g(v) = 1 / (sum(v .^ 2) + 1im)
     localdims = (6, 6, 6, 6)
     tolerance = 1e-8
     allindices = CartesianIndices(localdims)
 
-    tci, ranks, errors = TCI.crossinterpolate1(Float64, g, localdims; tolerance=tolerance)
+    tci, ranks, errors = TCI.crossinterpolate1(ComplexF64, g, localdims; tolerance=tolerance)
     tt = TCI.TensorTrain(tci)
     @test TCI.rank(tci) == TCI.rank(tt)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
-    gsum = 0.0
+    gsum = ComplexF64(0.0)
     for i in allindices
         @test TCI.evaluate(tci, i) ≈ TCI.evaluate(tt, i)
         @test tt(i) == TCI.evaluate(tt, i)

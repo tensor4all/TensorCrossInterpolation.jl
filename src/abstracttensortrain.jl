@@ -165,7 +165,7 @@ Evaluates the sum of the tensor train approximation over all lattice sites in an
 factorized manner.
 """
 function sum(tt::AbstractTensorTrain{V}) where {V}
-    v = sum(tt[1], dims=(1, 2))[1, 1, :]'
+    v = transpose(sum(tt[1], dims=(1, 2))[1, 1, :])
     for T in tt[2:end]
         v *= sum(T, dims=2)[:, 1, :]
     end
