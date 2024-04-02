@@ -8,10 +8,6 @@ This is the documentation for [TensorCrossInterpolation](https://gitlab.com/tens
 
 With the user manual and usage examples below, users should be able to use this library as a "black box" in most cases. Detailed documentation of (almost) all methods can be found in the [Documentation](@ref) section, and [Implementation](@ref) contains a detailed explanation of this implementation of TCI.
 
-```@contents
-Pages = ["index.md", "documentation.md", "implementation.md"]
-```
-
 ## Interpolating functions
 
 The most convenient way to create a TCI is [`crossinterpolate2`](@ref). For example, consider the lorentzian in 5 dimensions, i.e. $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on a mesh $\mathbf{v} \in \{1, 2, ..., 10\}^5$.
@@ -34,7 +30,7 @@ println("TCI approximation: $(tci([1, 2, 3, 4, 5]))")
 For easy integration into tensor network algorithms, the tensor train can be converted to ITensors MPS format. If you're using julia version 1.9 or later, an extension is automatically loaded if both `TensorCrossInterpolation.jl` and `ITensors.jl` are present.
 For older versions of julia, use the package using [TCIITensorConversion.jl](https://gitlab.com/tensors4fields/tciitensorconversion.jl).
 
-## Sums
+## Sums and Integrals
 
 Tensor trains are a way to efficiently obtain sums over all lattice sites, since this sum can be factorized:
 ```@example simple
@@ -46,6 +42,22 @@ sumtt = sum(tci)
 println("Sum of tensor train: $sumtt")
 ```
 For further information, see [`sum`](@ref).
+
+This factorized sum can be used for efficient evaluation of high-dimensional integrals. This is implemented with Gauss-Kronrod quadrature rules in [`integrate`](@ref). For example, the integral
+```math
+I = 10^3 \int\limits_{[-1, +1]^{10}} d^{10} \vec{x} \,
+     \cos\!\left(10 \textstyle\sum_{n=1}^{10} x_n^2 \right)
+     \exp\!\left[-10^{-3}\left(\textstyle\sum_{n=1}^{10} x_n\right)^4\right]
+```
+is evaluated by the following code:
+```@example simple
+function f(x)
+    return 1e3 * cos(10 * sum(x .^ 2)) * exp(-sum(x)^4 / 1e3)
+end
+I = TCI.integrate(Float64, f, fill(-1.0, 10), fill(+1.0, 10); GKorder=15, tolerance=1e-8)
+println("GK15 integral value: $I")
+```
+The argument `GKorder` controls the Gauss-Kronrod quadrature rule used for the integration, and `tolerance` controls the tolerance in the TCI approximation, which is distinct from the tolerance in the integral. For complicated functions, it is recommended to integrate using two different GK rules and to compare the results to get a good estimate of the discretization error.
 
 ## Properties of the TCI object
 

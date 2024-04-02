@@ -146,7 +146,9 @@ function to_tensors(obj::TensorTrainFit{ValueType}, x::Vector{ValueType}) where 
     ]
 end
 
-_evaluate(tt, indexset) = only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
+function _evaluate(tt::Vector{Array{V, 3}}, indexset) where {V}
+    only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
+end
 
 function (obj::TensorTrainFit{ValueType})(x::Vector{ValueType}) where {ValueType}
     tensors = to_tensors(obj, x)

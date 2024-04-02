@@ -1,6 +1,6 @@
 using Test
 import TensorCrossInterpolation: TensorCI1, TensorCI2, sitedims, linkdims, rank,
-    addglobalpivot!, crossinterpolate, optimize!, MatrixACA, rrlu,
+    addglobalpivot!, crossinterpolate1, optimize!, MatrixACA, rrlu,
     nrows, ncols, evaluate, left, right
 
 @testset "Conversion between rrLU and ACA" begin
@@ -40,7 +40,7 @@ end
     @test linkdims(tci2) == linkdims(tci1)
 
     f(v) = (1.0 + 2.0im) ./ (sum(v .^ 2) + 1)
-    tci1, ranks, errors = crossinterpolate(
+    tci1, ranks, errors = crossinterpolate1(
         ComplexF64,
         f,
         fill(d, n),

@@ -9,7 +9,7 @@ using Optim
     tolerance = 1e-8
     allindices = CartesianIndices(localdims)
 
-    tci, ranks, errors = TCI.crossinterpolate(Float64, g, localdims; tolerance=tolerance)
+    tci, ranks, errors = TCI.crossinterpolate1(Float64, g, localdims; tolerance=tolerance)
     tt = TCI.TensorTrain(tci)
     @test TCI.rank(tci) == TCI.rank(tt)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)

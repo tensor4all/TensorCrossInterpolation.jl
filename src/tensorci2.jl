@@ -632,7 +632,7 @@ Notes:
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
 
-See also: [`crossinterpolate2`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+See also: [`crossinterpolate2`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate1`](@ref)
 """
 function optimize!(
     tci::TensorCI2{ValueType},
@@ -778,8 +778,8 @@ function sweep2site!(
         extraIset = tci.Iset
         extraJset = tci.Jset
         if length(tci.Iset_history) > 0
-            extraIset = union(extraIset, tci.Iset_history[end])
-            extraJset = union(extraJset, tci.Jset_history[end])
+            extraIset = union.(extraIset, tci.Iset_history[end])
+            extraJset = union.(extraJset, tci.Jset_history[end])
         end
     end
 
@@ -871,7 +871,7 @@ Notes:
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
 
 
-See also: [`optimize!`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate`](@ref)
+See also: [`optimize!`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate1`](@ref)
 """
 function crossinterpolate2(
     ::Type{ValueType},
