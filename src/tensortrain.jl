@@ -81,6 +81,16 @@ function _factorize(
     end
 end
 
+"""
+    function compress!(
+        tt::TensorTrain{V, N},
+        method::Symbol=:LU;
+        tolerance::Float64=1e-12,
+        maxbonddim=typemax(Int)
+    ) where {V, N}
+
+Compress the tensor train `tt` using `LU`, `CI` or `SVD` decompositions.
+"""
 function compress!(
     tt::TensorTrain{V, N},
     method::Symbol=:LU;
