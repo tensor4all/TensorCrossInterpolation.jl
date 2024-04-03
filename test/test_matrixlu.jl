@@ -192,4 +192,20 @@ using LinearAlgebra
         lu3 = TCI.rrlu(A, abstol=0.0)
         @test TCI.lastpivoterror(lu3) == 0.0
     end
+
+    @testset "LU for matrices with very small absolute values" begin
+        A = 1e-13 * [
+            0.585383 0.124568 0.352426 0.573507
+            0.865875 0.600153 0.727443 0.902388
+            0.913477 0.954081 0.116965 0.817
+            0.985918 0.516114 0.600366 0.0200085
+        ]
+
+        lu = TCI.rrlu(A, abstol=1e-3)
+        @test TCI.npivots(lu) == 1
+        @test length(TCI.pivoterrors(lu)) > 0
+        @test TCI.lastpivoterror(lu) > 0
+        @test size(lu) == size(A)
+        @test maximum(abs.(TCI.left(lu) * TCI.right(lu) .- A)) < 1e-3
+    end
 end
