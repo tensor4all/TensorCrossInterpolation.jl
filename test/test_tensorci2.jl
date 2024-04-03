@@ -394,4 +394,56 @@ import QuanticsGrids as QD
 
         @test vals_reconst ≈ vals_ref
     end
+
+    @testset "convergencecriterion" begin
+        let
+            ranks = [1, 2]
+            errors = [1e-2, 1e-5]
+            nglobalpivot = [0, 0]
+            tol = 1e-4
+            maxbonddim = 4
+            ncheckhistory = 3
+            @test TCI.convergencecriterion(ranks, errors, nglobalpivot, tol, maxbonddim, ncheckhistory) == false
+        end
+
+        let
+            ranks = [1, 2, 2, 2]
+            errors = [1e-2, 1e-5, 1e-5, 1e-5]
+            nglobalpivot = [0, 0, 0, 0]
+            tol = 1e-4
+            maxbonddim = 4
+            ncheckhistory = 3
+            @test TCI.convergencecriterion(ranks, errors, nglobalpivot, tol, maxbonddim, ncheckhistory) == true
+        end
+
+        let
+            ranks = [1, 2, 2, 2]
+            errors = [1e-2, 1e-2, 1e-5, 1e-5]
+            nglobalpivot = [0, 0, 0, 0]
+            tol = 1e-4
+            maxbonddim = 4
+            ncheckhistory = 3
+            @test TCI.convergencecriterion(ranks, errors, nglobalpivot, tol, maxbonddim, ncheckhistory) == false
+        end
+
+        let
+            ranks = [1, 2, 2, 2]
+            errors = [1e-2, 1e-2, 1e-2, 1e-2]
+            nglobalpivot = [0, 0, 0, 0]
+            tol = 1e-4
+            maxbonddim = 2
+            ncheckhistory = 3
+            @test TCI.convergencecriterion(ranks, errors, nglobalpivot, tol, maxbonddim, ncheckhistory) == true
+        end
+
+        let
+            ranks = [1, 2, 2, 2]
+            errors = [1e-2, 1e-2, 1e-2, 1e-2]
+            nglobalpivot = [0, 1, 1, 1]
+            tol = 1e-4
+            maxbonddim = 2
+            ncheckhistory = 3
+            @test TCI.convergencecriterion(ranks, errors, nglobalpivot, tol, maxbonddim, ncheckhistory) == true
+        end
+    end
 end
