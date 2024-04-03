@@ -7,12 +7,14 @@ using Optim
     g(v) = 1 / (sum(v .^ 2) + 1)
     localdims = (6, 6, 6, 6)
     tolerance = 1e-8
+    allindices = CartesianIndices(localdims)
+
     tci, ranks, errors = TCI.crossinterpolate1(Float64, g, localdims; tolerance=tolerance)
     tt = TCI.TensorTrain(tci)
-    @test rank(tci) == rank(tt)
+    @test TCI.rank(tci) == TCI.rank(tt)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
     gsum = 0.0
-    for i in CartesianIndices(localdims)
+    for i in allindices
         @test TCI.evaluate(tci, i) ≈ TCI.evaluate(tt, i)
         @test tt(i) == TCI.evaluate(tt, i)
         functionvalue = g(Tuple(i))
@@ -20,6 +22,18 @@ using Optim
         gsum += functionvalue
     end
     @test gsum ≈ TCI.sum(tt)
+
+    for method in [:LU, :CI, :SVD]
+        ttcompressed = deepcopy(tt)
+        TCI.compress!(ttcompressed, method; maxbonddim=5)
+        @test TCI.rank(ttcompressed) <= 5
+    end
+
+    for method in [:LU, :CI, :SVD]
+        ttcompressed = deepcopy(tt)
+        TCI.compress!(ttcompressed, method; tolerance=1.0)
+        @test TCI.rank(ttcompressed) <= TCI.rank(tt)
+    end
 end
 
 @testset "batchevaluate" begin

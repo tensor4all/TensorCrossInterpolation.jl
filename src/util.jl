@@ -107,3 +107,11 @@ function optfirstpivot(
 
     return pivot
 end
+
+function replacenothing(value::Union{T, Nothing}, default::T)::T where {T}
+    if isnothing(value)
+        return default
+    else
+        return value
+    end
+end
