@@ -27,6 +27,8 @@ import Random
 end
 
 @testset "Integrate 10d function" begin
+    Random.seed!(1234)
+
     function f(x)
         return 1000 * cos(10 * sum(x .^ 2)) * exp(-sum(x)^4 / 1000)
     end

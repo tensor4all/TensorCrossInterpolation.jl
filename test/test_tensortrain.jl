@@ -3,8 +3,7 @@ using Random
 using Zygote
 using Optim
 
-@testset "tensor train" begin
-    g(v) = 1 / (sum(v .^ 2) + 1im)
+@testset "tensor train" for g in [v -> exp(exp(1im * sum(v))), v -> 1 / (sum(v .^ 2) + 1im)]
     localdims = (6, 6, 6, 6)
     tolerance = 1e-8
     allindices = CartesianIndices(localdims)
