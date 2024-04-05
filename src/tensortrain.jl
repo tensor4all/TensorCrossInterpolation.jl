@@ -125,6 +125,36 @@ function compress!(
 end
 
 
+function multiply!(tt::TensorTrain{V, N}, a) where {V, N}
+    tt.sitetensors[end] .= tt.sitetensors[end] .* a
+    nothing
+end
+
+function multiply!(a, tt::TensorTrain{V, N}) where {V, N}
+    tt.sitetensors[end] .= a .* tt.sitetensors[end]
+    nothing
+end
+
+function multiply(tt::TensorTrain{V, N}, a)::TensorTrain{V, N} where {V, N}
+    tt2 = deepcopy(tt)
+    multiply!(tt2, a)
+    return tt2
+end
+
+function multiply(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
+    tt2 = deepcopy(tt)
+    multiply!(a, tt2)
+    return tt2
+end
+
+function Base.:*(tt::TensorTrain{V, N}, a)::TensorTrain{V, N} where {V, N}
+    return multiply(tt, a)
+end
+
+function Base.:*(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
+    return multiply(a, tt)
+end
+
 """
 Fitting data with a TensorTrain object.
 This may be useful when the interpolated function is noisy.

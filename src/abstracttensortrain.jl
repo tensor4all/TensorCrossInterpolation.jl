@@ -218,6 +218,6 @@ Addition of two tensor trains. If `c = a + b`, then `c(v) ≈ a(v) + b(v)` at ea
 
 See also: [`add`](@ref)
 """
-function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+function Base.:+(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     return add(lhs, rhs)
 end

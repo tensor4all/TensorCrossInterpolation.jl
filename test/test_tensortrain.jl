@@ -119,7 +119,7 @@ end
     @test [TCI.evaluate(ttopt, idx) for (idx, v) in zip(indexsets, values)] ≈ values
 end
 
-@testset "tensor train addition" for T in [Float64, ComplexF64]
+@testset "tensor train addition and multiplication" for T in [Float64, ComplexF64]
     Random.seed!(10)
     localdims = [2, 2, 2]
     linkdims = [1, 2, 3, 1]
@@ -133,6 +133,9 @@ end
     @test ttadd.(indices) ≈ [tt1(v) + tt2(v) for v in indices]
     ttadd2 = tt1 + tt2
     @test ttadd2.(indices) ≈ [tt1(v) + tt2(v) for v in indices]
+
+    tt1mul = 1.6 * tt1
+    @test tt1mul.(indices) ≈ 1.6 .* tt1.(indices)
 
     ttshort = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L-1])
     @test_throws DimensionMismatch TCI.add(tt1, ttshort)
