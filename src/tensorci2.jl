@@ -684,14 +684,15 @@ function optimize!(
         end
 
         sweep2site!(
-            tci, f, 1;
+            tci, f, 2;
             iter1 = 1,
             abstol=abstol,
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
             strictlynested=strictlynested,
             verbosity=verbosity,
-            sweepstrategy=sweepstrategy
+            sweepstrategy=sweepstrategy,
+            fillsitetensors=true
             )
         if verbosity > 0 && length(globalpivots) > 0
             nrejections = length([p for p in globalpivots if abs(evaluate(tci, p) - f(p)) > abstol])
