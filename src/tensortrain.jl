@@ -95,7 +95,7 @@ function compress!(
     tt::TensorTrain{V, N},
     method::Symbol=:LU;
     tolerance::Float64=1e-12,
-    maxbonddim=typemax(Int)
+    maxbonddim::Int=typemax(Int)
 ) where {V, N}
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])

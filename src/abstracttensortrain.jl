@@ -193,17 +193,22 @@ Addition of two tensor trains. If `c = add(a, b)`, then `c(v) ≈ a(v) + b(v)` a
 
 See also: [`+`](@ref)
 """
-function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+function add(
+    lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
+    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+) where {V}
     if length(lhs) != length(rhs)
         throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
     end
     L = length(lhs)
-    return tensortrain(
+    tt = tensortrain(
         [
             _addtttensor(lhs[ell], rhs[ell]; lefttensor=(ell==1), righttensor=(ell==L))
             for ell in 1:L
         ]
     )
+    compress!(tt, :SVD; tolerance, maxbonddim)
+    return tt
 end
 
 @doc raw"""
