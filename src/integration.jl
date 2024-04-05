@@ -22,8 +22,9 @@ function integrate(
     f,
     a::Vector{ValueType},
     b::Vector{ValueType};
-    tolerance=1e-8,
-    GKorder::Int=15
+    GKorder::Int=15,
+    normalizeerror=false,
+    kwargs...
 ) where {ValueType}
     if iseven(GKorder)
         error("Gauss--Kronrod order must be odd, e.g. 15 or 61.")
@@ -50,7 +51,9 @@ function integrate(
         ValueType,
         F,
         localdims;
-        tolerance
+        nsearchglobalpivot=10,
+        normalizeerror,
+        kwargs...
     )
 
     return sum(tci2) / normalization
