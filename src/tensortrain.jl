@@ -95,7 +95,7 @@ function compress!(
     tt::TensorTrain{V, N},
     method::Symbol=:LU;
     tolerance::Float64=1e-12,
-    maxbonddim=typemax(Int)
+    maxbonddim::Int=typemax(Int)
 ) where {V, N}
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])
@@ -124,6 +124,51 @@ function compress!(
     nothing
 end
 
+
+function multiply!(tt::TensorTrain{V, N}, a) where {V, N}
+    tt.sitetensors[end] .= tt.sitetensors[end] .* a
+    nothing
+end
+
+function multiply!(a, tt::TensorTrain{V, N}) where {V, N}
+    tt.sitetensors[end] .= a .* tt.sitetensors[end]
+    nothing
+end
+
+function multiply(tt::TensorTrain{V, N}, a)::TensorTrain{V, N} where {V, N}
+    tt2 = deepcopy(tt)
+    multiply!(tt2, a)
+    return tt2
+end
+
+function multiply(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
+    tt2 = deepcopy(tt)
+    multiply!(a, tt2)
+    return tt2
+end
+
+function Base.:*(tt::TensorTrain{V, N}, a)::TensorTrain{V, N} where {V, N}
+    return multiply(tt, a)
+end
+
+function Base.:*(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
+    return multiply(a, tt)
+end
+
+function divide!(tt::TensorTrain{V, N}, a) where {V, N}
+    tt.sitetensors[end] .= tt.sitetensors[end] ./ a
+    nothing
+end
+
+function divide(tt::TensorTrain{V, N}, a) where {V, N}
+    tt2 = deepcopy(tt)
+    divide!(tt2, a)
+    return tt2
+end
+
+function Base.:/(tt::TensorTrain{V, N}, a) where {V, N}
+    return divide(tt, a)
+end
 
 """
 Fitting data with a TensorTrain object.

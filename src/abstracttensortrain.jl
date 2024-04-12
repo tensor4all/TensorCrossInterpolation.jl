@@ -172,7 +172,11 @@ function sum(tt::AbstractTensorTrain{V}) where {V}
     return only(v)
 end
 
-function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=false) where {V}
+function _addtttensor(
+    A::Array{V}, B::Array{V};
+    factorA=one(V), factorB=one(V),
+    lefttensor=false, righttensor=false
+) where {V}
     if ndims(A) != ndims(B)
         throw(DimensionMismatch("Elementwise addition only works if both tensors have the same indices, but A and B have different numbers ($(ndims(A)) and $(ndims(B))) of indices."))
     end
@@ -181,38 +185,84 @@ function _addtttensor(A::Array{V}, B::Array{V}; lefttensor=false, righttensor=fa
     offset3 = righttensor ? 0 : size(A, nd)
     localindices = fill(Colon(), nd - 2)
     C = zeros(V, offset1 + size(B, 1), size(A)[2:nd-1]..., offset3 + size(B, nd))
-    C[1:size(A, 1), localindices..., 1:size(A, nd)] = A
-    C[offset1+1:end, localindices..., offset3+1:end] = B
+    C[1:size(A, 1), localindices..., 1:size(A, nd)] = factorA * A
+    C[offset1+1:end, localindices..., offset3+1:end] = factorB * B
     return C
 end
 
 @doc raw"""
-    function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+function add(
+    lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
+    factorlhs=one(V), factorrhs=one(V),
+    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+) where {V}
 
-Addition of two tensor trains. If `c = add(a, b)`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. In many cases, it is advisable to recompress/truncate the resulting tensor train afterwards.
+Addition of two tensor trains. If `C = add(A, B)`, then `C(v) ≈ A(v) + B(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``.
+
+Arguments:
+- `lhs`, `rhs`: Tensor trains to be added.
+- `factorlhs`, `factorrhs`: Factors to multiply each tensor train by before addition.
+- `tolerance`, `maxbonddim`: Parameters to be used for the recompression step.
+
+Returns:
+A new `TensorTrain` representing the function `factorlhs * lhs(v) + factorrhs * rhs(v)`.
 
 See also: [`+`](@ref)
 """
-function add(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+function add(
+    lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
+    factorlhs=one(V), factorrhs=one(V),
+    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+) where {V}
     if length(lhs) != length(rhs)
         throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
     end
     L = length(lhs)
-    return tensortrain(
+    tt = tensortrain(
         [
-            _addtttensor(lhs[ell], rhs[ell]; lefttensor=(ell==1), righttensor=(ell==L))
+            _addtttensor(
+                lhs[ell], rhs[ell];
+                factorA=((ell == L) ? factorlhs : one(V)),
+                factorB=((ell == L) ? factorrhs : one(V)),
+                lefttensor=(ell==1),
+                righttensor=(ell==L)
+            )
             for ell in 1:L
         ]
     )
+    compress!(tt, :SVD; tolerance, maxbonddim)
+    return tt
+end
+
+@doc raw"""
+    function subtract(
+        lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
+        tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+    )
+
+Subtract two tensor trains `lhs` and `rhs`. See [`add`](@ref).
+"""
+function subtract(
+    lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
+    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+) where {V}
+    return add(lhs, rhs; factorrhs=-1 * one(V), tolerance, maxbonddim)
 end
 
 @doc raw"""
     function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
 
-Addition of two tensor trains. If `c = a + b`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. In many cases, it is advisable to recompress/truncate the resulting tensor train afterwards.
-
-See also: [`add`](@ref)
+Addition of two tensor trains. If `c = a + b`, then `c(v) ≈ a(v) + b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. Can be combined with automatic recompression by calling [`add`](@ref).
 """
-function (+)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+function Base.:+(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     return add(lhs, rhs)
+end
+
+@doc raw"""
+    function (-)(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+
+Subtraction of two tensor trains. If `c = a - b`, then `c(v) ≈ a(v) - b(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``. Can be combined with automatic recompression by calling [`subtract`](@ref) (see documentation for [`add`](@ref)).
+"""
+function Base.:-(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
+    return subtract(lhs, rhs)
 end
