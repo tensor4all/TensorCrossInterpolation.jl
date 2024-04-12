@@ -140,6 +140,9 @@ end
     tt1div = tt1mul / 3.2
     @test tt1div.(indices) ≈ tt1.(indices) ./ 2.0
 
+    tt1sub = tt1 - tt1div
+    @test tt1sub.(indices) ≈ tt1.(indices) ./ 2.0
+
     ttshort = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L-1])
     @test_throws DimensionMismatch TCI.add(tt1, ttshort)
 
