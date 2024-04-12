@@ -155,6 +155,21 @@ function Base.:*(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
     return multiply(a, tt)
 end
 
+function divide!(tt::TensorTrain{V, N}, a) where {V, N}
+    tt.sitetensors[end] .= tt.sitetensors[end] ./ a
+    nothing
+end
+
+function divide(tt::TensorTrain{V, N}, a) where {V, N}
+    tt2 = deepcopy(tt)
+    divide!(tt2, a)
+    return tt2
+end
+
+function Base.:/(tt::TensorTrain{V, N}, a) where {V, N}
+    return divide(tt, a)
+end
+
 """
 Fitting data with a TensorTrain object.
 This may be useful when the interpolated function is noisy.
