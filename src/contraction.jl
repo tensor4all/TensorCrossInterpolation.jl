@@ -62,7 +62,7 @@ _localdims(obj::TensorTrain{<:Any,4}, n::Int)::Tuple{Int,Int} =
 _localdims(obj::Contraction{<:Any}, n::Int)::Tuple{Int,Int} =
     (size(obj.mpo[1][n], 2), size(obj.mpo[2][n], 3))
 
-_getindex(x, indices) = ntuple(i->x[indices[i]], length(indices))
+_getindex(x, indices) = ntuple(i -> x[indices[i]], length(indices))
 
 function _contract(
     a::AbstractArray{T1,N1},
