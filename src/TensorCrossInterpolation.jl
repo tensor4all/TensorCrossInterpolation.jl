@@ -14,7 +14,9 @@ import Base: isempty, iterate, getindex, lastindex, broadcastable
 import Base: length, size, sum
 
 export crossinterpolate1, crossinterpolate2, optfirstpivot
-export tensortrain
+export tensortrain, TensorTrain, sitedims, evaluate
+
+export contract
 
 include("util.jl")
 include("sweepstrategies.jl")
@@ -33,5 +35,6 @@ include("tensorci2.jl")
 include("tensortrain.jl")
 include("conversion.jl")
 include("integration.jl")
+include("contraction.jl")
 
 end

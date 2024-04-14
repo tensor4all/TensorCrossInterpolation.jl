@@ -16,6 +16,7 @@ include("test_batcheval.jl")
 include("test_tensorci1.jl")
 include("test_tensorci2.jl")
 include("test_tensortrain.jl")
+include("test_contraction.jl")
 include("test_integration.jl")
 
 #==
