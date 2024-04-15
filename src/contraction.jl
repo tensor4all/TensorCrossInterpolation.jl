@@ -324,7 +324,7 @@ function contract_naive(
     tolerance=0.0, maxbonddim=typemax(Int)
 )::TensorTrain{T,4} where {T}
     if obj.f isa Function
-        error("Cannot contract matrix product with a function.")
+        error("Naive contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
     end
 
     a, b = obj.mpo
@@ -436,6 +436,9 @@ function contract(
     if algorithm === :TCI
         return contract_TCI(A, B; tolerance=tolerance, maxbonddim=maxbonddim, f=f, kwargs...)
     elseif algorithm === :naive
+        if f !== nothing
+            error("Naive contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
+        end
         return contract_naive(A, B; tolerance=tolerance, maxbonddim=maxbonddim)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))

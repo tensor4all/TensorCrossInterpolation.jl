@@ -22,7 +22,7 @@ end
     @test vec(reshape(permutedims(a, (2, 1, 3)), 3, :) * reshape(permutedims(b, (1, 3, 2)), :, 5)) ≈ vec(ab)
 end
 
-@testset "MPO-MPO contraction" for f in [nothing, x -> 2 * x], algorithm in ["TCI", "naive"]
+@testset "MPO-MPO contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]
     N = 4
     bonddims_a = [1, 2, 3, 2, 1]
     bonddims_b = [1, 2, 3, 2, 1]
@@ -39,7 +39,9 @@ end
         for n = 1:N
     ])
 
-    if f === nothing || algorithm != "naive"
+    if f !== nothing && algorithm === :naive
+        @test_throws ErrorException contract(a, b; f=f, algorithm=algorithm)
+    else
         ab = contract(a, b; f=f, algorithm=algorithm)
         @test sitedims(ab) == [[localdims1[i], localdims3[i]] for i = 1:N]
         if f === nothing
