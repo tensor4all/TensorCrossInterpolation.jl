@@ -274,7 +274,7 @@ function (obj::Contraction{T})(
         tmp2 = _contract(tmp1, b[n], (2, 5), (1, 2))
 
         # (left_index, S, site[n], link_a', site'[n], link_b')
-        #  => (left_index, link_a', link_b', S, site[n], site'[n]) 
+        #  => (left_index, link_a', link_b', S, site[n], site'[n])
         tmp3 = permutedims(tmp2, (1, 4, 6, 2, 3, 5))
 
         leftobj = reshape(tmp3, size(tmp3)[1:3]..., :)
@@ -299,27 +299,40 @@ function (obj::Contraction{T})(
 end
 
 
-function contract_naive(a::TensorTrain{T,4}, b::TensorTrain{T,4})::TensorTrain{T,4} where {T}
-    return contract_naive(Contraction(a, b))
+function _contractsitetensors(a::Array{T, 4}, b::Array{T, 4})::Array{T, 4} where {T}
+    # indices: (link_a, s1, s2, link_a') * (link_b, s2, s3, link_b')
+    ab::Array{T, 6} = _contract(a, b, (3,), (2,))
+    # => indices: (link_a, s1, link_a', link_b, s3, link_b')
+    abpermuted = permutedims(ab, (1, 4, 2, 5, 3, 6))
+    # => indices: (link_a, link_b, s1, s3, link_a', link_b')
+    return reshape(abpermuted,
+        size(a, 1) * size(b, 1),  # link_a * link_b
+        size(a, 2),  size(b, 3),  # s1, s3
+        size(a, 4) * size(b, 4)   # link_a' * link_b'
+    )
 end
 
-function contract_naive(obj::Contraction{T})::TensorTrain{T,4} where {T}
+function contract_naive(
+    a::TensorTrain{T,4}, b::TensorTrain{T,4};
+    tolerance=0.0, maxbonddim=typemax(Int)
+)::TensorTrain{T,4} where {T}
+    return contract_naive(Contraction(a, b); tolerance, maxbonddim)
+end
+
+function contract_naive(
+    obj::Contraction{T};
+    tolerance=0.0, maxbonddim=typemax(Int)
+)::TensorTrain{T,4} where {T}
     if obj.f isa Function
         error("Cannot contract matrix product with a function.")
     end
 
     a, b = obj.mpo
-
-    linkdims_a = vcat(1, linkdims(a), 1)
-    linkdims_b = vcat(1, linkdims(b), 1)
-    linkdims_ab = linkdims_a .* linkdims_b
-
-    # (link_a, s1, s2, link_a') * (link_b, s2, s3, link_b')
-    #  => (link_a, s1, link_a', link_b, s3, link_b')
-    #  => (link_a, link_b, s1, s3, link_a', link_b')
-    sitetensors = [reshape(permutedims(_contract(obj.mpo[1][n], obj.mpo[2][n], (3,), (2,)), (1, 4, 2, 5, 3, 6)), linkdims_ab[n], obj.sitedims[n]..., linkdims_ab[n+1]) for n = 1:length(obj)]
-
-    return TensorTrain{T,4}(sitetensors)
+    tt = TensorTrain{T, 4}(_contractsitetensors.(sitetensors(a), sitetensors(b)))
+    if tolerance > 0 || maxbonddim < typemax(Int)
+        compress!(tt, :SVD; tolerance, maxbonddim)
+    end
+    return tt
 end
 
 function _reshape_fusesites(t::AbstractArray{T}) where {T}
@@ -389,15 +402,15 @@ end
 function contract(
     A::TensorTrain{ValueType,4},
     B::TensorTrain{ValueType,4};
-    algorithm="TCI",
+    algorithm::Symbol=:TCI,
     tolerance::Float64=1e-12,
     maxbonddim::Int=typemax(Int),
     f::Union{Nothing,Function}=nothing,
     kwargs...
 ) where {ValueType}
-    if algorithm == "TCI"
+    if algorithm === :TCI
         return contract_TCI(A, B; tolerance=tolerance, maxbonddim=maxbonddim, f=f, kwargs...)
-    elseif algorithm == "naive"
+    elseif algorithm === :naive
         return contract_naive(A, B)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
