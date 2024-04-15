@@ -399,6 +399,31 @@ function contract_TCI(
     )
 end
 
+"""
+    function contract(
+        A::TensorTrain{ValueType,4},
+        B::TensorTrain{ValueType,4};
+        algorithm::Symbol=:TCI,
+        tolerance::Float64=1e-12,
+        maxbonddim::Int=typemax(Int),
+        f::Union{Nothing,Function}=nothing,
+        kwargs...
+    ) where {ValueType}
+
+Contract two tensor trains `A` and `B`.
+
+Currently, two implementations are available:
+ 1. `algorithm=:TCI` constructs a new TCI that fits the contraction of `A` and `B`.
+ 2. `algorithm=:naive` uses a naive tensor contraction and subsequent SVD recompression of the tensor train.
+
+Arguments:
+- `A` and `B` are the tensor trains to be contracted.
+- `algorithm` chooses the algorithm used to evaluate the contraction.
+- `tolerance` is the tolerance of the TCI or SVD recompression.
+- `maxbonddim` sets the maximum bond dimension of the resulting tensor train.
+- `f` is a function to be applied elementwise to the result. This option is only available with `algorithm=:TCI`.
+- `kwargs...` are forwarded to [`crossinterpolate2`](@ref) if `algorithm=:TCI`.
+"""
 function contract(
     A::TensorTrain{ValueType,4},
     B::TensorTrain{ValueType,4};
@@ -411,7 +436,7 @@ function contract(
     if algorithm === :TCI
         return contract_TCI(A, B; tolerance=tolerance, maxbonddim=maxbonddim, f=f, kwargs...)
     elseif algorithm === :naive
-        return contract_naive(A, B)
+        return contract_naive(A, B; tolerance=tolerance, maxbonddim=maxbonddim)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end

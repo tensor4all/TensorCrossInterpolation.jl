@@ -11,11 +11,11 @@
 Integrate the function `f` using TCI and Gauss--Kronrod quadrature rules.
 
 Arguments:
-- ValueType: return type of `f`.
-- a: Vector of lower bounds in each dimension. Effectively, the lower corner of the hypercube that is being integrated over.
-- b: Vector of upper bounds in each dimension.
-- tolerance: tolerance of the TCI approximation for the values of f.
-- GKorder: Order of the Gauss--Kronrod rule, e.g. 15.
+- `ValueType``: return type of `f`.
+- `a``: Vector of lower bounds in each dimension. Effectively, the lower corner of the hypercube that is being integrated over.
+- `b``: Vector of upper bounds in each dimension.
+- `tolerance`: tolerance of the TCI approximation for the values of f.
+- `GKorder`: Order of the Gauss--Kronrod rule, e.g. 15.
 """
 function integrate(
     ::Type{ValueType},
