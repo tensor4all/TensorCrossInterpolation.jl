@@ -58,7 +58,7 @@ end
 
 function _factorize(
     A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int
-) where {V}
+)::Tuple{Matrix{V}, Matrix{V}, Int} where {V}
     if method === :LU
         factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
         return left(factorization), right(factorization), npivots(factorization)

@@ -28,7 +28,7 @@ Pages = ["matrixlu.jl", "matrixluci.jl"]
 ### Tensor train (TT)
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["abstracttensortrain.jl", "tensortrain.jl"]
+Pages = ["abstracttensortrain.jl", "tensortrain.jl", "contraction.jl"]
 ```
 
 ### Tensor cross interpolation (TCI)
