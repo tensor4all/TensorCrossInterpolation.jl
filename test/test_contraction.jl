@@ -15,6 +15,12 @@ function _tomat(tto::TensorTrain{T,4}) where {T}
     return mat
 end
 
+function _tovec(tt::TensorTrain{T, 3}) where {T}
+    sitedims = TCI.sitedims(tt)
+    localdims1 = [s[1] for s in sitedims]
+    return evaluate.(Ref(tt), CartesianIndices(Tuple(localdims1))[:])
+end
+
 @testset "_contract" begin
     a = rand(2, 3, 4)
     b = rand(2, 5, 4)
@@ -48,6 +54,39 @@ end
             @test _tomat(ab) ≈ _tomat(a) * _tomat(b)
         else
             @test _tomat(ab) ≈ f.(_tomat(a) * _tomat(b))
+        end
+    end
+end
+
+@testset "MPO-MPS contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]
+    N = 4
+    bonddims_a = [1, 2, 3, 2, 1]
+    bonddims_b = [1, 2, 3, 2, 1]
+    localdims1 = [3, 3, 3, 3]
+    localdims2 = [3, 3, 3, 3]
+
+    a = TensorTrain{ComplexF64,4}([
+        rand(ComplexF64, bonddims_a[n], localdims1[n], localdims2[n], bonddims_a[n+1])
+        for n = 1:N
+    ])
+    b = TensorTrain{ComplexF64,3}([
+        rand(ComplexF64, bonddims_b[n], localdims2[n], bonddims_b[n+1])
+        for n = 1:N
+    ])
+
+    if f !== nothing && algorithm === :naive
+        @test_throws ErrorException contract(a, b; f=f, algorithm=algorithm)
+        @test_throws ErrorException contract(b, a; f=f, algorithm=algorithm)
+    else
+        ab = contract(a, b; f=f, algorithm=algorithm)
+        ba = contract(b, a; f=f, algorithm=algorithm)
+        @test sitedims(ab) == [[localdims1[i]] for i = 1:N]
+        if f === nothing
+            @test _tovec(ab) ≈ _tomat(a) * _tovec(b)
+            @test transpose(_tovec(ba)) ≈ transpose(_tovec(b)) * _tomat(a)
+        else
+            @test _tovec(ab) ≈ f.(_tomat(a) * _tovec(b))
+            @test transpose(_tovec(ba)) ≈ f.(transpose(_tovec(b)) * _tomat(a))
         end
     end
 end

@@ -444,3 +444,28 @@ function contract(
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end
 end
+
+function _promoteMPStoMPO(
+    tt::AbstractTensorTrain{V},
+    unfusedlocalshape::Union{AbstractVector{Int}, Tuple}
+)::TensorTrain{V, 4} where {V}
+    return TensorTrain{V, 4}(_reshape_splitsites.(sitetensors(tt), Ref(unfusedlocalshape)))
+end
+
+function contract(
+    A::Union{TensorCI1{V}, TensorCI2{V}, TensorTrain{V, 3}},
+    B::TensorTrain{V, 4};
+    kwargs...
+)::TensorTrain{V, 3} where {V}
+    tt = contract(_promoteMPStoMPO(A, (1, sitedim(A, 1)...)), B; kwargs...)
+    return TensorTrain{V, 3}([T for (T, shape) in _reshape_fusesites.(sitetensors(tt))])
+end
+
+function contract(
+    A::TensorTrain{V, 4},
+    B::Union{TensorCI1{V}, TensorCI2{V}, TensorTrain{V, 3}};
+    kwargs...
+)::TensorTrain{V, 3} where {V}
+    tt = contract(A, _promoteMPStoMPO(B, (sitedim(B, 1)..., 1)); kwargs...)
+    return TensorTrain{V, 3}([T for (T, shape) in _reshape_fusesites.(sitetensors(tt))])
+end
