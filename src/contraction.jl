@@ -299,15 +299,15 @@ function (obj::Contraction{T})(
 end
 
 
-function _contractsitetensors(a::Array{T, 4}, b::Array{T, 4})::Array{T, 4} where {T}
+function _contractsitetensors(a::Array{T,4}, b::Array{T,4})::Array{T,4} where {T}
     # indices: (link_a, s1, s2, link_a') * (link_b, s2, s3, link_b')
-    ab::Array{T, 6} = _contract(a, b, (3,), (2,))
+    ab::Array{T,6} = _contract(a, b, (3,), (2,))
     # => indices: (link_a, s1, link_a', link_b, s3, link_b')
     abpermuted = permutedims(ab, (1, 4, 2, 5, 3, 6))
     # => indices: (link_a, link_b, s1, s3, link_a', link_b')
     return reshape(abpermuted,
         size(a, 1) * size(b, 1),  # link_a * link_b
-        size(a, 2),  size(b, 3),  # s1, s3
+        size(a, 2), size(b, 3),  # s1, s3
         size(a, 4) * size(b, 4)   # link_a' * link_b'
     )
 end
@@ -328,7 +328,7 @@ function contract_naive(
     end
 
     a, b = obj.mpo
-    tt = TensorTrain{T, 4}(_contractsitetensors.(sitetensors(a), sitetensors(b)))
+    tt = TensorTrain{T,4}(_contractsitetensors.(sitetensors(a), sitetensors(b)))
     if tolerance > 0 || maxbonddim < typemax(Int)
         compress!(tt, :SVD; tolerance, maxbonddim)
     end
@@ -445,27 +445,20 @@ function contract(
     end
 end
 
-function _promoteMPStoMPO(
-    tt::AbstractTensorTrain{V},
-    unfusedlocalshape::Union{AbstractVector{Int}, Tuple}
-)::TensorTrain{V, 4} where {V}
-    return TensorTrain{V, 4}(_reshape_splitsites.(sitetensors(tt), Ref(unfusedlocalshape)))
+function contract(
+    A::Union{TensorCI1{V},TensorCI2{V},TensorTrain{V,3}},
+    B::TensorTrain{V,4};
+    kwargs...
+)::TensorTrain{V,3} where {V}
+    tt = contract(TensorTrain{4}(A, [(1, s...) for s in sitedims(A)]), B; kwargs...)
+    return TensorTrain{3}(tt, prod.(sitedims(tt)))
 end
 
 function contract(
-    A::Union{TensorCI1{V}, TensorCI2{V}, TensorTrain{V, 3}},
-    B::TensorTrain{V, 4};
+    A::TensorTrain{V,4},
+    B::Union{TensorCI1{V},TensorCI2{V},TensorTrain{V,3}};
     kwargs...
-)::TensorTrain{V, 3} where {V}
-    tt = contract(_promoteMPStoMPO(A, (1, sitedim(A, 1)...)), B; kwargs...)
-    return TensorTrain{V, 3}([T for (T, shape) in _reshape_fusesites.(sitetensors(tt))])
-end
-
-function contract(
-    A::TensorTrain{V, 4},
-    B::Union{TensorCI1{V}, TensorCI2{V}, TensorTrain{V, 3}};
-    kwargs...
-)::TensorTrain{V, 3} where {V}
-    tt = contract(A, _promoteMPStoMPO(B, (sitedim(B, 1)..., 1)); kwargs...)
-    return TensorTrain{V, 3}([T for (T, shape) in _reshape_fusesites.(sitetensors(tt))])
+)::TensorTrain{V,3} where {V}
+    tt = contract(A, TensorTrain{4}(B, [(s..., 1) for s in sitedims(B)]); kwargs...)
+    return TensorTrain{3}(tt, prod.(sitedims(tt)))
 end
