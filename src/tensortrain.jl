@@ -52,6 +52,27 @@ function TensorTrain(tci::AbstractTensorTrain{V})::TensorTrain{V,3} where {V}
     return TensorTrain{V,3}(sitetensors(tci))
 end
 
+"""
+    function TensorTrain{N}(tci::AbstractTensorTrain{V}) where {V,N}
+
+Convert a tensor-train-like object into a tensor train.
+
+Arguments:
+- `tt::AbstractTensorTrain{V}`: a tensor-train-like object.
+- `localdims`: a vector of local dimensions for each tensor in the tensor train. A each element
+  of `localdims` should be an array-like object of `N-2` integers.
+"""
+function TensorTrain{N}(tt::AbstractTensorTrain{V}, localdims)::TensorTrain{V,N} where {V,N}
+    for d in localdims
+        length(d) == N-2 || error("Each element of localdims be a list of N-2 integers.")
+    end
+    for n in 1:length(tt)
+        prod(size(tt[n])[2:end-1]) == prod(localdims[n]) || error("The local dimensions at n=$n must match the tensor sizes.")
+    end
+    return TensorTrain{V,N}(
+        [reshape(t, size(t, 1), localdims[n]..., size(t)[end]) for (n, t) in enumerate(sitetensors(tt))])
+end
+
 function tensortrain(tci)
     return TensorTrain(tci)
 end
