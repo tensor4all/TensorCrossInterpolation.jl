@@ -10,10 +10,9 @@ This algorithm is used in the *quantics tensor cross interpolation* (QTCI) metho
 
 ## Installation
 
-`TensorCrossInterpolation.jl` has been registered to the General registry. Installing the package is as simple as
+This module has been registered in the General registry. It can be installed by typing the following in a Julia REPL:
 ```julia
-]
-add TensorCrossInterpolation
+using Pkg; Pkg.add("TensorCrossInterpolation.jl")
 ```
 
 ## Usage
