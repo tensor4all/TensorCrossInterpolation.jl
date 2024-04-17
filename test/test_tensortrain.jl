@@ -35,6 +35,23 @@ using Optim
     end
 end
 
+
+@testset "TT shape conversion" for T in [Float64, ComplexF64]
+    linkdims = [1, 2, 3, 1]
+    L = length(linkdims) - 1
+    localdims = fill(4, L)
+    tts = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L])
+    tto = TCI.TensorTrain{4}(tts, fill([2,2], L))
+    tts_reconst = TCI.TensorTrain{3}(tto, localdims)
+
+    for n in 1:L
+        @test all(tts[n] .== tts_reconst[n])
+    end 
+
+    @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([2,3], L)) # Wrong shape
+    @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([1,2,3], L)) # Wrong shape
+end
+
 @testset "batchevaluate" begin
     N = 4
     #bonddims = fill(3, N + 1)

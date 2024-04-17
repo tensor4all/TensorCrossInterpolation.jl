@@ -52,13 +52,38 @@ function TensorTrain(tci::AbstractTensorTrain{V})::TensorTrain{V,3} where {V}
     return TensorTrain{V,3}(sitetensors(tci))
 end
 
+"""
+    function TensorTrain{N}(tci::AbstractTensorTrain{V}) where {V,N}
+
+Convert a tensor-train-like object into a tensor train.
+
+Arguments:
+- `tt::AbstractTensorTrain{V}`: a tensor-train-like object.
+- `localdims`: a vector of local dimensions for each tensor in the tensor train. A each element
+  of `localdims` should be an array-like object of `N-2` integers.
+"""
+function TensorTrain{V,N}(tt::AbstractTensorTrain{V}, localdims)::TensorTrain{V,N} where {V,N}
+    for d in localdims
+        length(d) == N - 2 || error("Each element of localdims be a list of N-2 integers.")
+    end
+    for n in 1:length(tt)
+        prod(size(tt[n])[2:end-1]) == prod(localdims[n]) || error("The local dimensions at n=$n must match the tensor sizes.")
+    end
+    return TensorTrain{V,N}(
+        [reshape(t, size(t, 1), localdims[n]..., size(t)[end]) for (n, t) in enumerate(sitetensors(tt))])
+end
+
+function TensorTrain{N}(tt::AbstractTensorTrain{V}, localdims)::TensorTrain{V,N} where {V,N}
+    return TensorTrain{V,N}(tt, localdims)
+end
+
 function tensortrain(tci)
     return TensorTrain(tci)
 end
 
 function _factorize(
     A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int
-)::Tuple{Matrix{V}, Matrix{V}, Int} where {V}
+)::Tuple{Matrix{V},Matrix{V},Int} where {V}
     if method === :LU
         factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
         return left(factorization), right(factorization), npivots(factorization)
@@ -92,11 +117,11 @@ end
 Compress the tensor train `tt` using `LU`, `CI` or `SVD` decompositions.
 """
 function compress!(
-    tt::TensorTrain{V, N},
+    tt::TensorTrain{V,N},
     method::Symbol=:LU;
     tolerance::Float64=1e-12,
     maxbonddim::Int=typemax(Int)
-) where {V, N}
+) where {V,N}
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])
         left, right, newbonddim = _factorize(
@@ -125,48 +150,48 @@ function compress!(
 end
 
 
-function multiply!(tt::TensorTrain{V, N}, a) where {V, N}
+function multiply!(tt::TensorTrain{V,N}, a) where {V,N}
     tt.sitetensors[end] .= tt.sitetensors[end] .* a
     nothing
 end
 
-function multiply!(a, tt::TensorTrain{V, N}) where {V, N}
+function multiply!(a, tt::TensorTrain{V,N}) where {V,N}
     tt.sitetensors[end] .= a .* tt.sitetensors[end]
     nothing
 end
 
-function multiply(tt::TensorTrain{V, N}, a)::TensorTrain{V, N} where {V, N}
+function multiply(tt::TensorTrain{V,N}, a)::TensorTrain{V,N} where {V,N}
     tt2 = deepcopy(tt)
     multiply!(tt2, a)
     return tt2
 end
 
-function multiply(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
+function multiply(a, tt::TensorTrain{V,N})::TensorTrain{V,N} where {V,N}
     tt2 = deepcopy(tt)
     multiply!(a, tt2)
     return tt2
 end
 
-function Base.:*(tt::TensorTrain{V, N}, a)::TensorTrain{V, N} where {V, N}
+function Base.:*(tt::TensorTrain{V,N}, a)::TensorTrain{V,N} where {V,N}
     return multiply(tt, a)
 end
 
-function Base.:*(a, tt::TensorTrain{V, N})::TensorTrain{V, N} where {V, N}
+function Base.:*(a, tt::TensorTrain{V,N})::TensorTrain{V,N} where {V,N}
     return multiply(a, tt)
 end
 
-function divide!(tt::TensorTrain{V, N}, a) where {V, N}
+function divide!(tt::TensorTrain{V,N}, a) where {V,N}
     tt.sitetensors[end] .= tt.sitetensors[end] ./ a
     nothing
 end
 
-function divide(tt::TensorTrain{V, N}, a) where {V, N}
+function divide(tt::TensorTrain{V,N}, a) where {V,N}
     tt2 = deepcopy(tt)
     divide!(tt2, a)
     return tt2
 end
 
-function Base.:/(tt::TensorTrain{V, N}, a) where {V, N}
+function Base.:/(tt::TensorTrain{V,N}, a) where {V,N}
     return divide(tt, a)
 end
 
@@ -201,7 +226,7 @@ function to_tensors(obj::TensorTrainFit{ValueType}, x::Vector{ValueType}) where 
     ]
 end
 
-function _evaluate(tt::Vector{Array{V, 3}}, indexset) where {V}
+function _evaluate(tt::Vector{Array{V,3}}, indexset) where {V}
     only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
 end
 
