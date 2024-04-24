@@ -195,6 +195,12 @@ function Base.:/(tt::TensorTrain{V,N}, a) where {V,N}
     return divide(tt, a)
 end
 
+function Base.reverse(tt::AbstractTensorTrain{V}) where {V}
+    return tensortrain(reverse([
+        permutedims(T, (ndims(T), (2:ndims(T)-1)..., 1)) for T in sitetensors(tt)
+    ]))
+end
+
 """
 Fitting data with a TensorTrain object.
 This may be useful when the interpolated function is noisy.
