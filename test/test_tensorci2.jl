@@ -37,6 +37,19 @@ import QuanticsGrids as QD
         @test tci.pivoterrors == diags
     end
 
+    @testset "checkbatchevaluatable" begin
+        f(x) = 1.0 # Constant function without batch evaluation
+        L = 10
+        localdims = fill(2, L)
+        firstpivots = [fill(1, L)]
+        @test_throws ErrorException crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            firstpivots;
+            checkbatchevaluatable=true
+        )
+    end
 
     @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10]
         if nsearchglobalpivot > 0 && strictlynested
