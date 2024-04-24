@@ -587,6 +587,8 @@ function convergencecriterion(
     ) || all(lastranks .>= maxbonddim)
 end
 
+
+
 """
     function optimize!(
         tci::TensorCI2{ValueType},
@@ -628,6 +630,7 @@ Arguments:
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
+- `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -652,11 +655,16 @@ function optimize!(
     maxnglobalpivot::Int=5,
     nsearchglobalpivot::Int=0,
     tolmarginglobalsearch::Float64=10.0,
-    strictlynested::Bool=false
+    strictlynested::Bool=false,
+    checkbatchevaluatable::Bool=false
 ) where {ValueType}
     errors = Float64[]
     ranks = Int[]
     nglobalpivots = Int[]
+
+    if checkbatchevaluatable && !(f isa BatchEvaluator)
+        error("Function `f` is not batch evaluatable")
+    end
 
     #if maxnglobalpivot > 0 && nsearchglobalpivot > 0
         #!strictlynested || error("nglobalpivots > 0 requires strictlynested=false!")
@@ -868,6 +876,7 @@ Arguments:
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `strictlynested::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
+- `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
