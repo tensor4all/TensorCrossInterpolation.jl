@@ -159,11 +159,11 @@ function linkdim(tci::TensorCI1{V}, i::Int) where {V}
 end
 
 function sitedims(tci::TensorCI1{V}) where {V}
-    return [size(T)[2:end-1] for T in tci.T]
+    return [collect(size(T)[2:end-1]) for T in tci.T]
 end
 
 function sitedim(tci::TensorCI1{V}, i::Int) where {V}
-    return size(tci.T[i])[2:end-1]
+    return collect(size(tci.T[i])[2:end-1])
 end
 
 """

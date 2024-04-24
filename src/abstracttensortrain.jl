@@ -191,11 +191,11 @@ function _addtttensor(
 end
 
 @doc raw"""
-function add(
-    lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
-    factorlhs=one(V), factorrhs=one(V),
-    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
-) where {V}
+    function add(
+        lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
+        factorlhs=one(V), factorrhs=one(V),
+        tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+    ) where {V}
 
 Addition of two tensor trains. If `C = add(A, B)`, then `C(v) ≈ A(v) + B(v)` at each index set `v`. Note that this function increases the bond dimension, i.e. ``\chi_{\text{result}} = \chi_1 + \chi_2`` if the original tensor trains had bond dimensions ``\chi_1`` and ``\chi_2``.
 
