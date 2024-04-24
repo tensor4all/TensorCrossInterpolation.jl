@@ -26,7 +26,7 @@ function TensorCI1{ValueType}(
     kwargs...
 ) where {ValueType}
     L = length(tci2)
-    tci1 = TensorCI1{ValueType}(length.(tci2.localset))
+    tci1 = TensorCI1{ValueType}(tci2.localdims)
     tci1.Iset = IndexSet.(tci2.Iset)
     tci1.Jset = IndexSet.(tci2.Jset)
     tci1.PiIset = getPiIset.(Ref(tci1), 1:L)
@@ -51,22 +51,21 @@ function TensorCI1{ValueType}(
     end
     tci1.P[end] = ones(ValueType, 1, 1)
 
-    tci1.pivoterrors = max.(tci2.bonderrorsforward, tci2.bonderrorsbackward)
+    tci1.pivoterrors = tci2.bonderrors
     tci1.maxsamplevalue = tci2.maxsamplevalue
     return tci1
 end
 
 function TensorCI2{ValueType}(tci1::TensorCI1{ValueType}) where {ValueType}
-    tci2 = TensorCI2{ValueType}(vcat(sitedims(tci1)...)::Vector{Int})
+    tci2 = TensorCI2{ValueType}(vcat(collect.(sitedims(tci1))...)::Vector{Int})
     tci2.Iset = [i.fromint for i in tci1.Iset]
     tci2.Jset = [j.fromint for j in tci1.Jset]
-    tci2.localset = tci1.localset
+    tci2.localdims = tci1.localdims
     L = length(tci1)
     tci2.sitetensors[1:L-1] = TtimesPinv.(tci1, 1:L-1)
     tci2.sitetensors[end] = tci1.T[end]
     tci2.pivoterrors = Float64[]
-    tci2.bonderrorsforward = tci1.pivoterrors
-    tci2.bonderrorsbackward = tci1.pivoterrors
+    tci2.bonderrors = tci1.pivoterrors
     tci2.maxsamplevalue = tci1.maxsamplevalue
     return tci2
 end
