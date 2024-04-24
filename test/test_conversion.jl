@@ -1,7 +1,7 @@
 using Test
 import TensorCrossInterpolation: TensorCI1, TensorCI2, sitedims, linkdims, rank,
-    addglobalpivot!, crossinterpolate1, optimize!, MatrixACA, rrlu,
-    nrows, ncols, evaluate, left, right
+    addglobalpivot!, crossinterpolate1, crossinterpolate2, optimize!, MatrixACA, rrlu,
+    nrows, ncols, evaluate, left, right, pivoterror, tensortrain
 
 @testset "Conversion between rrLU and ACA" begin
     A = [
@@ -31,7 +31,7 @@ end
     @test rank(tci2) == 0
     @test all(isempty.(tci2.Iset))
     @test all(isempty.(tci2.Jset))
-    @test all(isempty.(tci2.T))
+    @test all(isempty.(tci2.sitetensors))
 
     globalpivot = [2, 2, 3, 1]
     tci1 = TensorCI1{ComplexF64}(rand, fill(d, n), globalpivot)
