@@ -71,3 +71,28 @@ end
         @test tci2(v) ≈ f(v)
     end
 end
+
+@testset "Conversion between TT and TCI2" begin
+    f(v) = (1.0 + 2.0im) ./ (sum(v .^ 2) + 1)
+    tci, = crossinterpolate2(ComplexF64, f, fill(4, 4); tolerance=1e-14, maxbonddim=5)
+    tt = tensortrain(tci)
+    tcib = TensorCI2{ComplexF64}(tt; tolerance=1e-14)
+
+    @test rank(tt) == 5
+    @test linkdims(tt) == linkdims(tci)
+    @test sitedims(tt) == fill([4], 4)
+
+    @test rank(tcib) == 5
+    @test linkdims(tcib) == linkdims(tt)
+    @test sitedims(tcib) == fill([4], 4)
+
+    for v in Iterators.product([1:4 for _ in 1:4]...)
+        @test abs(tt(v) - tci(v)) < 1e-13
+        @test abs(tcib(v) - tci(v)) < 1e-13
+    end
+
+    optimize!(tcib, f; tolerance=1e-14)
+    for v in Iterators.product([1:4 for _ in 1:4]...)
+        @test abs(tcib(v) - f(v)) < 1e-13
+    end
+end

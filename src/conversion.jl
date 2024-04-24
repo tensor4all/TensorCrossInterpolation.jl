@@ -69,3 +69,108 @@ function TensorCI2{ValueType}(tci1::TensorCI1{ValueType}) where {ValueType}
     tci2.maxsamplevalue = tci1.maxsamplevalue
     return tci2
 end
+
+function sweep1sitegetindices!(
+    tt::TensorTrain{ValueType,3}, forwardsweep::Bool,
+    spectatorindices::Vector{Vector{MultiIndex}}=Vector{MultiIndex}[];
+    maxbonddim=typemax(Int), tolerance=0.0
+) where {ValueType}
+    indexset = Vector{MultiIndex}[MultiIndex[[]]]
+    pivoterrorsarray = zeros(rank(tt) + 1)
+
+    function groupindices(T::AbstractArray, next::Bool)
+        shape = size(T)
+        if forwardsweep != next
+            reshape(T, prod(shape[1:end-1]), shape[end])
+        else
+            reshape(T, shape[1], prod(shape[2:end]))
+        end
+    end
+
+    function splitindices(T::AbstractArray, shape, newbonddim, next::Bool)
+        if forwardsweep != next
+            newshape = (shape[1:end-1]..., newbonddim)
+        else
+            newshape = (newbonddim, shape[2:end]...)
+        end
+        reshape(T, newshape)
+    end
+
+    L = length(tt)
+    for i in 1:L-1
+        ell = forwardsweep ? i : L - i + 1
+        ellnext = forwardsweep ? i + 1 : L - i
+        shape = size(tt.sitetensors[ell])
+        shapenext = size(tt.sitetensors[ellnext])
+
+        luci = MatrixLUCI(
+            groupindices(tt.sitetensors[ell], false), leftorthogonal=forwardsweep,
+            abstol=tolerance, maxrank=maxbonddim
+        )
+
+        if forwardsweep
+            push!(indexset, kronecker(last(indexset), shape[2])[rowindices(luci)])
+            if !isempty(spectatorindices)
+                spectatorindices[ell] = spectatorindices[ell][colindices(luci)]
+            end
+        else
+            push!(indexset, kronecker(shape[2], last(indexset))[colindices(luci)])
+            if !isempty(spectatorindices)
+                spectatorindices[ell] = spectatorindices[ell][rowindices(luci)]
+            end
+        end
+
+
+        tt.sitetensors[ell] = splitindices(
+            forwardsweep ? left(luci) : right(luci),
+            shape, npivots(luci), false
+        )
+
+        nexttensor = (
+            forwardsweep
+            ? right(luci) * groupindices(tt.sitetensors[ellnext], true)
+            : groupindices(tt.sitetensors[ellnext], true) * left(luci)
+        )
+
+        tt.sitetensors[ellnext] = splitindices(nexttensor, shapenext, npivots(luci), true)
+        pivoterrorsarray[1:npivots(luci) + 1] = max.(pivoterrorsarray[1:npivots(luci) + 1], pivoterrors(luci))
+    end
+
+    if forwardsweep
+        return indexset, pivoterrorsarray
+    else
+        return reverse(indexset), pivoterrorsarray
+    end
+end
+
+function TensorCI2{ValueType}(
+    tt::TensorTrain{ValueType,3}; tolerance=1e-12, maxbonddim=typemax(Int), maxiter=3
+) where {ValueType}
+    local pivoterrors::Vector{Float64}
+
+    Iset, = sweep1sitegetindices!(tt, true; maxbonddim, tolerance)
+    Jset, pivoterrors = sweep1sitegetindices!(tt, false; maxbonddim, tolerance)
+
+    for iter in 3:maxiter
+        if isodd(iter)
+            Isetnew, pivoterrors = sweep1sitegetindices!(tt, true, Jset)
+            if Isetnew == Iset
+                break
+            end
+        else
+            Jsetnew, pivoterrors = sweep1sitegetindices!(tt, false, Iset)
+            if Jsetnew == Jset
+                break
+            end
+        end
+    end
+
+    tci2 = TensorCI2{ValueType}(first.(sitedims(tt)))
+    tci2.Iset = Iset
+    tci2.Jset = Jset
+    tci2.sitetensors = sitetensors(tt)
+    tci2.pivoterrors = pivoterrors
+    tci2.maxsamplevalue = maximum(maximum.(abs, tci2.sitetensors))
+
+    return tci2
+end

@@ -10,17 +10,24 @@ using Optim
 
     tci, ranks, errors = TCI.crossinterpolate1(ComplexF64, g, localdims; tolerance=tolerance)
     tt = TCI.TensorTrain(tci)
+    ttr = TCI.reverse(tt)
     @test TCI.rank(tci) == TCI.rank(tt)
+    @test TCI.rank(tci) == TCI.rank(ttr)
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
+    @test TCI.linkdims(tci) == reverse(TCI.linkdims(ttr))
     gsum = ComplexF64(0.0)
     for i in allindices
         @test TCI.evaluate(tci, i) ≈ TCI.evaluate(tt, i)
+        @test TCI.evaluate(tci, i) ≈ TCI.evaluate(ttr, reverse(Tuple(i)))
         @test tt(i) == TCI.evaluate(tt, i)
+        @test tt(i) ≈ TCI.evaluate(tt, reverse(Tuple(i)))
         functionvalue = g(Tuple(i))
         @test abs(TCI.evaluate(tt, i) - functionvalue) < tolerance
+        @test abs(TCI.evaluate(ttr, reverse(Tuple(i))) - functionvalue) < tolerance
         gsum += functionvalue
     end
     @test gsum ≈ TCI.sum(tt)
+    @test gsum ≈ TCI.sum(ttr)
 
     for method in [:LU, :CI, :SVD]
         ttcompressed = deepcopy(tt)
@@ -46,7 +53,7 @@ end
 
     for n in 1:L
         @test all(tts[n] .== tts_reconst[n])
-    end 
+    end
 
     @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([2,3], L)) # Wrong shape
     @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([1,2,3], L)) # Wrong shape
