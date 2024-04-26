@@ -10,10 +10,9 @@ This algorithm is used in the *quantics tensor cross interpolation* (QTCI) metho
 
 ## Installation
 
-`TensorCrossInterpolation.jl` has been registered to the General registry. Installing the package is as simple as
+This module has been registered in the General registry. It can be installed by typing the following in a Julia REPL:
 ```julia
-]
-add TensorCrossInterpolation
+using Pkg; Pkg.add("TensorCrossInterpolation.jl")
 ```
 
 ## Usage
@@ -62,8 +61,17 @@ A module that implements the *quantics representation* and combines it with TCI 
 ## Contributions
 
 - If you are having have technical trouble, feel free to contact me directly.
+- Feature requests and bug reports are always welcome, feel free to open an [issue](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl/-/issues) for those.
+- If you have implemented something that might be useful for others, we'd appreciate a [merge request](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl/-/merge_requests)!
 
-- Feature requests and bug reports are always welcome; please open an issue for those.
+## Authors
+
+This project is maintained by
+- Marc K. Ritter @marc_ritter
+- Hiroshi Shinaoka @h.shinaoka
+
+For their contributions to this library's code, we thank
+- Satoshi Terasaki @terasakisatoshi
 
 ---
 
