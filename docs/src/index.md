@@ -125,11 +125,13 @@ The current TCI2 implementation provides the combination of the 2-site algorithm
 This functionality is activated by default.
 In the function [`crossinterpolate2`](@ref), we alternate between a 2-site-update sweep and a global pivot insertion.
 After a 2-site-update sweep, we search for index sets with high interpolation errors (> the given tolerance multiplied by the parameter `tolmarginglobalsearch`) and add them to the TCI2 object, and then we continue with a 2-site-update sweep.
+
 The number of initial points used in one global search is controlled by the parameter `nsearchglobalpivot`.
 You may consider increasing this number if the global search is not effective (check the number of pivots found and timings of the global search by setting `verbosity` to a higher value!).
 The maximum number of global pivots inserted at once is controlled by the parameter `maxnglobalpivot`.
 
-
+A rare failure case is that the global search find the index sets with high interpolation errors, but the 2-site algorithm fails to add these pivots into the TCI2 object.
+This will end up adding the same index sets in the next global search, leading to an endless loop.
 
 ## Estiamte true interpolation error by random global search
 Since most of the TCI update algorithms are local, the true interpolation error is not known. However, the error can be estimated by global searches. This is implemented in the function [`estimatetrueerror`](@ref):
