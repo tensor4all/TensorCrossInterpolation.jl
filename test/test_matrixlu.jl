@@ -1,6 +1,7 @@
 using Test
 import TensorCrossInterpolation as TCI
 using LinearAlgebra
+using Random
 
 @testset "LU decomposition" begin
     @testset "Argmax finder" begin
@@ -151,9 +152,9 @@ using LinearAlgebra
             0.490269 0.810266 0.7946
         ]
         q = [
-            0.239552   0.306094  0.299063  0.0382492  0.185462  0.0334971  0.697561   0.389596  0.105665  0.0912763
-            0.0570609  0.56623   0.97183   0.994184   0.371695  0.284437   0.993251   0.902347  0.572944  0.0531369
-            0.45002    0.461168  0.6086    0.613702   0.543997  0.759954   0.0959818  0.638499  0.407382  0.482592
+            0.239552 0.306094 0.299063 0.0382492 0.185462 0.0334971 0.697561 0.389596 0.105665 0.0912763
+            0.0570609 0.56623 0.97183 0.994184 0.371695 0.284437 0.993251 0.902347 0.572944 0.0531369
+            0.45002 0.461168 0.6086 0.613702 0.543997 0.759954 0.0959818 0.638499 0.407382 0.482592
         ]
 
         A = p * q
@@ -175,11 +176,11 @@ using LinearAlgebra
 
     @testset "lastpivoterror for limited maxrank or tolerance" begin
         A = [
-            0.433088   0.956638   0.0907974  0.0447859  0.0196053
-            0.855517   0.782503   0.291197   0.540828   0.358579
-            0.37455    0.536457   0.205479   0.75896    0.701206
-            0.47272    0.0172539  0.518177   0.242864   0.461635
-            0.0676373  0.450878   0.672335   0.77726    0.540691
+            0.433088 0.956638 0.0907974 0.0447859 0.0196053
+            0.855517 0.782503 0.291197 0.540828 0.358579
+            0.37455 0.536457 0.205479 0.75896 0.701206
+            0.47272 0.0172539 0.518177 0.242864 0.461635
+            0.0676373 0.450878 0.672335 0.77726 0.540691
         ]
 
         lu = TCI.rrlu(A, maxrank=2)
@@ -207,5 +208,45 @@ using LinearAlgebra
         @test TCI.lastpivoterror(lu) > 0
         @test size(lu) == size(A)
         @test maximum(abs.(TCI.left(lu) * TCI.right(lu) .- A)) < 1e-3
+    end
+
+
+    @testset "transpose" begin
+        Random.seed!(1234)
+        N1, N2, N3 = 5, 10, 3
+        A = rand(N1, N2)
+
+        tlu = transpose(TCI.rrlu(A))
+
+        @test TCI.left(tlu) * TCI.right(tlu) ≈ A'
+    end
+
+    @testset "solve by rrLU" begin
+        Random.seed!(1234)
+        N1, N2, N3 = 5, 5, 5
+        M = 2
+        L = tril(rand(N1, N2))
+        U = triu(rand(N2, N3))
+        b = rand(N1, M)
+
+        A = L * U
+        lua = TCI.rrlu(A)
+        @test TCI.left(lua) * TCI.right(lua) ≈ A
+
+        @test A * (lua \ b) ≈ b
+    end
+
+    @testset "solve by rrLU (large matrix)" begin
+        M = 1000
+        N = 1000
+
+        L = qr(rand(N, N)).Q # Well-behaved matrix
+        U = qr(rand(N, N)).Q
+        b = rand(N, M)
+
+        A = L * U
+        lua = TCI.rrlu(A)
+        breconst = A * (lua \ b)
+        @test breconst ≈ b
     end
 end
