@@ -290,7 +290,7 @@ function kronecker(
     return MultiIndex[[i, js...] for i in 1:localdim, js in Jset][:]
 end
 
-function setT!(
+function setsitetensor!(
     tci::TensorCI2{ValueType}, b::Int, T::AbstractArray{ValueType,N}
 ) where {ValueType,N}
     tci.sitetensors[b] = reshape(
@@ -328,7 +328,7 @@ end
 # Backward compatibility
 const rmbadpivots! = sweep0site!
 
-function setT!(
+function setsitetensor!(
     tci::TensorCI2{ValueType}, f, b::Int; leftorthogonal=true
 ) where {ValueType}
     leftorthogonal || error("leftorthogonal==false is not supported!")
@@ -342,14 +342,16 @@ function setT!(
 
     if (leftorthogonal && b == length(tci)) ||
         (!leftorthogonal && b == 1)
-        setT!(tci, b, Pi1)
+        setsitetensor!(tci, b, Pi1)
         return tci.sitetensors[b]
     end
 
     P = reshape(
         filltensor(ValueType, f, tci.localdims, tci.Iset[b+1], tci.Jset[b], Val(0)),
         length(tci.Iset[b+1]), length(tci.Jset[b]))
+    length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
 
+    #Tmat = transpose(transpose(rrlu(P)) \ transpose(Pi1))
     Tmat = transpose(transpose(P) \ transpose(Pi1))
     tci.sitetensors[b] = reshape(Tmat, length(tci.Iset[b]), tci.localdims[b], length(tci.Iset[b+1]))
     return tci.sitetensors[b]
@@ -396,7 +398,7 @@ function sweep1site!(
         tci.Iset[b+forwardsweep] = Is[rowindices(luci)]
         tci.Jset[b-!forwardsweep] = Js[colindices(luci)]
         if updatetensors
-            setT!(tci, b, forwardsweep ? left(luci) : right(luci))
+            setsitetensor!(tci, b, forwardsweep ? left(luci) : right(luci))
         end
         if any(isnan.(tci.sitetensors[b]))
             error("Error: NaN in tensor T[$b]")
@@ -417,7 +419,7 @@ function sweep1site!(
         end
         localtensor = reshape(filltensor(
             ValueType, f, tci.localdims, tci.Iset[lastupdateindex], tci.Jset[lastupdateindex], Val(1)), shape)
-        setT!(tci, lastupdateindex, localtensor)
+        setsitetensor!(tci, lastupdateindex, localtensor)
     end
     nothing
 end
@@ -560,8 +562,8 @@ function updatepivots!(
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
     if length(extraIset) == 0 && length(extraJset) == 0
-        setT!(tci, b, left(luci))
-        setT!(tci, b + 1, right(luci))
+        setsitetensor!(tci, b, left(luci))
+        setsitetensor!(tci, b + 1, right(luci))
     end
     updateerrors!(tci, b, pivoterrors(luci))
     nothing
@@ -744,24 +746,22 @@ function optimize!(
         end
     end
 
-    if rank(tci) > maxbonddim
-        errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-        abstol = pivottolerance * errornormalization;
-        sweep2site!(
-            tci, f, 1;
-            abstol=abstol,
-            maxbonddim=maxbonddim,
-            pivotsearch=pivotsearch,
-            strictlynested=strictlynested,
-            verbosity=verbosity
-            )
-    end
-
-    if !issitetensorsavailable(tci)
-        fillsitetensors!(tci, f)
-    end
-
+    # Extra one sweep by the 1-site update to
+    #  (1) Remove unnecessary pivots added by global pivots
+    #      Note: a pivot matrix can be non-square after adding global pivots,
+    #            or the bond dimension exceeds maxbonddim
+    #  (2) Compute site tensors
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+    abstol = pivottolerance * errornormalization;
+    sweep1site!(
+        tci,
+        f,
+        abstol=abstol,
+        maxbonddim=maxbonddim,
+    )
+
+    _sanitycheck(tci)
+
     return ranks, errors ./ errornormalization
 end
 
@@ -993,13 +993,17 @@ end
 
 function fillsitetensors!(
     tci::TensorCI2{ValueType}, f) where {ValueType}
-    #==
-    for b in 1:length(tci)-1
-       rmbadpivots!(tci, f, b)
-    end
-    ==#
     for b in 1:length(tci)
-       setT!(tci, f, b)
+       setsitetensor!(tci, f, b)
     end
     nothing
+end
+
+
+function _sanitycheck(tci::TensorCI2{ValueType})::Bool where {ValueType}
+    for b in 1:length(tci)-1
+        length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
+    end
+
+    return true
 end
