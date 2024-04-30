@@ -53,6 +53,6 @@ Pages = ["integration.jl"]
 ## Helpers and utility methods
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["cachedfunction.jl", "batcheval.jl", "util.jl"]
+Pages = ["cachedfunction.jl", "batcheval.jl", "util.jl", "globalsearch.jl"]
 ```
 

@@ -36,5 +36,6 @@ include("tensortrain.jl")
 include("conversion.jl")
 include("integration.jl")
 include("contraction.jl")
+include("globalsearch.jl")
 
 end
