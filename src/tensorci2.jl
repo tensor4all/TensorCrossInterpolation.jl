@@ -214,7 +214,7 @@ function addglobalpivots2sitesweep!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     ntry::Int=10,
-    strictlynested::Bool=true
+    strictlynested::Bool=false
 )::Int where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
@@ -604,9 +604,9 @@ end
         normalizeerror::Bool=true,
         ncheckhistory=3,
         maxnglobalpivot::Int=5,
-        nsearchglobalpivot::Int=0,
+        nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=true
+        strictlynested::Bool=false
     ) where {ValueType}
 
 Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
@@ -627,7 +627,7 @@ Arguments:
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
@@ -653,7 +653,7 @@ function optimize!(
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
     maxnglobalpivot::Int=5,
-    nsearchglobalpivot::Int=0,
+    nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
     checkbatchevaluatable::Bool=false
@@ -776,7 +776,7 @@ function sweep2site!(
     sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    strictlynested::Bool=true,
+    strictlynested::Bool=false,
     fillsitetensors::Bool=true
 ) where {ValueType}
     invalidatesitetensors!(tci)
@@ -850,9 +850,9 @@ end
         normalizeerror::Bool=true,
         ncheckhistory=3,
         maxnglobalpivot::Int=5,
-        nsearchglobalpivot::Int=0,
+        nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=true
+        strictlynested::Bool=false
     ) where {ValueType,N}
 
 Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
@@ -873,9 +873,9 @@ Arguments:
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `strictlynested::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
+- `strictlynested::Bool=false` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 
 Notes:

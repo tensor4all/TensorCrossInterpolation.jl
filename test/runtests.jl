@@ -2,7 +2,6 @@ import TensorCrossInterpolation as TCI
 using Test
 using LinearAlgebra
 
-#==
 include("test_with_aqua.jl")
 include("test_with_jet.jl")
 include("test_util.jl")
@@ -20,5 +19,4 @@ include("test_tensortrain.jl")
 include("test_conversion.jl")
 include("test_contraction.jl")
 include("test_integration.jl")
-==#
 include("test_globalsearch.jl")
