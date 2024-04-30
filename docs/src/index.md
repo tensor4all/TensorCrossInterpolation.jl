@@ -117,6 +117,16 @@ tci, ranks, errors = TCI.crossinterpolate2(
 ```
 This algorithm optimizes the given index set (in this case `[1, 2, 3, 4, 5]`) by searching for a maximum absolute value, alternating through the dimensions. If no starting point is given, `[1, 1, ...]` is used.
 
+## Estiamte true interpolation error by random global search
+Since the TCI update algorithms are local, the true interpolation error is not known. However, the error can be estimated by global searches. This is implemented in the function `estimatetrueerror`:
+
+```julia
+pivoterrors = TCI.estimatetrueerror(TCI.TensorTrain(tci), f)
+```
+
+This function approximately estimates the error that would be reached by repeating a greedy search from a random initial point.
+The result is a vector of a found indexset and the corresponding error, sorted by error. The error is the maximum absolute difference between the function and the TT approximation.
+
 ## Caching
 During constructing a TCI, the function to be interpolated can be evaluated for the same index set multiple times.
 If an evaluation of the function to be interpolated is costly, i.e., takes more than 100 ns,
