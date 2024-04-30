@@ -23,7 +23,6 @@ function integrate(
     a::Vector{ValueType},
     b::Vector{ValueType};
     GKorder::Int=15,
-    normalizeerror=false,
     kwargs...
 ) where {ValueType}
     if iseven(GKorder)
@@ -52,7 +51,6 @@ function integrate(
         F,
         localdims;
         nsearchglobalpivot=10,
-        normalizeerror,
         kwargs...
     )
 
