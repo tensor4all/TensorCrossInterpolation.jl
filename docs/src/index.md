@@ -117,8 +117,24 @@ tci, ranks, errors = TCI.crossinterpolate2(
 ```
 This algorithm optimizes the given index set (in this case `[1, 2, 3, 4, 5]`) by searching for a maximum absolute value, alternating through the dimensions. If no starting point is given, `[1, 1, ...]` is used.
 
+## Combing TCI2 and global pivot search
+The main algorithm for adding new pivots in TCI2 is the 2-site algorithm, which is local.
+The 2-site algorithm alone may miss some regions with high interpolation error.
+
+The current TCI2 implementation provides the combination of the 2-site algorithm and a global search algorithm to find such regions.
+This functionality is activated by default.
+In the function [`crossinterpolate2`](@ref), we alternate between a 2-site-update sweep and a global pivot insertion.
+After a 2-site-update sweep, we search for index sets with high interpolation errors (> the given tolerance multiplied by the parameter `tolmarginglobalsearch`) and add them to the TCI2 object, and then we continue with a 2-site-update sweep.
+
+The number of initial points used in one global search is controlled by the parameter `nsearchglobalpivot`.
+You may consider increasing this number if the global search is not effective (check the number of pivots found and timings of the global search by setting `verbosity` to a higher value!).
+The maximum number of global pivots inserted at once is controlled by the parameter `maxnglobalpivot`.
+
+A rare failure case is that the global search find the index sets with high interpolation errors, but the 2-site algorithm fails to add these pivots into the TCI2 object.
+This will end up adding the same index sets in the next global search, leading to an endless loop.
+
 ## Estiamte true interpolation error by random global search
-Since the TCI update algorithms are local, the true interpolation error is not known. However, the error can be estimated by global searches. This is implemented in the function `estimatetrueerror`:
+Since most of the TCI update algorithms are local, the true interpolation error is not known. However, the error can be estimated by global searches. This is implemented in the function [`estimatetrueerror`](@ref):
 
 ```julia
 pivoterrors = TCI.estimatetrueerror(TCI.TensorTrain(tci), f)

@@ -214,7 +214,7 @@ function addglobalpivots2sitesweep!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     ntry::Int=10,
-    strictlynested::Bool=true
+    strictlynested::Bool=false
 )::Int where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
@@ -606,9 +606,9 @@ end
         normalizeerror::Bool=true,
         ncheckhistory=3,
         maxnglobalpivot::Int=5,
-        nsearchglobalpivot::Int=0,
+        nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=true
+        strictlynested::Bool=false
     ) where {ValueType}
 
 Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
@@ -629,7 +629,7 @@ Arguments:
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
@@ -655,7 +655,7 @@ function optimize!(
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
     maxnglobalpivot::Int=5,
-    nsearchglobalpivot::Int=0,
+    nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
     checkbatchevaluatable::Bool=false
@@ -704,10 +704,11 @@ function optimize!(
             sweepstrategy=sweepstrategy,
             fillsitetensors=true
             )
-        if verbosity > 0 && length(globalpivots) > 0
-            nrejections = length([p for p in globalpivots if abs(evaluate(tci, p) - f(p)) > abstol])
+        if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
+            abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
+            nrejections = length(abserr .> abstol)
             if nrejections > 0
-                println("  Rejected $(nrejections) global pivots added in the previous iteration")
+                println("  Rejected $(nrejections) global pivots added in the previous iteration, errors are $(abserr)")
                 flush(stdout)
             end
         end
@@ -776,7 +777,7 @@ function sweep2site!(
     sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    strictlynested::Bool=true,
+    strictlynested::Bool=false,
     fillsitetensors::Bool=true
 ) where {ValueType}
     invalidatesitetensors!(tci)
@@ -850,9 +851,9 @@ end
         normalizeerror::Bool=true,
         ncheckhistory=3,
         maxnglobalpivot::Int=5,
-        nsearchglobalpivot::Int=0,
+        nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=true
+        strictlynested::Bool=false
     ) where {ValueType,N}
 
 Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
@@ -873,9 +874,9 @@ Arguments:
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `0`.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `strictlynested::Bool=true` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
+- `strictlynested::Bool=false` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 
 Notes:
@@ -916,8 +917,9 @@ function searchglobalpivots(
     end
 
     pivots = Dict{Float64,MultiIndex}()
+    ttcache = TTCache(tci)
     for _ in 1:nsearch
-        pivot, error = _floatingzone(tci, f, 10 * abstol)
+        pivot, error = _floatingzone(ttcache, f; earlystoptol = 10 * abstol, nsweeps=100)
         if error > abstol
             pivots[error] = pivot
         end
@@ -941,69 +943,3 @@ function searchglobalpivots(
     return [p for (_,p) in pivots]
 end
 
-
-function _floatingzone(
-    tci::TensorCI2{ValueType}, f, abstol;
-    nsweeps=100
-)::Tuple{MultiIndex,Float64} where {ValueType}
-    nsweeps > 0 || error("nsweeps should be positive!")
-
-    localdims = tci.localdims
-
-    n = length(tci)
-
-    ttcache = TTCache(tci)
-
-    pivot = [rand(1:d) for d in localdims]
-
-    maxerror = abs(f(pivot) - ttcache(pivot))
-
-    for isweep in 1:nsweeps
-        prev_maxerror = maxerror
-        for ipos in 1:n
-            exactdata = filltensor(
-                ValueType,
-                f,
-                tci.localdims,
-                [pivot[1:ipos-1]],
-                [pivot[ipos+1:end]],
-                Val(1)
-            )
-            prediction = filltensor(
-                ValueType,
-                ttcache,
-                tci.localdims,
-                [pivot[1:ipos-1]],
-                [pivot[ipos+1:end]],
-                Val(1)
-            )
-            err = vec(abs.(exactdata .- prediction))
-            pivot[ipos] = argmax(err)
-            maxerror = maximum(err)
-        end
-
-        if maxerror == prev_maxerror || maxerror > abstol # early stop
-            break
-        end
-    end
-
-    return pivot, maxerror
-end
-
-
-function fillsitetensors!(
-    tci::TensorCI2{ValueType}, f) where {ValueType}
-    for b in 1:length(tci)
-       setsitetensor!(tci, f, b)
-    end
-    nothing
-end
-
-
-function _sanitycheck(tci::TensorCI2{ValueType})::Bool where {ValueType}
-    for b in 1:length(tci)-1
-        length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
-    end
-
-    return true
-end

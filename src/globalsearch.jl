@@ -32,7 +32,7 @@ function estimatetrueerror(
 
     ttcache = TTCache(tt)
 
-    pivoterror = [_floatingzone(ttcache, f, initp) for initp in initialpoints]
+    pivoterror = [_floatingzone(ttcache, f; initp=initp) for initp in initialpoints]
 
     p = sortperm([e for (_, e) in pivoterror], rev=true)
 
@@ -41,14 +41,25 @@ end
 
 
 function _floatingzone(
-    ttcache::TTCache{ValueType}, f, pivot
+    ttcache::TTCache{ValueType}, f;
+    earlystoptol::Float64 = typemax(Float64),
+    nsweeps=typemax(Int), initp::Union{Nothing,MultiIndex} = nothing
 )::Tuple{MultiIndex,Float64} where {ValueType}
-    n = length(ttcache)
+    nsweeps > 0 || error("nsweeps should be positive!")
 
-    maxerror = abs(f(pivot) - ttcache(pivot))
     localdims = first.(sitedims(ttcache))
 
-    while true
+    n = length(ttcache)
+
+    if initp === nothing
+        pivot = [rand(1:d) for d in localdims]
+    else
+        pivot = initp
+    end
+
+    maxerror = abs(f(pivot) - ttcache(pivot))
+
+    for isweep in 1:nsweeps
         prev_maxerror = maxerror
         for ipos in 1:n
             exactdata = filltensor(
@@ -72,10 +83,28 @@ function _floatingzone(
             maxerror = maximum(err)
         end
 
-        if maxerror == prev_maxerror
+        if maxerror == prev_maxerror || maxerror > earlystoptol # early stop
             break
         end
     end
 
     return pivot, maxerror
+end
+
+
+function fillsitetensors!(
+    tci::TensorCI2{ValueType}, f) where {ValueType}
+    for b in 1:length(tci)
+       setsitetensor!(tci, f, b)
+    end
+    nothing
+end
+
+
+function _sanitycheck(tci::TensorCI2{ValueType})::Bool where {ValueType}
+    for b in 1:length(tci)-1
+        length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
+    end
+
+    return true
 end
