@@ -704,10 +704,11 @@ function optimize!(
             sweepstrategy=sweepstrategy,
             fillsitetensors=true
             )
-        if verbosity > 0 && length(globalpivots) > 0
-            nrejections = length([p for p in globalpivots if abs(evaluate(tci, p) - f(p)) > abstol])
+        if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
+            abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
+            nrejections = length(abserr .> abstol)
             if nrejections > 0
-                println("  Rejected $(nrejections) global pivots added in the previous iteration")
+                println("  Rejected $(nrejections) global pivots added in the previous iteration, errors are $(abserr)")
                 flush(stdout)
             end
         end
@@ -916,8 +917,9 @@ function searchglobalpivots(
     end
 
     pivots = Dict{Float64,MultiIndex}()
+    ttcache = TTCache(tci)
     for _ in 1:nsearch
-        pivot, error = _floatingzone(tci, f, 10 * abstol)
+        pivot, error = _floatingzone(ttcache, f; earlystoptol = 10 * abstol, nsweeps=100)
         if error > abstol
             pivots[error] = pivot
         end
@@ -941,69 +943,3 @@ function searchglobalpivots(
     return [p for (_,p) in pivots]
 end
 
-
-function _floatingzone(
-    tci::TensorCI2{ValueType}, f, abstol;
-    nsweeps=100
-)::Tuple{MultiIndex,Float64} where {ValueType}
-    nsweeps > 0 || error("nsweeps should be positive!")
-
-    localdims = tci.localdims
-
-    n = length(tci)
-
-    ttcache = TTCache(tci)
-
-    pivot = [rand(1:d) for d in localdims]
-
-    maxerror = abs(f(pivot) - ttcache(pivot))
-
-    for isweep in 1:nsweeps
-        prev_maxerror = maxerror
-        for ipos in 1:n
-            exactdata = filltensor(
-                ValueType,
-                f,
-                tci.localdims,
-                [pivot[1:ipos-1]],
-                [pivot[ipos+1:end]],
-                Val(1)
-            )
-            prediction = filltensor(
-                ValueType,
-                ttcache,
-                tci.localdims,
-                [pivot[1:ipos-1]],
-                [pivot[ipos+1:end]],
-                Val(1)
-            )
-            err = vec(abs.(exactdata .- prediction))
-            pivot[ipos] = argmax(err)
-            maxerror = maximum(err)
-        end
-
-        if maxerror == prev_maxerror || maxerror > abstol # early stop
-            break
-        end
-    end
-
-    return pivot, maxerror
-end
-
-
-function fillsitetensors!(
-    tci::TensorCI2{ValueType}, f) where {ValueType}
-    for b in 1:length(tci)
-       setsitetensor!(tci, f, b)
-    end
-    nothing
-end
-
-
-function _sanitycheck(tci::TensorCI2{ValueType})::Bool where {ValueType}
-    for b in 1:length(tci)-1
-        length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
-    end
-
-    return true
-end
