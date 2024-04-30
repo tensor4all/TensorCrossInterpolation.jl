@@ -77,10 +77,19 @@ mutable struct rrLU{T}
     npivot::Int
     error::Float64
 
+    function rrLU(rowpermutation::Vector{Int}, colpermutation::Vector{Int}, L::Matrix{T}, U::Matrix{T}, leftorthogonal, npivot, error) where {T}
+        npivot == size(L, 2) || error("L must have the same number of columns as the number of pivots.")
+        npivot == size(U, 1) || error("U must have the same number of rows as the number of pivots.")
+        length(rowpermutation) == size(L, 1) || error("rowpermutation must have length equal to the number of pivots.")
+        length(colpermutation) == size(U, 2) || error("colpermutation must have length equal to the number of pivots.")
+        new{T}(rowpermutation, colpermutation, L, U, leftorthogonal, npivot, error)
+    end
+
     function rrLU{T}(nrows::Int, ncols::Int; leftorthogonal::Bool=true) where {T}
         new{T}(1:nrows, 1:ncols, zeros(nrows, 0), zeros(0, ncols), leftorthogonal, 0, NaN)
     end
 end
+
 
 function rrLU{T}(A::AbstractMatrix{T}; leftorthogonal::Bool=true) where {T}
     rrLU{T}(size(A)...; leftorthogonal=leftorthogonal)
@@ -388,4 +397,71 @@ A special care is taken for a full-rank matrix: the last pivot error is set to z
 """
 function lastpivoterror(lu::rrLU{T})::Float64 where {T}
     return lu.error
+end
+
+
+
+"""
+Solve (LU) x = b
+
+L: lower triangular matrix
+U: upper triangular matrix
+b: right-hand side vector
+
+Return x
+
+Note: Not optimized for performance
+"""
+function solve(L::Matrix{T}, U::Matrix{T}, b::Matrix{T}) where{T}
+    N1, N2, N3 = size(L, 1), size(L, 2), size(U, 2)
+    M = size(b, 2)
+    
+    # Solve Ly = b
+    y = zeros(T, N2, M)
+    for i = 1:N2
+        y[i, :] .= b[i, :]
+        for k in 1:M
+            for j in 1:i-1
+                y[i, k] -= L[i, j] * y[j, k]
+            end
+        end
+        y[i, :] ./= L[i, i]
+    end
+
+    # Solve Ux = y
+    x = zeros(T, N3, M)
+    for i = N3:-1:1
+        x[i, :] .= y[i, :]
+        for k in 1:M
+            for j = i+1:N3
+                x[i, k] -= U[i, j] * x[j, k]
+            end
+        end
+        x[i, :] ./= U[i, i]
+    end
+
+    return x
+end
+
+
+"""
+Override solving Ax = b using LU decomposition
+"""
+function Base.:\(A::rrLU{T}, b::AbstractMatrix{T}) where{T}
+    size(A, 1) == size(A, 2) || error("Matrix must be square.")
+    A.npivot == size(A, 1) || error("rank-deficient matrix is not supportred!")
+    b_perm = b[A.rowpermutation, :]
+    x_perm = solve(A.L, A.U, b_perm)
+    x = similar(x_perm)
+    for i in 1:size(x, 1)
+        x[A.colpermutation[i], :] .= x_perm[i, :]
+    end
+    return x
+end
+
+
+function Base.transpose(A::rrLU{T}) where{T}
+    return rrLU(
+        A.colpermutation, A.rowpermutation,
+        Matrix(transpose(A.U)), Matrix(transpose(A.L)), !A.leftorthogonal, A.npivot, A.error)
 end
