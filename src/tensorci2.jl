@@ -534,7 +534,9 @@ function updatepivots!(
         t3 = time_ns()
 
         # Fall back to full search if rook search fails
+        fallback = false
         if npivots(res) == 0
+            fallback = true
             Pi = reshape(
                 filltensor(ValueType, f, tci.localdims,
                 Icombined, Jcombined, Val(0)),
@@ -553,7 +555,11 @@ function updatepivots!(
         t4 = time_ns()
         if verbosity > 2
             x, y = length(Icombined), length(Jcombined)
-            println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+            if fallback
+                println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+            else
+                println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec")
+            end
         end
         res
     else
@@ -704,11 +710,12 @@ function optimize!(
             sweepstrategy=sweepstrategy,
             fillsitetensors=true
             )
-        if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
+        if verbosity > 0 && length(globalpivots) > 0
             abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
-            nrejections = length(abserr .> abstol)
+            nrejections = sum(abserr .> abstol)
             if nrejections > 0
-                println("  Rejected $(nrejections) global pivots added in the previous iteration, errors are $(abserr)")
+                mask = abserr .> abstol
+                println("  Rejected $(nrejections) global pivots added in the previous iteration, errors are $(abserr[mask]), current abs tol= $(abstol)")
                 flush(stdout)
             end
         end
