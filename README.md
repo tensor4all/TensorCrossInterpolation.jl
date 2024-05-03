@@ -1,12 +1,11 @@
 # TensorCrossInterpolation
 
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html)
-[![Build Status](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/badges/main/pipeline.svg)](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/-/pipelines)
-[![Coverage](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/badges/main/coverage.svg)](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl/-/commits/main)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://tensor4all.github.io/TensorCrossInterpolation.jl/dev)
+[![CI](https://github.com/tensor4all/TensorCrossInterpolation.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/tensor4all/TensorCrossInterpolation.jl/actions/workflows/CI.yml)
 
-The [TensorCrossInterpolation module](https://gitlab.com/tensors4fields/tensorcrossinterpolation.jl) implements the *tensor cross interpolation* algorithm for efficient interpolation of multi-index tensors and multivariate functions.
+The [TensorCrossInterpolation module](https://github.com/tensor4all/TensorCrossInterpolation.jl) implements the *tensor cross interpolation* algorithm for efficient interpolation of multi-index tensors and multivariate functions.
 
-This algorithm is used in the *quantics tensor cross interpolation* (QTCI) method for exponentially efficient interpolation of functions with scale separation. QTCI is implemented in the [QuanticsTCI.jl](https://gitlab.com/tensors4fields/quanticstci.jl) module.
+This algorithm is used in the *quantics tensor cross interpolation* (QTCI) method for exponentially efficient interpolation of functions with scale separation. QTCI is implemented in the [QuanticsTCI.jl](https://github.com/tensor4all/quanticstci.jl) module.
 
 ## Installation
 
@@ -48,21 +47,21 @@ An example with more explanation can be found in the [user manual](https://tenso
 
 ## Related modules
 
-### [TCIITensorConversion.jl](https://gitlab.com/tensors4fields/tciitensorconversion.jl)
+### [TCIITensorConversion.jl](https://github.com/tensor4all/tciitensorconversion.jl)
 A small helper module for easy conversion of `TensorCI1`, `TensorCI2` and `TensorTrain` objects into ITensors `MPS` objects. This should be helpful for those integrating TCI into a larger tensor network algorithm.
 For this conversion, simply call the `MPS` constructor on the object:
 ```julia
 mps = MPS(tci)
 ```
 
-### [QuanticsTCI.jl](https://gitlab.com/tensors4fields/QuanticsTCI.jl)
+### [QuanticsTCI.jl](https://github.com/tensor4all/QuanticsTCI.jl)
 A module that implements the *quantics representation* and combines it with TCI for exponentially efficient interpolation of functions with scale separation.
 
 ## Contributions
 
 - If you are having have technical trouble, feel free to contact me directly.
-- Feature requests and bug reports are always welcome, feel free to open an [issue](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl/-/issues) for those.
-- If you have implemented something that might be useful for others, we'd appreciate a [merge request](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl/-/merge_requests)!
+- Feature requests and bug reports are always welcome, feel free to open an [issue](https://github.com/tensor4all/TensorCrossInterpolation.jl/-/issues) for those.
+- If you have implemented something that might be useful for others, we'd appreciate a [merge request](https://github.com/tensor4all/TensorCrossInterpolation.jl/-/merge_requests)!
 
 ## Authors
 

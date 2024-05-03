@@ -4,7 +4,7 @@ CurrentModule = TensorCrossInterpolation
 
 # TensorCrossInterpolation
 
-This is the documentation for [TensorCrossInterpolation](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl).
+This is the documentation for [TensorCrossInterpolation](https://github.com/tensor4all/TensorCrossInterpolation.jl).
 
 With the user manual and usage examples below, users should be able to use this library as a "black box" in most cases. Detailed documentation of (almost) all methods can be found in the [Documentation](@ref) section, and [Implementation](@ref) contains a detailed explanation of this implementation of TCI.
 
@@ -28,7 +28,7 @@ println("Original function: $(f([1, 2, 3, 4, 5]))")
 println("TCI approximation: $(tci([1, 2, 3, 4, 5]))")
 ```
 For easy integration into tensor network algorithms, the tensor train can be converted to ITensors MPS format. If you're using julia version 1.9 or later, an extension is automatically loaded if both `TensorCrossInterpolation.jl` and `ITensors.jl` are present.
-For older versions of julia, use the package using [TCIITensorConversion.jl](https://gitlab.com/tensors4fields/tciitensorconversion.jl).
+For older versions of julia, use the package using [TCIITensorConversion.jl](https://github.com/tensor4all/tciitensorconversion.jl).
 
 ## Sums and Integrals
 

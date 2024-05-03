@@ -1,6 +1,6 @@
 # Documentation
 
-Documentation of all types and methods in module [TensorCrossInterpolation](https://gitlab.com/tensors4fields/TensorCrossInterpolation.jl).
+Documentation of all types and methods in module [TensorCrossInterpolation](https://github.com/tensor4all/TensorCrossInterpolation.jl).
 
 ## Matrix approximation
 
