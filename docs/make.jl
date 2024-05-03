@@ -23,3 +23,8 @@ makedocs(;
         "Implementation details" => "implementation.md"
     ]
 )
+
+deploydocs(;
+    repo="github.com/tensor4all/TensorCrossInterpolation.jl.git",
+    devbranch="main",
+)
