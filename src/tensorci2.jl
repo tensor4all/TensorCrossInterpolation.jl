@@ -784,20 +784,18 @@ function sweep2site!(
 
     n = length(tci)
 
-    extraIset = [MultiIndex[] for _ in 1:n]
-    extraJset = [MultiIndex[] for _ in 1:n]
-    if !strictlynested
-        extraIset = tci.Iset
-        extraJset = tci.Jset
-        if length(tci.Iset_history) > 0
-            extraIset = union.(extraIset, tci.Iset_history[end])
-            extraJset = union.(extraJset, tci.Jset_history[end])
-        end
-    end
-
-    push!(tci.Iset_history, deepcopy(tci.Iset))
-    push!(tci.Jset_history, deepcopy(tci.Jset))
     for iter in iter1:iter1+niter-1
+
+        extraIset = [MultiIndex[] for _ in 1:n]
+        extraJset = [MultiIndex[] for _ in 1:n]
+        if !strictlynested && length(tci.Iset_history) > 0
+            extraIset = tci.Iset_history[end]
+            extraJset = tci.Jset_history[end]
+        end
+    
+        push!(tci.Iset_history, deepcopy(tci.Iset))
+        push!(tci.Jset_history, deepcopy(tci.Jset))
+
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
