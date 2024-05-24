@@ -7,7 +7,7 @@ abstract type BatchEvaluator{V} <: AbstractTensorTrain{V} end
 Cached evalulation of TT
 """
 struct TTCache{ValueType} <: BatchEvaluator{ValueType}
-    sitetensors::Vector{Array{ValueType}}
+    sitetensors::Vector{Array{ValueType,3}}
     cacheleft::Vector{Dict{MultiIndex,Vector{ValueType}}}
     cacheright::Vector{Dict{MultiIndex,Vector{ValueType}}}
 
