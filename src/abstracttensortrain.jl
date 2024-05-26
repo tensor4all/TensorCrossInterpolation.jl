@@ -151,6 +151,9 @@ function evaluate(
     if length(indexset) != length(tt)
         throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices, but there were $(length(indexset))."))
     end
+    for (n, (T, i)) in enumerate(zip(tt, indexset))
+        length(size(T)) == length(i) + 2 || throw(ArgumentError("The index set $(i) at position $n does not have the correct length for the tensor of size $(size(T))."))
+    end
     return only(prod(T[:, i..., :] for (T, i) in zip(tt, indexset)))
 end
 

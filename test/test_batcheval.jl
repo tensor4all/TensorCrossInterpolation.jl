@@ -1,6 +1,14 @@
 using Test
 import TensorCrossInterpolation as TCI
 
+
+struct NonBatchEvaluator{T} <: Function end
+
+function (f::NonBatchEvaluator{T})(x::Vector{Int})::T where {T}
+    return sum(x)
+end
+
+
 @testset "batcheval" begin
     @testset "M=1" begin
         localdims = [2, 2, 2, 2, 2]
@@ -24,6 +32,17 @@ import TensorCrossInterpolation as TCI
         ref = [sum(vcat(l, c, cp, r)) for l in leftindexset, c in 1:localdims[2], cp in 1:localdims[3], r in rightindexset]
 
         @test result ≈ ref
+    end
+
+    @testset "BatchEvaluator" begin
+        tbf = NonBatchEvaluator{Float64}()
+
+        leftindexset = [[1], [2]]
+        rightindexset = [[1], [2]]
+        localdims = [3, 3, 3, 3]
+
+        bf = TCI.makebatchevaluatable(Float64, tbf, localdims)
+        @test size(bf(leftindexset, rightindexset, Val(1))) == (2, 3, 2)
     end
 
     @testset "ThreadedBatchEvaluator" begin

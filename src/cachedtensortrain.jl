@@ -98,7 +98,7 @@ function evaluate(
     tt::TTCache{V},
     indexset::AbstractVector{Int};
     usecache::Bool=true,
-    midpoint::Int = div(length(tt), 2)
+    midpoint::Int=div(length(tt), 2)
 )::V where {V}
     if length(tt) != length(indexset)
         throw(ArgumentError("To evaluate a tensor train of length $(length(tt)), need $(length(tt)) index values, but got $(length(indexset))."))
@@ -112,14 +112,19 @@ function evaluate(
     end
 end
 
-
-function (tt::TTCache{V})(
+"""
+projector: 0 means no projection, otherwise the index of the projector
+"""
+function batchevaluate(tt::TTCache{V},
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
-    ::Val{M}
-)::Array{V,M + 2} where {V,M}
+    ::Val{M},
+    projector::Union{Nothing,AbstractVector{Int},NTuple{M,Int}}=nothing)::Array{V,M + 2} where {V,M}
     if length(leftindexset) * length(rightindexset) == 0
-        return Array{V,M+2}(undef, ntuple(d->0, M+2)...)
+        return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
+    end
+    if projector !== nothing && length(projector) != M
+        error("Invalid length of projector: $(projector), correct length should be M=$M")
     end
     N = length(tt)
     nleft = length(leftindexset[1])
@@ -151,7 +156,12 @@ function (tt::TTCache{V})(
     localdim = zeros(Int, ncent)
     for n in nleft+1:(N-nright)
         # (nleftindexset, d, ..., d, D) x (D, d, D)
-        T_ = sitetensor(tt, n)
+        T_ = if (projector === nothing || projector[n-nleft]==0)
+            sitetensor(tt, n)
+        else
+            s = sitetensor(tt, n)[:, projector[n-nleft], :]
+            reshape(s, size(s, 1), 1, size(s, 2))
+        end
         localdim[n-nleft] = size(T_, 2)
         bonddim_ = size(T_, 1)
         lenv = reshape(lenv, :, bonddim_) * reshape(T_, bonddim_, :)
@@ -162,6 +172,16 @@ function (tt::TTCache{V})(
     lenv = reshape(lenv, :, bonddim_) * reshape(renv, bonddim_, :)
 
     return reshape(lenv, nleftindexset, localdim..., nrightindexset)
+end
+
+
+
+function (tt::TTCache{V})(
+    leftindexset::AbstractVector{MultiIndex},
+    rightindexset::AbstractVector{MultiIndex},
+    ::Val{M}
+)::Array{V,M + 2} where {V,M}
+    return batchevaluate(tt, leftindexset, rightindexset, Val(M))
 end
 
 

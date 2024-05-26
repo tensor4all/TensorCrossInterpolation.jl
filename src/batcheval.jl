@@ -1,4 +1,30 @@
 """
+Wrap any function to support batch evaluation.
+"""
+struct BatchEvaluatorAdapter{T} <: BatchEvaluator{T}
+    f::Function
+    localdims::Vector{Int}
+end
+
+makebatchevaluatable(::Type{T}, f, localdims) where {T} = BatchEvaluatorAdapter{T}(f, localdims)
+
+function (bf::BatchEvaluatorAdapter{T})(indexset::MultiIndex)::T where T
+    bf.f(indexset)
+end
+
+function (bf::BatchEvaluatorAdapter{T})(
+    leftindexset::AbstractVector{MultiIndex},
+    rightindexset::AbstractVector{MultiIndex},
+    ::Val{M}
+)::Array{T,M + 2} where {T,M}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{T,M + 2}(undef, ntuple(d -> 0, M + 2)...)
+    end
+    return _batchevaluate_dispatch(T, bf.f, bf.localdims, leftindexset, rightindexset, Val(M))
+end
+
+
+"""
 This file contains functions for evaluating a function on a batch of indices mainly for TensorCI2.
 If the function supports batch evaluation, then it should implement the `BatchEvaluator` interface.
 Otherwise, the function is evaluated on each index individually using the usual function call syntax and loops.
