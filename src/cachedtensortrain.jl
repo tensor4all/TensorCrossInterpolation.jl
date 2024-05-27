@@ -10,16 +10,34 @@ struct TTCache{ValueType} <: BatchEvaluator{ValueType}
     sitetensors::Vector{Array{ValueType,3}}
     cacheleft::Vector{Dict{MultiIndex,Vector{ValueType}}}
     cacheright::Vector{Dict{MultiIndex,Vector{ValueType}}}
-    #sitedims::Vector{Vector{Int}}
+    sitedims::Vector{Vector{Int}}
 
     function TTCache(sitetensors::AbstractVector{<:AbstractArray{ValueType}}) where {ValueType}
+        sitedims = [collect(size(x)[2:end-1]) for x in sitetensors]
         new{ValueType}(
-            #reshape(sitetensors, size(sitetensors, 1), :, size(sitetensors)[end]),
-            sitetensors,
+            [reshape(x, size(x, 1), :, size(x)[end]) for x in sitetensors],
             [Dict{MultiIndex,Vector{ValueType}}() for _ in sitetensors],
-            [Dict{MultiIndex,Vector{ValueType}}() for _ in sitetensors])
+            [Dict{MultiIndex,Vector{ValueType}}() for _ in sitetensors],
+            sitedims
+        )
     end
 
+end
+
+Base.length(obj::TTCache) = length(obj.sitetensors)
+
+sitedims(obj::TTCache)::Vector{Vector{Int}} = obj.sitedims
+
+function sitetensors(tt::TTCache{V}) where {V}
+    return [sitetensor(tt, n) for n in 1:length(tt)]
+end
+
+function sitetensor(tt::TTCache{V}, i) where {V}
+    sitetensor = tt.sitetensors[i]
+    return reshape(
+        sitetensor,
+        size(sitetensor)[1], tt.sitedims[i]..., size(sitetensor)[end]
+    )
 end
 
 function Base.empty!(tt::TTCache{V}) where {V}
@@ -125,21 +143,26 @@ function batchevaluate(tt::TTCache{V},
     if length(leftindexset) * length(rightindexset) == 0
         return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
     end
-    if projector !== nothing && length(projector) != M
-        error("Invalid length of projector: $(projector), correct length should be M=$M")
-    end
-    if projector === nothing
-        projector = [fill(0, length(s)) for s in sitedims(tt)]
-    end
     N = length(tt)
     nleft = length(leftindexset[1])
     nright = length(rightindexset[1])
     nleftindexset = length(leftindexset)
     nrightindexset = length(rightindexset)
     ncent = N - nleft - nright
+    s_, e_ = nleft + 1, N - nright
 
     if ncent != M
         error("Invalid parameter M: $(M)")
+    end
+    if projector === nothing
+        projector = [fill(0, length(s)) for s in sitedims(tt)[nleft+1:(N-nright)]]
+    end
+    if length(projector) != M
+        error("Invalid length of projector: $(projector), correct length should be M=$M")
+    end
+    for n in s_:e_
+        length(projector[n-s_+1]) == length(tt.sitedims[n]) || error("Invalid projector at $n: $(projector[n - s_ + 1]), the length must be $(length(tt.sitedims[n]))")
+        all(0 .<= projector[n-s_+1] .<= tt.sitedims[n]) || error("Invalid projector: $(projector[n - s_ + 1])")
     end
 
     DL = nleft == 0 ? 1 : size(tt[nleft], 3)
@@ -161,10 +184,10 @@ function batchevaluate(tt::TTCache{V},
     localdim = zeros(Int, ncent)
     for n in nleft+1:(N-nright)
         # (nleftindexset, d, ..., d, D) x (D, d, D)
-        T_ =  begin
+        T_ = begin
             slice, slice_size = projector_to_slice(projector[n-nleft])
             s = sitetensor(tt, n)[:, slice..., :]
-            reshape(s, size(s, 1), only(slice_size), size(sitetensor(tt, n))[end])
+            reshape(s, size(s)[1], :, size(s)[end])
         end
         localdim[n-nleft] = size(T_, 2)
         bonddim_ = size(T_, 1)
