@@ -2,17 +2,19 @@ abstract type BatchEvaluator{V} <: AbstractTensorTrain{V} end
 
 
 """
-    struct TTCache{ValueType, N}
+    struct TTCache{ValueType}
 
-Cached evalulation of TT
+Cached evalulation of a tensor train. This is useful when the same TT is evaluated multiple times with the same indices. The number of site indices per tensor core can be arbitray irrespective of the number of site indices of the original tensor train.
 """
 struct TTCache{ValueType} <: BatchEvaluator{ValueType}
-    sitetensors::Vector{Array{ValueType}}
+    sitetensors::Vector{Array{ValueType,3}}
     cacheleft::Vector{Dict{MultiIndex,Vector{ValueType}}}
     cacheright::Vector{Dict{MultiIndex,Vector{ValueType}}}
+    #sitedims::Vector{Vector{Int}}
 
     function TTCache(sitetensors::AbstractVector{<:AbstractArray{ValueType}}) where {ValueType}
         new{ValueType}(
+            #reshape(sitetensors, size(sitetensors, 1), :, size(sitetensors)[end]),
             sitetensors,
             [Dict{MultiIndex,Vector{ValueType}}() for _ in sitetensors],
             [Dict{MultiIndex,Vector{ValueType}}() for _ in sitetensors])
@@ -119,12 +121,15 @@ function batchevaluate(tt::TTCache{V},
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M},
-    projector::Union{Nothing,AbstractVector{Int},NTuple{M,Int}}=nothing)::Array{V,M + 2} where {V,M}
+    projector::Union{Nothing,AbstractVector{<:AbstractVector{<:Integer}}}=nothing)::Array{V,M + 2} where {V,M}
     if length(leftindexset) * length(rightindexset) == 0
         return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
     end
     if projector !== nothing && length(projector) != M
         error("Invalid length of projector: $(projector), correct length should be M=$M")
+    end
+    if projector === nothing
+        projector = [fill(0, length(s)) for s in sitedims(tt)]
     end
     N = length(tt)
     nleft = length(leftindexset[1])
@@ -156,11 +161,10 @@ function batchevaluate(tt::TTCache{V},
     localdim = zeros(Int, ncent)
     for n in nleft+1:(N-nright)
         # (nleftindexset, d, ..., d, D) x (D, d, D)
-        T_ = if (projector === nothing || projector[n-nleft]==0)
-            sitetensor(tt, n)
-        else
-            s = sitetensor(tt, n)[:, projector[n-nleft], :]
-            reshape(s, size(s, 1), 1, size(s, 2))
+        T_ =  begin
+            slice, slice_size = projector_to_slice(projector[n-nleft])
+            s = sitetensor(tt, n)[:, slice..., :]
+            reshape(s, size(s, 1), only(slice_size), size(sitetensor(tt, n))[end])
         end
         localdim[n-nleft] = size(T_, 2)
         bonddim_ = size(T_, 1)

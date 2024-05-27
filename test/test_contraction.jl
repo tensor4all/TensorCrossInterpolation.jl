@@ -15,7 +15,7 @@ function _tomat(tto::TensorTrain{T,4}) where {T}
     return mat
 end
 
-function _tovec(tt::TensorTrain{T, 3}) where {T}
+function _tovec(tt::TensorTrain{T,3}) where {T}
     sitedims = TCI.sitedims(tt)
     localdims1 = [s[1] for s in sitedims]
     return evaluate.(Ref(tt), CartesianIndices(Tuple(localdims1))[:])
@@ -56,6 +56,53 @@ end
             @test _tomat(ab) ≈ f.(_tomat(a) * _tomat(b))
         end
     end
+end
+
+@testset "Contraction, batchevaluate" begin
+    import TensorCrossInterpolation: TensorTrain
+
+    N = 4
+    bonddims_a = [1, 2, 3, 2, 1]
+    bonddims_b = [1, 2, 3, 2, 1]
+    localdims1 = [2, 2, 2, 2]
+    localdims2 = [3, 3, 3, 3]
+    localdims3 = [2, 2, 2, 2]
+
+    a = TensorTrain{ComplexF64,4}([
+        rand(ComplexF64, bonddims_a[n], localdims1[n], localdims2[n], bonddims_a[n+1])
+        for n = 1:N
+    ])
+    b = TensorTrain{ComplexF64,4}([
+        rand(ComplexF64, bonddims_b[n], localdims2[n], localdims3[n], bonddims_b[n+1])
+        for n = 1:N
+    ])
+
+    ab = TCI.Contraction(a, b)
+    leftindexset = [[1]]
+    rightindexset = [[1]]
+
+    ref = ab(leftindexset, rightindexset, Val(2))
+    ref_multiindex = reshape(ref, length(leftindexset), 2, 2, 2, 2, length(rightindexset))
+
+    let
+        res = TCI.batchevaluate(ab, leftindexset, rightindexset, Val(2), [[0, 0], [1, 0]])
+        @test vec(ref_multiindex[:, :, :, 1, :, :]) ≈ vec(res)
+    end
+
+    let
+        res = TCI.batchevaluate(ab, leftindexset, rightindexset, Val(2), [[0, 0], [1, 1]])
+        @test vec(ref_multiindex[:, :, :, 1, 1, :]) ≈ vec(res)
+    end
+
+    let
+        res = TCI.batchevaluate(ab, leftindexset, rightindexset, Val(2), [[0, 1], [1, 0]])
+        @test vec(ref_multiindex[:, :, 1, 1, :, :]) ≈ vec(res)
+    end
+
+    #res = TCI.batchevaluate(ab, leftindexset, rightindexset, Val(2), [[1], [1]])
+    #@test vec(ref[:, 1, 1, :]) ≈ vec(res)
+
+
 end
 
 @testset "MPO-MPS contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]

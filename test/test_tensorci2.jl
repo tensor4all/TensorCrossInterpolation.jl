@@ -403,8 +403,8 @@ import QuanticsGrids as QD
               [ttc_batch[1, collect(Tuple(i))..., 1] for i in CartesianIndices(Tuple(localdims[2:end-1]))]
 
         # With projoection
-        @test TCI.batchevaluate(ttc, leftindexset, rightindexset, Val(2), [1, 0]) == TCI.batchevaluate(ttc, leftindexset, rightindexset, Val(2), (1, 0))
-        ttc_batchproj = TCI.batchevaluate(ttc, leftindexset, rightindexset, Val(2), [1, 0])
+        #@test TCI.batchevaluate(ttc, leftindexset, rightindexset, Val(2), [[1], [0]]) == TCI.batchevaluate(ttc, leftindexset, rightindexset, Val(2), (1, 0))
+        ttc_batchproj = TCI.batchevaluate(ttc, leftindexset, rightindexset, Val(2), [[1], [0]])
         @test vec([tt([1, 1, i, 1]) for i in 1:localdims[3]]) ≈ vec(ttc_batchproj)
     end
 
