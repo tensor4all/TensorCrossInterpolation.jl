@@ -12,8 +12,11 @@ struct TTCache{ValueType} <: BatchEvaluator{ValueType}
     cacheright::Vector{Dict{MultiIndex,Vector{ValueType}}}
     sitedims::Vector{Vector{Int}}
 
-    function TTCache(sitetensors::AbstractVector{<:AbstractArray{ValueType}}) where {ValueType}
-        sitedims = [collect(size(x)[2:end-1]) for x in sitetensors]
+    function TTCache{ValueType}(sitetensors::AbstractVector{<:AbstractArray{ValueType}}, sitedims) where {ValueType}
+        length(sitetensors) == length(sitedims) || throw(ArgumentError("The number of site tensors and site dimensions must be the same."))
+        for n in 1:length(sitetensors)
+            prod(sitedims[n]) == prod(size(sitetensors[n])[2:end-1]) || error("Site dimensions do not match the site tensor dimensions at $n.")
+        end
         new{ValueType}(
             [reshape(x, size(x, 1), :, size(x)[end]) for x in sitetensors],
             [Dict{MultiIndex,Vector{ValueType}}() for _ in sitetensors],
@@ -21,8 +24,18 @@ struct TTCache{ValueType} <: BatchEvaluator{ValueType}
             sitedims
         )
     end
-
+    function TTCache{ValueType}(sitetensors::AbstractVector{<:AbstractArray{ValueType}}) where {ValueType}
+        return TTCache{ValueType}(sitetensors, [collect(size(x)[2:end-1]) for x in sitetensors])
+    end
 end
+
+TTCache(tt::AbstractTensorTrain{ValueType}) where {ValueType} = TTCache{ValueType}(sitetensors(tt))
+
+TTCache(sitetensors::AbstractVector{<:AbstractArray{ValueType}}) where {ValueType} = TTCache{ValueType}(sitetensors)
+
+TTCache(sitetensors::AbstractVector{<:AbstractArray{ValueType}}, sitedims) where {ValueType} = TTCache{ValueType}(sitetensors, sitedims)
+
+TTCache(tt::AbstractTensorTrain{ValueType}, sitedims) where {ValueType} = TTCache{ValueType}(sitetensors(tt), sitedims)
 
 Base.length(obj::TTCache) = length(obj.sitetensors)
 
@@ -47,9 +60,9 @@ function Base.empty!(tt::TTCache{V}) where {V}
 end
 
 
-function TTCache(TT::AbstractTensorTrain{ValueType}) where {ValueType}
-    TTCache(sitetensors(TT))
-end
+#function TTCache(TT::AbstractTensorTrain{ValueType}) where {ValueType}
+    #TTCache(sitetensors(TT))
+#end
 
 function ttcache(tt::TTCache{V}, leftright::Symbol, b::Int) where {V}
     if leftright == :left
