@@ -436,6 +436,56 @@ function contract_TCI(
 end
 
 """
+See SVD version:
+https://tensornetwork.org/mps/algorithms/zip_up_mpo/
+"""
+function contract_zipup(
+    A::TensorTrain{ValueType,4},
+    B::TensorTrain{ValueType,4};
+    tolerance::Float64=1e-12,
+    method::Symbol=:SVD, # :SVD, :LU
+    maxbonddim::Int=typemax(Int)
+) where {ValueType}
+    if length(A) != length(B)
+        throw(ArgumentError("Cannot contract tensor trains with different length."))
+    end
+    R::Array{ValueType,3} = ones(ValueType, 1, 1, 1)
+
+    sitetensors = Vector{Array{ValueType,4}}(undef, length(A))
+    for n in 1:length(A)
+        # R:     (link_ab, link_an, link_bn)
+        # A[n]:  (link_an, s_n, s_n', link_anp1)
+        RA = _contract(R, A[n], (2,), (1,))
+
+        # RA[n]: (link_ab, link_bn, s_n, s_n' link_anp1)
+        # B[n]:  (link_bn, s_n', s_n'', link_bnp1)
+        # C:     (link_ab, s_n, link_anp1, s_n'', link_bnp1)
+        #  =>    (link_ab, s_n, s_n'', link_anp1, link_bnp1)
+        C = permutedims(_contract(RA, B[n], (2, 4), (1, 2)), (1, 2, 4, 3, 5))
+        if n == length(A)
+            sitetensors[n] = reshape(C, size(C)[1:3]..., 1)
+            break
+        end
+
+        # Cmat:  (link_ab * s_n * s_n'', link_anp1 * link_bnp1)
+
+        #lu = rrlu(Cmat; reltol, abstol, leftorthogonal=true)
+        left, right, newbonddim = _factorize(
+            reshape(C, prod(size(C)[1:3]), prod(size(C)[4:5])),
+            method; tolerance, maxbonddim
+        )
+
+        # U:     (link_ab, s_n, s_n'', link_ab_new)
+        sitetensors[n] = reshape(left, size(C)[1:3]..., newbonddim)
+
+        # R:     (link_ab_new, link_an, link_bn)
+        R = reshape(right, newbonddim, size(C)[4:5]...)
+    end
+
+    return TensorTrain{ValueType,4}(sitetensors)
+end
+
+"""
     function contract(
         A::TensorTrain{ValueType,4},
         B::TensorTrain{ValueType,4};
@@ -451,6 +501,7 @@ Contract two tensor trains `A` and `B`.
 Currently, two implementations are available:
  1. `algorithm=:TCI` constructs a new TCI that fits the contraction of `A` and `B`.
  2. `algorithm=:naive` uses a naive tensor contraction and subsequent SVD recompression of the tensor train.
+ 2. `algorithm=:zipup` uses a naive tensor contraction with on-the-fly LU decomposition.
 
 Arguments:
 - `A` and `B` are the tensor trains to be contracted.
@@ -458,6 +509,7 @@ Arguments:
 - `tolerance` is the tolerance of the TCI or SVD recompression.
 - `maxbonddim` sets the maximum bond dimension of the resulting tensor train.
 - `f` is a function to be applied elementwise to the result. This option is only available with `algorithm=:TCI`.
+- `method` chooses the method used for the factorization in the `algorithm=:zipup` case (`:SVD` or `:LU`).
 - `kwargs...` are forwarded to [`crossinterpolate2`](@ref) if `algorithm=:TCI`.
 """
 function contract(
@@ -476,6 +528,11 @@ function contract(
             error("Naive contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
         end
         return contract_naive(A, B; tolerance=tolerance, maxbonddim=maxbonddim)
+    elseif algorithm === :zipup
+        if f !== nothing
+            error("Zipup contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
+        end
+        return contract_zipup(A, B; tolerance, maxbonddim)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end
