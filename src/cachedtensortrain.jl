@@ -178,7 +178,7 @@ function batchevaluate(tt::TTCache{V},
         all(0 .<= projector[n-s_+1] .<= tt.sitedims[n]) || error("Invalid projector: $(projector[n - s_ + 1])")
     end
 
-    DL = nleft == 0 ? 1 : size(tt[nleft], 3)
+    DL = nleft == 0 ? 1 : prod(tt.sitedims[nleft])
     lenv = ones(V, nleftindexset, DL)
     if nleft > 0
         for (il, lindex) in enumerate(leftindexset)
