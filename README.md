@@ -16,7 +16,7 @@ using Pkg; Pkg.add("TensorCrossInterpolation.jl")
 
 ## Usage
 
-*This section only contains the bare minimum to get you started. An example with more explanation can be found in the [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).*
+*This section only contains the bare minimum to get you started. An example with more explanation can be found in the [user manual](https://tensor4all.github.io/TensorCrossInterpolation.jl/dev).*
 
 Given a multivariate function `f`, the function `crossinterpolate2` will generate a tensor cross interpolation for `f`. For example, to interpolate the 8d lorentzian $f(\mathbf v) = 1/(1 + \mathbf v^2)$ on an 8-dimensional lattice of integers, $\mathbf{v} \in \{1, 2, ..., 10\}^8$:
 ```julia
@@ -31,7 +31,7 @@ Note:
 - `f` is defined as a function that takes a single `Vector` of integers.
 - The return type of `f` (`Float64` in this case) must be stated explicitly in the call to `crossinterpolate2`.
 
-The resulting `TensorCI2` object can be further manipulated, see [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
+The resulting `TensorCI2` object can be further manipulated, see [user manual](https://tensor4all.github.io/TensorCrossInterpolation.jl/dev).
 To evaluate the TCI interpolation, simply call your `TensorCI1` object like you would call the original function:
 ```julia
 originalvalue = f([1, 2, 3, 4, 5, 6, 7, 8])
@@ -43,7 +43,7 @@ sumvalue = sum(tci)
 ```
 
 ## Online user manual
-An example with more explanation can be found in the [user manual](https://tensors4fields.gitlab.io/tensorcrossinterpolation.jl/dev/index.html).
+An example with more explanation can be found in the [user manual](https://tensor4all.github.io/TensorCrossInterpolation.jl/dev).
 
 ## Related modules
 
