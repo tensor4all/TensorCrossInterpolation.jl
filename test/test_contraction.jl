@@ -15,7 +15,7 @@ function _tomat(tto::TensorTrain{T,4}) where {T}
     return mat
 end
 
-function _tovec(tt::TensorTrain{T, 3}) where {T}
+function _tovec(tt::TensorTrain{T,3}) where {T}
     sitedims = TCI.sitedims(tt)
     localdims1 = [s[1] for s in sitedims]
     return evaluate.(Ref(tt), CartesianIndices(Tuple(localdims1))[:])
@@ -28,7 +28,7 @@ end
     @test vec(reshape(permutedims(a, (2, 1, 3)), 3, :) * reshape(permutedims(b, (1, 3, 2)), :, 5)) ≈ vec(ab)
 end
 
-@testset "MPO-MPO contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]
+function _gen_testdata_TTO_TTO()
     N = 4
     bonddims_a = [1, 2, 3, 2, 1]
     bonddims_b = [1, 2, 3, 2, 1]
@@ -44,6 +44,46 @@ end
         rand(ComplexF64, bonddims_b[n], localdims2[n], localdims3[n], bonddims_b[n+1])
         for n = 1:N
     ])
+    return N, a, b, localdims1, localdims2, localdims3
+end
+
+function _gen_testdata_TTO_TTS()
+    N = 4
+    bonddims_a = [1, 2, 3, 2, 1]
+    bonddims_b = [1, 2, 3, 2, 1]
+    localdims1 = [3, 3, 3, 3]
+    localdims2 = [3, 3, 3, 3]
+
+    a = TensorTrain{ComplexF64,4}([
+        rand(ComplexF64, bonddims_a[n], localdims1[n], localdims2[n], bonddims_a[n+1])
+        for n = 1:N
+    ])
+    b = TensorTrain{ComplexF64,3}([
+        rand(ComplexF64, bonddims_b[n], localdims2[n], bonddims_b[n+1])
+        for n = 1:N
+    ])
+    return N, a, b, localdims1, localdims2
+end
+
+@testset "MPO-MPO contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]
+    #==
+    N = 4
+    bonddims_a = [1, 2, 3, 2, 1]
+    bonddims_b = [1, 2, 3, 2, 1]
+    localdims1 = [2, 2, 2, 2]
+    localdims2 = [3, 3, 3, 3]
+    localdims3 = [2, 2, 2, 2]
+
+    a = TensorTrain{ComplexF64,4}([
+        rand(ComplexF64, bonddims_a[n], localdims1[n], localdims2[n], bonddims_a[n+1])
+        for n = 1:N
+    ])
+    b = TensorTrain{ComplexF64,4}([
+        rand(ComplexF64, bonddims_b[n], localdims2[n], localdims3[n], bonddims_b[n+1])
+        for n = 1:N
+    ])
+    ==#
+    N, a, b, localdims1, localdims2, localdims3 = _gen_testdata_TTO_TTO()
 
     if f !== nothing && algorithm === :naive
         @test_throws ErrorException contract(a, b; f=f, algorithm=algorithm)
@@ -59,6 +99,7 @@ end
 end
 
 @testset "MPO-MPS contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]
+    #==
     N = 4
     bonddims_a = [1, 2, 3, 2, 1]
     bonddims_b = [1, 2, 3, 2, 1]
@@ -73,6 +114,8 @@ end
         rand(ComplexF64, bonddims_b[n], localdims2[n], bonddims_b[n+1])
         for n = 1:N
     ])
+    ==#
+    N, a, b, localdims1, localdims2 = _gen_testdata_TTO_TTS()
 
     if f !== nothing && algorithm === :naive
         @test_throws ErrorException contract(a, b; f=f, algorithm=algorithm)
@@ -89,4 +132,17 @@ end
             @test transpose(_tovec(ba)) ≈ f.(transpose(_tovec(b)) * _tomat(a))
         end
     end
+end
+
+
+@testset "MPO-MPO contraction (zipup)" for method in [:SVD, :LU]
+    N, a, b, localdims1, localdims2, localdims3 = _gen_testdata_TTO_TTO()
+    ab = contract(a, b; algorithm=:zipup, method=method)
+    @test _tomat(ab) ≈ _tomat(a) * _tomat(b)
+end
+
+@testset "MPO-MPS contraction (zipup)" for method in [:SVD, :LU]
+    N, a, b, localdims1, localdims2 = _gen_testdata_TTO_TTS()
+    ab = contract(a, b; algorithm=:zipup, method=method)
+    @test _tovec(ab) ≈ _tomat(a) * _tovec(b)
 end
