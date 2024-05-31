@@ -45,7 +45,7 @@ function sitetensors(tt::TTCache{V}) where {V}
     return [sitetensor(tt, n) for n in 1:length(tt)]
 end
 
-function sitetensor(tt::TTCache{V}, i) where {V}
+function sitetensor(tt::TTCache{V}, i::Integer) where {V}
     sitetensor = tt.sitetensors[i]
     return reshape(
         sitetensor,
@@ -178,7 +178,7 @@ function batchevaluate(tt::TTCache{V},
         all(0 .<= projector[n-s_+1] .<= tt.sitedims[n]) || error("Invalid projector: $(projector[n - s_ + 1])")
     end
 
-    DL = nleft == 0 ? 1 : prod(tt.sitedims[nleft])
+    DL = nleft == 0 ? 1 : linkdims(tt)[nleft]
     lenv = ones(V, nleftindexset, DL)
     if nleft > 0
         for (il, lindex) in enumerate(leftindexset)
