@@ -13,6 +13,10 @@ end
 
 Base.length(obj::Contraction) = length(obj.mpo[1])
 
+function sitedims(obj::Contraction{T})::Vector{Vector{Int}} where {T}
+    return obj.sitedims
+end
+
 function Base.lastindex(obj::Contraction{T}) where {T}
     return lastindex(obj.mpo[1])
 end
@@ -226,11 +230,29 @@ function (obj::Contraction{T})(
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M},
 )::Array{T,M + 2} where {T,M}
+    return batchevaluate(obj, leftindexset, rightindexset, Val(M))
+end
+
+function batchevaluate(obj::Contraction{T},
+    leftindexset::AbstractVector{MultiIndex},
+    rightindexset::AbstractVector{MultiIndex},
+    ::Val{M},
+    projector::Union{Nothing,AbstractVector{<:AbstractVector{<:Integer}}}=nothing)::Array{T,M + 2} where {T,M}
     N = length(obj)
     Nr = length(rightindexset[1])
     s_ = length(leftindexset[1]) + 1
     e_ = N - length(rightindexset[1])
     a, b = obj.mpo
+
+    if projector === nothing
+        projector = [fill(0, length(obj.sitedims[n])) for n in s_:e_]
+    end
+    length(projector) == M || error("Length mismatch: length of projector (=$(length(projector))) must be $(M)")
+    for n in s_:e_
+        length(projector[n - s_ + 1]) == 2 || error("Invalid projector at $n: $(projector[n - s_ + 1]), the length must be 2")
+        all(0 .<= projector[n - s_ + 1] .<= obj.sitedims[n]) || error("Invalid projector: $(projector[n - s_ + 1])")
+    end
+
 
     # Unfused index
     leftindexset_unfused = [
@@ -264,14 +286,28 @@ function (obj::Contraction{T})(
 
     # (left_index, link_a, link_b, site[s_] * site'[s_] *  ... * site[e_] * site'[e_])
     leftobj::Array{T,4} = reshape(left_, size(left_)..., 1)
+    return_size_siteinds = Int[]
     for n = s_:e_
+        slice_ab, shape_ab = projector_to_slice(projector[n - s_ + 1])
+        a_n = begin
+            a_n_org = obj.mpo[1][n]
+            tmp = a_n_org[:, slice_ab[1], :, :]
+            reshape(tmp, size(a_n_org, 1), shape_ab[1], size(a_n_org)[3:4]...)
+        end
+        b_n = begin
+            b_n_org = obj.mpo[2][n]
+            tmp = b_n_org[:, :, slice_ab[2], :]
+            reshape(tmp, size(b_n_org, 1), size(b_n_org, 2), shape_ab[2], size(b_n_org, 4))
+        end
+        push!(return_size_siteinds, size(a_n, 2) * size(b_n, 3))
+
         #(left_index, link_a, link_b, S) * (link_a, site[n], shared, link_a')
         #  => (left_index, link_b, S, site[n], shared, link_a')
-        tmp1 = _contract(leftobj, a[n], (2,), (1,))
+        tmp1 = _contract(leftobj, a_n, (2,), (1,))
 
         # (left_index, link_b, S, site[n], shared, link_a') * (link_b, shared, site'[n], link_b')
         #  => (left_index, S, site[n], link_a', site'[n], link_b')
-        tmp2 = _contract(tmp1, b[n], (2, 5), (1, 2))
+        tmp2 = _contract(tmp1, b_n, (2, 5), (1, 2))
 
         # (left_index, S, site[n], link_a', site'[n], link_b')
         #  => (left_index, link_a', link_b', S, site[n], site'[n])
@@ -282,7 +318,7 @@ function (obj::Contraction{T})(
 
     return_size = (
         length(leftindexset),
-        ntuple(i -> prod(obj.sitedims[i+s_-1]), M)...,
+        return_size_siteinds...,
         length(rightindexset),
     )
     t5 = time_ns()

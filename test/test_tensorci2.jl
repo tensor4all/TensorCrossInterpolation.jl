@@ -268,7 +268,7 @@ import QuanticsGrids as QD
 
         R = 20
         abstol = 1e-4
-        δ = 10.0/2^R # Peaks are wider than 1/2^R.
+        δ = 10.0 / 2^R # Peaks are wider than 1/2^R.
         grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
 
         rindex = [rand(1:2, R) for _ in 1:100]
@@ -309,7 +309,7 @@ import QuanticsGrids as QD
             pivotsearch=pivotsearch,
             verbosity=0,
             strictlynested=strictlynested,
-            ntry = pivotsearch == :full ? 1 : 10
+            ntry=pivotsearch == :full ? 1 : 10
         )
 
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
@@ -397,7 +397,7 @@ import QuanticsGrids as QD
             ttc,
             localdims;
             tolerance=1e-10,
-            maxbonddim = 10
+            maxbonddim=10
         )
 
         tt_reconst = TCI.TensorTrain(tci2)
