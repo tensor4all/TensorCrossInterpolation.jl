@@ -178,7 +178,7 @@ function batchevaluate(tt::TTCache{V},
         all(0 .<= projector[n-s_+1] .<= tt.sitedims[n]) || error("Invalid projector: $(projector[n - s_ + 1])")
     end
 
-    DL = nleft == 0 ? 1 : linkdims(tt)[nleft]
+    DL = (0 < nleft < N) ? linkdims(tt)[nleft] : 1
     lenv = ones(V, nleftindexset, DL)
     if nleft > 0
         for (il, lindex) in enumerate(leftindexset)
@@ -186,7 +186,7 @@ function batchevaluate(tt::TTCache{V},
         end
     end
 
-    DR = nright == 0 ? 1 : linkdim(tt, nleft + ncent)
+    DR = (0 < nright < N) ? linkdim(tt, nleft + ncent) : 1
     renv = ones(V, DR, nrightindexset)
     if nright > 0
         for (ir, rindex) in enumerate(rightindexset)
