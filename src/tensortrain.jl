@@ -102,17 +102,11 @@ function _factorize(
         err = [sum(factorization.S[n+1:end] .^ 2) for n in 1:length(factorization.S)]
         normalized_err = err ./ sum(factorization.S .^ 2)
 
-        #@show normalized_err
-        #@show sum(factorization.S .^ 2)
-        #@show err
         trunci = min(
             replacenothing(findfirst(<(abstol^2), err), length(err)),
             replacenothing(findfirst(<(reltol^2), normalized_err), length(normalized_err)),
             maxbonddim
         )
-        #@show findfirst(<(abstol^2), err)
-        #@show findfirst(<(reltol^2), normalized_err)
-        #@show trunci, length(err)
         if leftorthogonal
             return (
                 factorization.U[:, 1:trunci],
@@ -150,7 +144,6 @@ function compress!(
 ) where {V,N}
     # From left to right
     for ell in 1:length(tt)-1
-        #println("ell=$ell")
         shapel = size(tt.sitetensors[ell])
         left, right, newbonddim = _factorize(
             reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]),
@@ -175,11 +168,6 @@ function compress!(
         tt.sitetensors[ell-1] = reshape(nexttensor, shapel[1:end-1]..., newbonddim)
     end
 
-    #println("")
-    #println("")
-    #println("")
-    #println("")
-    #println("")
     nothing
 end
 
