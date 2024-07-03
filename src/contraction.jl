@@ -487,14 +487,14 @@ end
 
 """
     function contract(
-        A::TensorTrain{ValueType,4},
-        B::TensorTrain{ValueType,4};
+        A::TensorTrain{V1,4},
+        B::TensorTrain{V2,4};
         algorithm::Symbol=:TCI,
         tolerance::Float64=1e-12,
         maxbonddim::Int=typemax(Int),
         f::Union{Nothing,Function}=nothing,
         kwargs...
-    ) where {ValueType}
+    ) where {V1,V2}
 
 Contract two tensor trains `A` and `B`.
 
@@ -513,26 +513,29 @@ Arguments:
 - `kwargs...` are forwarded to [`crossinterpolate2`](@ref) if `algorithm=:TCI`.
 """
 function contract(
-    A::TensorTrain{ValueType,4},
-    B::TensorTrain{ValueType,4};
+    A::TensorTrain{V1,4},
+    B::TensorTrain{V2,4};
     algorithm::Symbol=:TCI,
     tolerance::Float64=1e-12,
     maxbonddim::Int=typemax(Int),
     f::Union{Nothing,Function}=nothing,
     kwargs...
-) where {ValueType}
+)::TensorTrain{promote_type(V1,V2),4} where {V1,V2}
+    Vres = promote_type(V1, V2)
+    A_ = TensorTrain{Vres,4}(A)
+    B_ = TensorTrain{Vres,4}(B)
     if algorithm === :TCI
-        return contract_TCI(A, B; tolerance=tolerance, maxbonddim=maxbonddim, f=f, kwargs...)
+        return contract_TCI(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, f=f, kwargs...)
     elseif algorithm === :naive
         if f !== nothing
             error("Naive contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
         end
-        return contract_naive(A, B; tolerance=tolerance, maxbonddim=maxbonddim)
+        return contract_naive(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim)
     elseif algorithm === :zipup
         if f !== nothing
             error("Zipup contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
         end
-        return contract_zipup(A, B; tolerance, maxbonddim)
+        return contract_zipup(A_, B_; tolerance, maxbonddim)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end
@@ -540,18 +543,18 @@ end
 
 function contract(
     A::Union{TensorCI1{V},TensorCI2{V},TensorTrain{V,3}},
-    B::TensorTrain{V,4};
+    B::TensorTrain{V2,4};
     kwargs...
-)::TensorTrain{V,3} where {V}
+)::TensorTrain{promote_type(V,V2),3} where {V,V2}
     tt = contract(TensorTrain{4}(A, [(1, s...) for s in sitedims(A)]), B; kwargs...)
     return TensorTrain{3}(tt, prod.(sitedims(tt)))
 end
 
 function contract(
     A::TensorTrain{V,4},
-    B::Union{TensorCI1{V},TensorCI2{V},TensorTrain{V,3}};
+    B::Union{TensorCI1{V2},TensorCI2{V2},TensorTrain{V2,3}};
     kwargs...
-)::TensorTrain{V,3} where {V}
+)::TensorTrain{promote_type(V,V2),3} where {V,V2}
     tt = contract(A, TensorTrain{4}(B, [(s..., 1) for s in sitedims(B)]); kwargs...)
     return TensorTrain{3}(tt, prod.(sitedims(tt)))
 end

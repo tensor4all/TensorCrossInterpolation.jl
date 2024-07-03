@@ -48,15 +48,15 @@ end
     L = length(linkdims) - 1
     localdims = fill(4, L)
     tts = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L])
-    tto = TCI.TensorTrain{4}(tts, fill([2,2], L))
+    tto = TCI.TensorTrain{4}(tts, fill([2, 2], L))
     tts_reconst = TCI.TensorTrain{3}(tto, localdims)
 
     for n in 1:L
         @test all(tts[n] .== tts_reconst[n])
     end
 
-    @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([2,3], L)) # Wrong shape
-    @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([1,2,3], L)) # Wrong shape
+    @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([2, 3], L)) # Wrong shape
+    @test_throws ErrorException TCI.TensorTrain{4}(tts, fill([1, 2, 3], L)) # Wrong shape
 end
 
 @testset "batchevaluate" begin
@@ -176,3 +176,19 @@ end
     indicesmultileg = @. collect(zip(indices, indices))
     @test ttmultileg2.(indicesmultileg) ≈ 2 .* ttmultileg.(indicesmultileg)
 end
+
+@testset "tensor train cast" begin
+    Random.seed!(10)
+    localdims = [2, 2, 2]
+    linkdims_ = [1, 2, 3, 1]
+    L = length(localdims)
+
+    tt1 = TCI.TensorTrain{Float64,3}([randn(Float64, linkdims_[n], localdims[n], linkdims_[n+1]) for n in 1:L])
+
+    tt2 = TCI.TensorTrain{ComplexF64,3}(tt1, localdims)
+    @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt2)
+
+    tt3 = TCI.TensorTrain{Float64,3}(tt2, localdims)
+    @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt3)
+end
+
