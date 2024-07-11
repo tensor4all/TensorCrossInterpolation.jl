@@ -65,4 +65,21 @@ end
 
         @test result ≈ ref
     end
+
+    @testset "ThreadedBatchEvaluator (from Matsuura)" begin
+        function f(x)
+            sleep(1e-3)
+            return sum(x)
+        end
+
+        L = 20
+        localdims = fill(2, L)
+        parf = TCI.ThreadedBatchEvaluator{Float64}(f, localdims)
+
+        tci, ranks, errors = TCI.crossinterpolate2(Float64, parf, localdims)
+
+        tci_ref, ranks_ref, errors_ref = TCI.crossinterpolate2(Float64, f, localdims)
+
+        @test TCI.fulltensor(TCI.TensorTrain(tci)) ≈ TCI.fulltensor(TCI.TensorTrain(tci_ref))
+    end
 end
