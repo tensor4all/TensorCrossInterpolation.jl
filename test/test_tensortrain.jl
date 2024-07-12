@@ -178,7 +178,6 @@ end
     @test ttmultileg2.(indicesmultileg) ≈ 2 .* ttmultileg.(indicesmultileg)
 end
 
-
 @testset "norm" begin
     T = Float64
     sitedims_ = [[2], [2], [2]]
@@ -218,3 +217,19 @@ end
     TCI.compress!(tt_compressed, :SVD; tolerance=LA.norm(tt) * tol, normalizeerror=false)
     @test sqrt(LA.norm2(tt - tt_compressed) / LA.norm2(tt)) < sqrt(N) * tol
 end
+
+@testset "tensor train cast" begin
+    Random.seed!(10)
+    localdims = [2, 2, 2]
+    linkdims_ = [1, 2, 3, 1]
+    L = length(localdims)
+
+    tt1 = TCI.TensorTrain{Float64,3}([randn(Float64, linkdims_[n], localdims[n], linkdims_[n+1]) for n in 1:L])
+
+    tt2 = TCI.TensorTrain{ComplexF64,3}(tt1, localdims)
+    @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt2)
+
+    tt3 = TCI.TensorTrain{Float64,3}(tt2, localdims)
+    @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt3)
+end
+
