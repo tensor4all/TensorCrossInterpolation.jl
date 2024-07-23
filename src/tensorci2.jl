@@ -18,8 +18,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     #"Maximum sample for error normalization."
     maxsamplevalue::Float64
 
-    Iset_history::Vector{Vector{Vector{MultiIndex}}}
-    Jset_history::Vector{Vector{Vector{MultiIndex}}}
 
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
@@ -34,8 +32,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors
             0.0,                                    # maxsamplevalue
-            Vector{Vector{MultiIndex}}[],           # Iset_history
-            Vector{Vector{MultiIndex}}[],           # Jset_history
         )
     end
 end
@@ -197,6 +193,18 @@ function existaspivot(
     tci::TensorCI2{ValueType},
     indexset::MultiIndex) where {ValueType}
     return [indexset[1:b-1] ∈ tci.Iset[b] && indexset[b+1:end] ∈ tci.Jset[b] for b in 1:length(tci)]
+end
+
+
+"""
+Extract a list of existing pivots from a TCI2 object.
+"""
+function globalpivots(tci::TensorCI2{ValueType})::Vector{MultiIndex} where {ValueType}
+    result = MultiIndex[]
+    for b in 1:length(tci)-1, (x, y) in zip(tci.Iset[b+1], tci.Jset[b])
+        push!(result, vcat(x, y))
+    end
+    return result
 end
 
 
@@ -765,6 +773,11 @@ function optimize!(
     return ranks, errors ./ errornormalization
 end
 
+
+function _project_globalpivots(globalpivots::Vector{MultiIndex}, bondindex::Int)
+    return collect(Set(p[1:bondindex] for p in globalpivots)), collect(Set(p[bondindex+1:end] for p in globalpivots))
+end
+
 """
 Perform 2site sweeps on a TCI2.
 """
@@ -783,21 +796,13 @@ function sweep2site!(
 
     n = length(tci)
 
+    allpivots = globalpivots(tci)
+
     for iter in iter1:iter1+niter-1
-
-        extraIset = [MultiIndex[] for _ in 1:n]
-        extraJset = [MultiIndex[] for _ in 1:n]
-        if !strictlynested && length(tci.Iset_history) > 0
-            extraIset = tci.Iset_history[end]
-            extraJset = tci.Jset_history[end]
-        end
-    
-        push!(tci.Iset_history, deepcopy(tci.Iset))
-        push!(tci.Jset_history, deepcopy(tci.Jset))
-
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
+                extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
                 updatepivots!(
                     tci, bondindex, f, true;
                     abstol=abstol,
@@ -805,12 +810,13 @@ function sweep2site!(
                     sweepdirection=:forward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraIset=extraIset[bondindex+1],
-                    extraJset=extraJset[bondindex],
+                    extraIset=extraIset,
+                    extraJset=extraJset,
                 )
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
+                extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
                 updatepivots!(
                     tci, bondindex, f, false;
                     abstol=abstol,
@@ -818,8 +824,8 @@ function sweep2site!(
                     sweepdirection=:backward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraIset=extraIset[bondindex+1],
-                    extraJset=extraJset[bondindex],
+                    extraIset=extraIset,
+                    extraJset=extraJset,
                 )
             end
         end
