@@ -234,6 +234,9 @@ function addglobalpivots2sitesweep!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         abstol = tolerance * errornormalization
 
+        # We explicitly add all global pivots to the TCI
+        # rather than using `externalglobalpivots` option in `sweep2site!`.
+        # This is because we want to keep all global pivots for pivotsearch=:rook.
         addglobalpivots!(tci, pivots_)
 
         sweep2site!(
@@ -242,12 +245,13 @@ function addglobalpivots2sitesweep!(
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
             strictlynested=strictlynested,
-            verbosity=verbosity)
+            verbosity=verbosity
+            )
 
         newpivots = [p for p in pivots if abs(evaluate(tci, p) - f(p)) > abstol]
 
-        if verbosity > 0
-            println("Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain.")
+        if length(newpivots) > 0 && verbosity > 0
+            @warn "Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain."
         end
 
         if length(newpivots) == 0 || Set(newpivots) == Set(pivots_)
@@ -790,19 +794,29 @@ function sweep2site!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     strictlynested::Bool=false,
-    fillsitetensors::Bool=true
+    fillsitetensors::Bool=true,
+    externalglobalpivots::Vector{MultiIndex}=MultiIndex[]
 ) where {ValueType}
     invalidatesitetensors!(tci)
 
+    if length(externalglobalpivots) > 0 && strictlynested
+        @warn "strictlynested=true is not compatible with externalglobalpivots"
+    end
+
     n = length(tci)
 
-    allpivots = globalpivots(tci)
+    allpivots::Vector{MultiIndex} = vcat(globalpivots(tci), externalglobalpivots)
+
+    extraIset = MultiIndex[]
+    extraJset = MultiIndex[]
 
     for iter in iter1:iter1+niter-1
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
-                extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
+                if !strictlynested
+                    extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
+                end
                 updatepivots!(
                     tci, bondindex, f, true;
                     abstol=abstol,
@@ -816,7 +830,9 @@ function sweep2site!(
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
-                extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
+                if !strictlynested
+                    extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
+                end
                 updatepivots!(
                     tci, bondindex, f, false;
                     abstol=abstol,
