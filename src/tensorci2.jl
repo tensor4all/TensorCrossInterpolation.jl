@@ -234,11 +234,6 @@ function addglobalpivots2sitesweep!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         abstol = tolerance * errornormalization
 
-        # We explicitly add all global pivots to the TCI
-        # rather than using `externalglobalpivots` option in `sweep2site!`.
-        # This is because we want to keep all global pivots for pivotsearch=:rook.
-        #addglobalpivots!(tci, pivots_)
-
         sweep2site!(
             tci, f, 2;
             abstol=abstol,
@@ -496,8 +491,6 @@ function updatepivots!(
     sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    extraIset::Vector{MultiIndex}=MultiIndex[],
-    extraJset::Vector{MultiIndex}=MultiIndex[],
     extraouterIset::Vector{MultiIndex}=MultiIndex[],
     extraouterJset::Vector{MultiIndex}=MultiIndex[],
 ) where {F,ValueType}
@@ -510,8 +503,8 @@ function updatepivots!(
         only(unique(length.(extraouterJset))) == length(tci.Jset[b+1][1]) || error("Invalid extraouterJset")
     end
 
-    Icombined = union(kronecker(unique(vcat(tci.Iset[b], extraouterIset)), tci.localdims[b]), extraIset)
-    Jcombined = union(kronecker(tci.localdims[b+1], unique(vcat(tci.Jset[b+1], extraouterJset))), extraJset)
+    Icombined = kronecker(unique(vcat(tci.Iset[b], extraouterIset)), tci.localdims[b])
+    Jcombined = kronecker(tci.localdims[b+1], unique(vcat(tci.Jset[b+1], extraouterJset)))
 
     @assert length(unique(length.(Icombined))) == 1
     @assert length(unique(length.(Jcombined))) == 1
@@ -542,8 +535,8 @@ function updatepivots!(
     elseif pivotsearch === :rook
         t1 = time_ns()
         _find_pivot(pivots, IJ)::Vector{Int} = unique(Int.(Iterators.filter(!isnothing, findfirst(isequal(i), IJ) for i in pivots)))
-        I0 = _find_pivot(tci.Iset[b+1], vcat(Icombined, extraIset))
-        J0 = _find_pivot(tci.Jset[b], vcat(Jcombined, extraJset))
+        I0 = _find_pivot(tci.Iset[b+1], Icombined)
+        J0 = _find_pivot(tci.Jset[b], Jcombined)
 
         for (pos, i) in enumerate(Icombined)
             if i[1:end-1] ∈ extraouterIset
@@ -605,7 +598,7 @@ function updatepivots!(
     end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
-    if length(extraIset) == 0 && length(extraJset) == 0 && length(extraouterIset) == 0 && length(extraouterJset) == 0
+    if length(extraouterIset) == 0 && length(extraouterJset) == 0
         setsitetensor!(tci, b, left(luci))
         setsitetensor!(tci, b + 1, right(luci))
     end
@@ -856,15 +849,15 @@ function sweep2site!(
 
     allpivots::Vector{MultiIndex} = vcat(globalpivots(tci), externalglobalpivots)
 
-    extraIset = MultiIndex[]
-    extraJset = MultiIndex[]
+    extraouterIset = MultiIndex[]
+    extraouterJset = MultiIndex[]
 
     for iter in iter1:iter1+niter-1
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
                 if !strictlynested
-                    extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
+                    extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
                 end
                 updatepivots!(
                     tci, bondindex, f, true;
@@ -873,14 +866,14 @@ function sweep2site!(
                     sweepdirection=:forward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraouterIset=extraIset,
-                    extraouterJset=extraJset,
+                    extraouterIset=extraouterIset,
+                    extraouterJset=extraouterJset,
                 )
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
                 if !strictlynested
-                    extraIset, extraJset = _project_globalpivots(allpivots, bondindex)
+                    extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
                 end
                 updatepivots!(
                     tci, bondindex, f, false;
@@ -889,8 +882,8 @@ function sweep2site!(
                     sweepdirection=:backward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraouterIset=extraIset,
-                    extraouterJset=extraJset,
+                    extraouterIset=extraouterIset,
+                    extraouterJset=extraouterJset,
                 )
             end
         end
