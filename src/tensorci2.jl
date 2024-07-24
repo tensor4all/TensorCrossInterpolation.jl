@@ -10,6 +10,8 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     localdims::Vector{Int}
 
     sitetensors::Vector{Array{ValueType,3}}
+    lpos::Int
+    rpos::Int
 
     "Error estimate for backtruncation of bonds."
     pivoterrors::Vector{Float64}
@@ -29,6 +31,8 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
             collect(localdims),                     # localdims
             [zeros(0, d, 0) for d in localdims],    # sitetensors
+            -1,                                     # lpos
+            -1,                                     # rpos
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors
             0.0,                                    # maxsamplevalue
@@ -69,6 +73,8 @@ function invalidatesitetensors!(tci::TensorCI2{T}) where {T}
     for b in 1:length(tci)
         tci.sitetensors[b] = zeros(T, 0, 0, 0)
     end
+    tci.lpos = -1
+    tci.rpos = -1
     nothing
 end
 
