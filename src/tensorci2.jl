@@ -431,7 +431,8 @@ function makecanonical!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int)
 ) where {F,ValueType}
-    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=false)
+    # The first half-sweep is performed exactly without compression.
+    sweep1site!(tci, f, :forward; reltol=0.0, abstol=0.0, maxbonddim=typemax(Int), updatetensors=false)
     sweep1site!(tci, f, :backward; reltol, abstol, maxbonddim, updatetensors=false)
     sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=true)
 end
