@@ -248,10 +248,12 @@ function addglobalpivots2sitesweep!(
             verbosity=verbosity
             )
 
-        newpivots = [p for p in pivots if abs(evaluate(tci, p) - f(p)) > abstol]
+        err_on_pivots =  [abs(evaluate(tci, p) - f(p)) for p in pivots]
+        newpivots = [p for (p, e) in zip(pivots, err_on_pivots) if e > abstol]
 
-        if length(newpivots) > 0 && verbosity > 0
-            @warn "Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain."
+        if length(newpivots) > 0
+            remaining_err = [e for e in err_on_pivots if e > abstol]
+            @warn "Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain. Tolerance is $(abstol). Remaing errors are $(remaining_err). Retrying..."
         end
 
         if length(newpivots) == 0 || Set(newpivots) == Set(pivots_)
@@ -526,8 +528,9 @@ function updatepivots!(
         luci
     elseif pivotsearch === :rook
         t1 = time_ns()
-        I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))::Vector{Int}
-        J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))::Vector{Int}
+        _find_pivot(pivots, IJ)::Vector{Int} = unique(Int.(Iterators.filter(!isnothing, findfirst(isequal(i), IJ) for i in pivots)))
+        I0 = _find_pivot(tci.Iset[b+1], vcat(Icombined, extraIset))
+        J0 = _find_pivot(tci.Jset[b], vcat(Jcombined, extraJset))
         Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
         t2 = time_ns()
         res = MatrixLUCI(
