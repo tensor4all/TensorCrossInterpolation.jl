@@ -351,8 +351,8 @@ function setsitetensor!(
         length(tci.Iset[b+1]), length(tci.Jset[b]))
     length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
 
-    #Tmat = transpose(transpose(rrlu(P)) \ transpose(Pi1))
-    Tmat = transpose(transpose(P) \ transpose(Pi1))
+    Tmat = transpose(transpose(rrlu(P)) \ transpose(Pi1))
+    #Tmat = transpose(transpose(P) \ transpose(Pi1))
     tci.sitetensors[b] = reshape(Tmat, length(tci.Iset[b]), tci.localdims[b], length(tci.Iset[b+1]))
     return tci.sitetensors[b]
 end
@@ -941,3 +941,49 @@ function searchglobalpivots(
     return [p for (_,p) in pivots]
 end
 
+
+function _restore_full_nesting!(tci::TensorCI2{V}) where {V}
+    #for b in 1:length(tci)-1
+        #@show b, length(tci.Iset[b+1]), length(tci.Jset[b])
+    #end
+    for b in reverse(2:length(tci.Iset))
+        for i in tci.Iset[b]
+            if !(i[1:end-1] ∈ tci.Iset[b-1])
+                push!(tci.Iset[b-1], i[1:end-1])
+            end
+        end
+        tci.Iset[b-1] = unique(tci.Iset[b-1])
+    end
+
+    for b in 1:length(tci.Jset)-1
+        for j in tci.Jset[b]
+            if !(j[2:end] ∈ tci.Jset[b+1])
+                push!(tci.Jset[b+1], j[2:end])
+            end
+        end
+        tci.Jset[b+1] = unique(tci.Jset[b+1])
+    end
+
+    #for b in 1:length(tci)-1
+        #@show b, length(tci.Iset[b+1]), length(tci.Jset[b])
+    #end
+    for b in 1:length(tci)-1
+        while length(tci.Iset[b+1]) > length(tci.Jset[b])
+            p = [rand(1:d) for d in tci.localdims[b+1:end]]
+            @assert length(p) ==  length(tci.Jset[b][1])
+            if !(p ∈ tci.Jset[b])
+                push!(tci.Jset[b], p)
+            end
+        end
+        while length(tci.Iset[b+1]) < length(tci.Jset[b])
+            p = [rand(1:d) for d in tci.localdims[1:b]]
+            @assert length(p) == length(tci.Iset[b+1][1])
+            if !(p ∈ tci.Iset[b+1])
+                push!(tci.Iset[b+1], p)
+            end
+        end
+    end
+    #for b in 1:length(tci)-1
+        #@show b, length(tci.Iset[b+1]), length(tci.Jset[b])
+    #end
+end
