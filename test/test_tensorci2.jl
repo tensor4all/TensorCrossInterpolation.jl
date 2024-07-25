@@ -312,7 +312,12 @@ import QuanticsGrids as QD
             ntry=pivotsearch == :full ? 1 : 10
         )
 
+        # Check that the function is interpolated correctly on the global pivots
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
+
+        # Check that the function is interpolated correctly on randomly chosen points
+        rindex_test = [rand(1:2, R) for _ in 1:100]
+        @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex_test]) .> abstol) == 0
     end
 
     @testset "insert_global_pivots" begin

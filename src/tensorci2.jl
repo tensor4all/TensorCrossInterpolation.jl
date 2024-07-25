@@ -18,8 +18,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     #"Maximum sample for error normalization."
     maxsamplevalue::Float64
 
-    Iset_history::Vector{Vector{Vector{MultiIndex}}}
-    Jset_history::Vector{Vector{Vector{MultiIndex}}}
 
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
@@ -34,8 +32,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors
             0.0,                                    # maxsamplevalue
-            Vector{Vector{MultiIndex}}[],           # Iset_history
-            Vector{Vector{MultiIndex}}[],           # Jset_history
         )
     end
 end
@@ -201,6 +197,18 @@ end
 
 
 """
+Extract a list of existing pivots from a TCI2 object.
+"""
+function globalpivots(tci::TensorCI2{ValueType})::Vector{MultiIndex} where {ValueType}
+    result = MultiIndex[]
+    for b in 1:length(tci)-1, (x, y) in zip(tci.Iset[b+1], tci.Jset[b])
+        push!(result, vcat(x, y))
+    end
+    return result
+end
+
+
+"""
 Add global pivots to index sets and perform a 2site sweep.
 Retry until all pivots are added or until `ntry` iterations are reached.
 """
@@ -226,20 +234,22 @@ function addglobalpivots2sitesweep!(
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
         abstol = tolerance * errornormalization
 
-        addglobalpivots!(tci, pivots_)
-
         sweep2site!(
             tci, f, 2;
             abstol=abstol,
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
             strictlynested=strictlynested,
-            verbosity=verbosity)
+            verbosity=verbosity,
+            externalglobalpivots=pivots_
+            )
 
-        newpivots = [p for p in pivots if abs(evaluate(tci, p) - f(p)) > abstol]
+        err_on_pivots =  [abs(evaluate(tci, p) - f(p)) for p in pivots]
+        newpivots = [p for (p, e) in zip(pivots, err_on_pivots) if e > abstol]
 
-        if verbosity > 0
-            println("Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain.")
+        if length(newpivots) > 0
+            remaining_err = [e for e in err_on_pivots if e > abstol]
+            @warn "Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain. Tolerance is $(abstol). Remaing errors are $(remaining_err). Retrying..."
         end
 
         if length(newpivots) == 0 || Set(newpivots) == Set(pivots_)
@@ -482,13 +492,23 @@ function updatepivots!(
     sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    extraIset::Vector{MultiIndex}=MultiIndex[],
-    extraJset::Vector{MultiIndex}=MultiIndex[],
+    extraouterIset::Vector{MultiIndex}=MultiIndex[],
+    extraouterJset::Vector{MultiIndex}=MultiIndex[],
 ) where {F,ValueType}
     invalidatesitetensors!(tci)
 
-    Icombined = union(kronecker(tci.Iset[b], tci.localdims[b]), extraIset)
-    Jcombined = union(kronecker(tci.localdims[b+1], tci.Jset[b+1]), extraJset)
+    if length(extraouterIset) > 0
+        only(unique(length.(extraouterIset))) == length(tci.Iset[b][1]) || error("Invalid extraouterIset")
+    end
+    if length(extraouterJset) > 0
+        only(unique(length.(extraouterJset))) == length(tci.Jset[b+1][1]) || error("Invalid extraouterJset")
+    end
+
+    Icombined = kronecker(unique(vcat(tci.Iset[b], extraouterIset)), tci.localdims[b])
+    Jcombined = kronecker(tci.localdims[b+1], unique(vcat(tci.Jset[b+1], extraouterJset)))
+
+    @assert length(unique(length.(Icombined))) == 1
+    @assert length(unique(length.(Jcombined))) == 1
 
     luci = if pivotsearch === :full
         t1 = time_ns()
@@ -515,8 +535,25 @@ function updatepivots!(
         luci
     elseif pivotsearch === :rook
         t1 = time_ns()
-        I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))::Vector{Int}
-        J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))::Vector{Int}
+        _find_pivot(pivots, IJ)::Vector{Int} = unique(Int.(Iterators.filter(!isnothing, findfirst(isequal(i), IJ) for i in pivots)))
+        I0 = _find_pivot(tci.Iset[b+1], Icombined)
+        J0 = _find_pivot(tci.Jset[b], Jcombined)
+
+        for (pos, i) in enumerate(Icombined)
+            if i[1:end-1] ∈ extraouterIset
+                push!(I0, pos)
+            end
+        end
+
+        for (pos, j) in enumerate(Jcombined)
+            if j[2:end] ∈ extraouterJset
+                push!(J0, pos)
+            end
+        end
+
+        I0 = unique(I0)
+        J0 = unique(J0)
+
         Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
         t2 = time_ns()
         res = MatrixLUCI(
@@ -562,7 +599,7 @@ function updatepivots!(
     end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
-    if length(extraIset) == 0 && length(extraJset) == 0
+    if length(extraouterIset) == 0 && length(extraouterJset) == 0
         setsitetensor!(tci, b, left(luci))
         setsitetensor!(tci, b + 1, right(luci))
     end
@@ -766,6 +803,28 @@ function optimize!(
     return ranks, errors ./ errornormalization
 end
 
+
+#function _project_globalpivots(globalpivots::Vector{MultiIndex}, bondindex::Int)
+    #return collect(Set(p[1:bondindex] for p in globalpivots)), collect(Set(p[bondindex+1:end] for p in globalpivots))
+#end
+function _project_globalpivots(globalpivots::Vector{MultiIndex}, bondindex::Int)
+    i = 
+    if bondindex > 1
+        collect(Set(p[1:bondindex-1] for p in globalpivots))
+    else
+        MultiIndex[]
+    end
+
+    j = 
+    if bondindex == length(first(globalpivots)) - 1
+        MultiIndex[]
+    else
+        collect(Set(p[bondindex+2:end] for p in globalpivots))
+    end
+
+    return i, j
+end
+
 """
 Perform 2site sweeps on a TCI2.
 """
@@ -778,27 +837,29 @@ function sweep2site!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     strictlynested::Bool=false,
-    fillsitetensors::Bool=true
+    fillsitetensors::Bool=true,
+    externalglobalpivots::Vector{MultiIndex}=MultiIndex[]
 ) where {ValueType}
     invalidatesitetensors!(tci)
 
+    if length(externalglobalpivots) > 0 && strictlynested
+        @warn "strictlynested=true is not compatible with externalglobalpivots"
+    end
+
     n = length(tci)
 
+    allpivots::Vector{MultiIndex} = vcat(globalpivots(tci), externalglobalpivots)
+
+    extraouterIset = MultiIndex[]
+    extraouterJset = MultiIndex[]
+
     for iter in iter1:iter1+niter-1
-
-        extraIset = [MultiIndex[] for _ in 1:n]
-        extraJset = [MultiIndex[] for _ in 1:n]
-        if !strictlynested && length(tci.Iset_history) > 0
-            extraIset = tci.Iset_history[end]
-            extraJset = tci.Jset_history[end]
-        end
-    
-        push!(tci.Iset_history, deepcopy(tci.Iset))
-        push!(tci.Jset_history, deepcopy(tci.Jset))
-
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
+                if !strictlynested
+                    extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
+                end
                 updatepivots!(
                     tci, bondindex, f, true;
                     abstol=abstol,
@@ -806,12 +867,15 @@ function sweep2site!(
                     sweepdirection=:forward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraIset=extraIset[bondindex+1],
-                    extraJset=extraJset[bondindex],
+                    extraouterIset=extraouterIset,
+                    extraouterJset=extraouterJset,
                 )
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
+                if !strictlynested
+                    extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
+                end
                 updatepivots!(
                     tci, bondindex, f, false;
                     abstol=abstol,
@@ -819,8 +883,8 @@ function sweep2site!(
                     sweepdirection=:backward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraIset=extraIset[bondindex+1],
-                    extraJset=extraJset[bondindex],
+                    extraouterIset=extraouterIset,
+                    extraouterJset=extraouterJset,
                 )
             end
         end
