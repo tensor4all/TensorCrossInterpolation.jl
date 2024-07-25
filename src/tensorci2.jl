@@ -943,9 +943,9 @@ end
 
 
 function _restore_full_nesting!(tci::TensorCI2{V}) where {V}
-    #for b in 1:length(tci)-1
-        #@show b, length(tci.Iset[b+1]), length(tci.Jset[b])
-    #end
+    for b in 1:length(tci)-1
+        @show b, length(tci.Iset[b+1]), length(tci.Jset[b])
+    end
     for b in reverse(2:length(tci.Iset))
         for i in tci.Iset[b]
             if !(i[1:end-1] ∈ tci.Iset[b-1])
@@ -969,21 +969,23 @@ function _restore_full_nesting!(tci::TensorCI2{V}) where {V}
     #end
     for b in 1:length(tci)-1
         while length(tci.Iset[b+1]) > length(tci.Jset[b])
-            p = [rand(1:d) for d in tci.localdims[b+1:end]]
+            #p = [rand(1:d) for d in tci.localdims[b+1:end]]
+            p = vcat(rand(1:tci.localdims[b+1]), rand(tci.Jset[b+1]))
             @assert length(p) ==  length(tci.Jset[b][1])
             if !(p ∈ tci.Jset[b])
                 push!(tci.Jset[b], p)
             end
         end
         while length(tci.Iset[b+1]) < length(tci.Jset[b])
-            p = [rand(1:d) for d in tci.localdims[1:b]]
+            #p = [rand(1:d) for d in tci.localdims[1:b]]
+            p = vcat(rand(tci.Iset[b]), rand(1:tci.localdims[b]))
             @assert length(p) == length(tci.Iset[b+1][1])
             if !(p ∈ tci.Iset[b+1])
                 push!(tci.Iset[b+1], p)
             end
         end
     end
-    #for b in 1:length(tci)-1
-        #@show b, length(tci.Iset[b+1]), length(tci.Jset[b])
-    #end
+    for b in 1:length(tci)-1
+        @show b, length(tci.Iset[b+1]), length(tci.Jset[b])
+    end
 end
