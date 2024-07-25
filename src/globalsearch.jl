@@ -94,6 +94,7 @@ end
 
 function fillsitetensors!(
     tci::TensorCI2{ValueType}, f) where {ValueType}
+    @show "fillsitetensors!"
     for b in 1:length(tci)
        setsitetensor!(tci, f, b)
     end

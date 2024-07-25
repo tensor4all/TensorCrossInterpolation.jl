@@ -176,6 +176,17 @@ function addglobalpivots!(
     nothing
 end
 
+"""
+Extract a list of existing pivots from a TCI2 object.
+"""
+function globalpivots(tci::TensorCI2{ValueType})::Vector{MultiIndex} where {ValueType}
+    result = MultiIndex[]
+    for b in 1:length(tci)-1, (x, y) in zip(tci.Iset[b+1], tci.Jset[b])
+        push!(result, vcat(x, y))
+    end
+    return result
+end
+
 
 """
 Add global pivots to index sets and perform a 1site sweep
@@ -349,11 +360,12 @@ function setsitetensor!(
     P = reshape(
         filltensor(ValueType, f, tci.localdims, tci.Iset[b+1], tci.Jset[b], Val(0)),
         length(tci.Iset[b+1]), length(tci.Jset[b]))
-    length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
+    #length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
 
-    Tmat = transpose(transpose(rrlu(P)) \ transpose(Pi1))
-    #Tmat = transpose(transpose(P) \ transpose(Pi1))
+    #Tmat = transpose(transpose(rrlu(P)) \ transpose(Pi1))
+    Tmat = transpose(transpose(P) \ transpose(Pi1))
     tci.sitetensors[b] = reshape(Tmat, length(tci.Iset[b]), tci.localdims[b], length(tci.Iset[b+1]))
+    @show size(tci.sitetensors[b])
     return tci.sitetensors[b]
 end
 
@@ -942,31 +954,24 @@ function searchglobalpivots(
 end
 
 
-function _restore_full_nesting!(tci::TensorCI2{V}) where {V}
+function _restore_full_nesting!(tci::TensorCI2{V}, f) where {V}
     for b in 1:length(tci)-1
         @show b, length(tci.Iset[b+1]), length(tci.Jset[b])
     end
-    for b in reverse(2:length(tci.Iset))
-        for i in tci.Iset[b]
-            if !(i[1:end-1] ∈ tci.Iset[b-1])
-                push!(tci.Iset[b-1], i[1:end-1])
-            end
-        end
-        tci.Iset[b-1] = unique(tci.Iset[b-1])
-    end
 
-    for b in 1:length(tci.Jset)-1
-        for j in tci.Jset[b]
-            if !(j[2:end] ∈ tci.Jset[b+1])
-                push!(tci.Jset[b+1], j[2:end])
-            end
-        end
-        tci.Jset[b+1] = unique(tci.Jset[b+1])
+    p = globalpivots(tci)
+    empty!.(tci.Iset)
+    empty!.(tci.Jset)
+    addglobalpivots!(tci, p)
+
+    for b in 1:length(tci)-1
+        @show b, length(tci.Iset[b+1]), length(tci.Jset[b])
     end
 
     #for b in 1:length(tci)-1
         #@show b, length(tci.Iset[b+1]), length(tci.Jset[b])
     #end
+    #==
     for b in 1:length(tci)-1
         while length(tci.Iset[b+1]) > length(tci.Jset[b])
             #p = [rand(1:d) for d in tci.localdims[b+1:end]]
@@ -988,4 +993,6 @@ function _restore_full_nesting!(tci::TensorCI2{V}) where {V}
     for b in 1:length(tci)-1
         @show b, length(tci.Iset[b+1]), length(tci.Jset[b])
     end
+    ==#
+    fillsitetensors!(tci, f)
 end
