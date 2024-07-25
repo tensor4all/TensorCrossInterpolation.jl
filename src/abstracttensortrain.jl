@@ -269,3 +269,25 @@ Subtraction of two tensor trains. If `c = a - b`, then `c(v) ≈ a(v) - b(v)` at
 function Base.:-(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     return subtract(lhs, rhs)
 end
+
+"""
+Squared Frobenius norm of a tensor train.
+"""
+function LA.norm2(tt::AbstractTensorTrain{V})::Float64 where {V}
+    function _f(n)::Matrix{V}
+        t = sitetensor(tt, n)
+        t3 = reshape(t, size(t)[1], :, size(t)[end])
+        # (lc, s, rc) * (l, s, r) => (lc, rc, l, r)
+        tct = _contract(conj.(t3), t3, (2,), (2,))
+        tct = permutedims(tct, (1, 3, 2, 4))
+        return reshape(tct, size(tct, 1) * size(tct, 2), size(tct, 3) * size(tct, 4))
+    end
+    return real(only(reduce(*, (_f(n) for n in 1:length(tt)))))
+end
+
+"""
+Frobenius norm of a tensor train.
+"""
+function LA.norm(tt::AbstractTensorTrain{V})::Float64 where {V}
+    sqrt(LA.norm2(tt))
+end
