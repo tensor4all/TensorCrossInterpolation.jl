@@ -513,6 +513,8 @@ function updatepivots(
     @assert length(unique(length.(Icombined))) == 1
     @assert length(unique(length.(Jcombined))) == 1
 
+    maxsamplevalue = tci.maxsamplevalue
+
     luci = if pivotsearch === :full
         t1 = time_ns()
         Pi = reshape(
@@ -522,7 +524,8 @@ function updatepivots(
         )
         t2 = time_ns()
 
-        updatemaxsample!(tci, Pi)
+        #updatemaxsample!(tci, Pi)
+        maxsamplevalue = max(maxsamplevalue, maximum(abs, Pi))
         luci = MatrixLUCI(
             Pi,
             reltol=reltol,
@@ -570,7 +573,8 @@ function updatepivots(
             pivotsearch=:rook,
             usebatcheval=true
         )
-        updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
+        #updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
+        maxsamplevalue = max(maxsamplevalue, maximum(abs, Pi))
 
         t3 = time_ns()
 
@@ -602,7 +606,7 @@ function updatepivots(
     end
     #tci.Iset[b+1] = Icombined[rowindices(luci)]
     #tci.Jset[b] = Jcombined[colindices(luci)]
-    return Icombined[rowindices(luci)], Jcombined[colindices(luci)], pivoterrors(luci)
+    return Icombined[rowindices(luci)], Jcombined[colindices(luci)], pivoterrors(luci), maxsamplevalue
     #if length(extraouterIset) == 0 && length(extraouterJset) == 0
         #setsitetensor!(tci, b, left(luci))
         #setsitetensor!(tci, b + 1, right(luci))
@@ -829,43 +833,45 @@ function sweep2site!(
     n = length(tci)
 
     #allpivots::Vector{MultiIndex} = vcat(globalpivots(tci), externalglobalpivots)
-    allpivots = globalpivots(tci)
+    #allpivots = globalpivots(tci)
 
-    extraouterIset = MultiIndex[]
-    extraouterJset = MultiIndex[]
+    #extraouterIset = MultiIndex[]
+    #extraouterJset = MultiIndex[]
 
     for iter in iter1:iter1+niter-1
         flushpivoterror!(tci)
         globalpivots_new = MultiIndex[]
         if forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
-                extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
-                Iset, Jset, errors = updatepivots(
+                #extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
+                Iset, Jset, errors, maxsamplevalue = updatepivots(
                     tci, bondindex, f, true;
                     abstol=abstol,
                     maxbonddim=maxbonddim,
                     sweepdirection=:forward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraouterIset=extraouterIset,
-                    extraouterJset=extraouterJset,
+                    #extraouterIset=extraouterIset,
+                    #extraouterJset=extraouterJset,
                 )
+                updatemaxsample!(tci, [maxsamplevalue])
                 updateerrors!(tci, bondindex, errors)
                 globalpivots!(globalpivots_new, Iset, Jset)
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
-                extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
-                Iset, Jset, errors = updatepivots(
+                #extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
+                Iset, Jset, errors, maxsamplevalue = updatepivots(
                     tci, bondindex, f, false;
                     abstol=abstol,
                     maxbonddim=maxbonddim,
                     sweepdirection=:backward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
-                    extraouterIset=extraouterIset,
-                    extraouterJset=extraouterJset,
+                    #extraouterIset=extraouterIset,
+                    #extraouterJset=extraouterJset,
                 )
+                updatemaxsample!(tci, [maxsamplevalue])
                 updateerrors!(tci, bondindex, errors)
                 globalpivots!(globalpivots_new, Iset, Jset)
             end

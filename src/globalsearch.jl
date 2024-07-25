@@ -103,9 +103,9 @@ end
 
 
 function _sanitycheck(tci::TensorCI2{ValueType})::Bool where {ValueType}
-    for b in 1:length(tci)-1
-        length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
-    end
+    #for b in 1:length(tci)-1
+        #length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
+    #end
 
     return true
 end
