@@ -356,7 +356,6 @@ function updatepivots(
         end
         luci
     elseif pivotsearch === :rook
-        error("Not implemented yet. [H. Shinaoka]")
         t1 = time_ns()
         _find_pivot(pivots, IJ)::Vector{Int} = unique(Int.(Iterators.filter(!isnothing, findfirst(isequal(i), IJ) for i in pivots)))
         I0 = _find_pivot(Iset(tci, b+1), Icombined)
@@ -378,7 +377,7 @@ function updatepivots(
             pivotsearch=:rook,
             usebatcheval=true
         )
-        maxsamplevalue = max(maxsamplevalue, maximum(abs, Pi))
+        maxsamplevalue = max(maxsamplevalue, Pif.maxsamplevalue)
 
         t3 = time_ns()
 
