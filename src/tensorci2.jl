@@ -140,7 +140,7 @@ end
 
 
 function globalpivots!(p::Vector{MultiIndex}, Iset, Jset)::Vector{MultiIndex}
-    for (x, y) in zip(Iset, Jset)
+    for x in Iset, y in Jset
         pushunique!(p, vcat(x, y))
     end
     return p
@@ -230,11 +230,17 @@ end
 #end
 
 function sitetensors(
-    tci::TensorCI2{ValueType}, f
+    tci::TensorCI2{ValueType}, f; orthocenter = length(tci)
 )::Vector{Array{ValueType,3}} where {ValueType}
-    tmp1 = [Atensor(tci,f, b) for b in 1:length(tci)-1]
-    tmp2 = Ttensor(tci, f, length(tci))
-    return [tmp1..., tmp2]
+    tensors = Array{ValueType,3}[]
+    for b in 1:orthocenter-1
+        push!(tensors, Atensor(tci,f, b))
+    end
+    push!(tensors, Ttensor(tci, f, orthocenter))
+    for b in orthocenter+1:length(tci)
+        push!(tensors, Btensor(tci,f, b))
+    end
+    return tensors
 end
 
 
@@ -310,11 +316,9 @@ function Atensor(
     Iset_b = Iset(tci, b)
     Jset_b = Jset(tci, b)
 
-    Is = kronecker(Iset_b, tci.localdims[b])
-    Js = Jset_b
     Pi1 = reshape(
         filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1)),
-        length(Is), length(Js))
+        length(Iset_b) * tci.localdims[b], length(Jset_b))
 
     Iset_bp1 = Iset(tci, b+1)
     P = reshape(
@@ -325,6 +329,28 @@ function Atensor(
     Tmat = transpose(transpose(P) \ transpose(Pi1))
     return reshape(Tmat, length(Iset_b), tci.localdims[b], length(Iset_bp1))
 end
+
+
+function Btensor(
+    tci::TensorCI2{ValueType}, f, b::Int
+)::Array{ValueType,3} where {ValueType}
+    Iset_b = Iset(tci, b)
+    Jset_b = Jset(tci, b)
+    Jset_bm1 = Jset(tci, b-1)
+
+    Pi1 = reshape(
+        filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1)),
+        length(Iset_b), tci.localdims[b] * length(Jset_b))
+
+    P = reshape(
+        filltensor(ValueType, f, tci.localdims, Iset_b, Jset_bm1, Val(0)),
+        length(Iset_b), length(Jset_bm1))
+
+    # P^{-1} T
+    Tmat = P \ Pi1
+    return reshape(Tmat, length(Jset_bm1), tci.localdims[b], length(Jset_b))
+end
+
 
 
 
