@@ -141,9 +141,37 @@ end
 
 function globalpivots!(p::Vector{MultiIndex}, Iset, Jset)::Vector{MultiIndex}
     for x in Iset, y in Jset
+    #for (x, y) in zip(Iset, Jset)
         pushunique!(p, vcat(x, y))
     end
     return p
+end
+
+function reducedglobalpivots(globalpivots::Vector{MultiIndex})::Vector{MultiIndex}
+    res = MultiIndex[]
+    L = length(first(globalpivots))
+    for i in 1:L-1
+        Iset = collect(Set(p[1:i] for p in globalpivots))
+        Jset = collect(Set(p[i+1:end] for p in globalpivots))
+        for (x, y) in zip(Iset, Jset)
+            pushunique!(res, vcat(x, y))
+        end 
+    end
+    return res
+end
+
+
+function fullglobalpivots(globalpivots::Vector{MultiIndex})::Vector{MultiIndex}
+    res = MultiIndex[]
+    L = length(first(globalpivots))
+    for i in 1:L-1
+        Iset = collect(Set(p[1:i] for p in globalpivots))
+        Jset = collect(Set(p[i+1:end] for p in globalpivots))
+        for x in Iset, y in Jset
+            pushunique!(res, vcat(x, y))
+        end 
+    end
+    return res
 end
 
 
@@ -230,7 +258,7 @@ end
 #end
 
 function sitetensors(
-    tci::TensorCI2{ValueType}, f; orthocenter = length(tci)
+    tci::TensorCI2{ValueType}, f; orthocenter = length(tci) ÷ 2
 )::Vector{Array{ValueType,3}} where {ValueType}
     tensors = Array{ValueType,3}[]
     for b in 1:orthocenter-1
@@ -726,9 +754,12 @@ function sweep2site!(
                     #extraouterIset=extraouterIset,
                     #extraouterJset=extraouterJset,
                 )
+                #@show bondindex, length(Iset), length(Jset)
                 updatemaxsample!(tci, [maxsamplevalue])
                 updateerrors!(tci, bondindex, errors)
+                #@show length(globalpivots_new)
                 globalpivots!(globalpivots_new, Iset, Jset)
+                #@show length(globalpivots_new)
             end
         else # backward sweep
             for bondindex in (n-1):-1:1
@@ -747,7 +778,9 @@ function sweep2site!(
                 globalpivots!(globalpivots_new, Iset, Jset)
             end
         end
+        #@show length(globalpivots_new)
         replaceglobalpivots!(tci, globalpivots_new)
+        #@show length(tci.globalpivots)
     end
 
     nothing
@@ -816,5 +849,7 @@ end
 
 
 function replaceglobalpivots!(tci::TensorCI2{V}, p::AbstractVector{MultiIndex}) where {V}
-    addglobalpivots!(tci, p)
+    tci.globalpivots = deepcopy(p)
+    #empty!(tci.globalpivots)
+    #addglobalpivots!(tci, deepcopy(p))
 end
