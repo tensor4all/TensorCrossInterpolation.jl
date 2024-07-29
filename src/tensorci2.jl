@@ -139,12 +139,27 @@ function globalpivots(tci::TensorCI2{ValueType})::Vector{MultiIndex} where {Valu
 end
 
 
-function globalpivots!(p::Vector{MultiIndex}, Iset, Jset)::Vector{MultiIndex}
-    for x in Iset, y in Jset
-    #for (x, y) in zip(Iset, Jset)
-        pushunique!(p, vcat(x, y))
+function globalpivots(Isets, Jsets, localdims)::Vector{MultiIndex}
+    L = length(Isets)
+    p = Set{MultiIndex}()
+
+    # Pivot matrices
+    for bondindex in 1:L-1
+        #for x in Isets[bondindex+1], y in Jsets[bondindex]
+        for (x, y) in zip(Isets[bondindex+1], Jsets[bondindex])
+            push!(p, vcat(x, y))
+        end
     end
-    return p
+
+    # T tensors
+    #==
+    for l in 1:L
+        for x in Isets[l], y in Jsets[l], m in 1:localdims[l]
+            push!(p, vcat(x, m, y))
+        end
+    end
+    ==#
+    return collect(p)
 end
 
 function reducedglobalpivots(globalpivots::Vector{MultiIndex})::Vector{MultiIndex}
@@ -665,7 +680,7 @@ function optimize!(
         end
 
         sweep2site!(
-            tci, f, 2;
+            tci, f, 1;
             iter1=1,
             abstol=abstol,
             maxbonddim=maxbonddim,
@@ -739,48 +754,34 @@ function sweep2site!(
 ) where {ValueType}
     n = length(tci)
 
-    for iter in iter1:iter1+niter-1
+    for _ in iter1:iter1+niter-1
         flushpivoterror!(tci)
-        globalpivots_new = MultiIndex[]
-        if forwardsweep(sweepstrategy, iter) # forward sweep
-            for bondindex in 1:n-1
-                Iset, Jset, errors, maxsamplevalue = updatepivots(
-                    tci, bondindex, f, true;
-                    abstol=abstol,
-                    maxbonddim=maxbonddim,
-                    sweepdirection=:forward,
-                    pivotsearch=pivotsearch,
-                    verbosity=verbosity,
-                    #extraouterIset=extraouterIset,
-                    #extraouterJset=extraouterJset,
-                )
-                #@show bondindex, length(Iset), length(Jset)
-                updatemaxsample!(tci, [maxsamplevalue])
-                updateerrors!(tci, bondindex, errors)
-                #@show length(globalpivots_new)
-                globalpivots!(globalpivots_new, Iset, Jset)
-                #@show length(globalpivots_new)
-            end
-        else # backward sweep
-            for bondindex in (n-1):-1:1
-                Iset, Jset, errors, maxsamplevalue = updatepivots(
-                    tci, bondindex, f, false;
-                    abstol=abstol,
-                    maxbonddim=maxbonddim,
-                    sweepdirection=:backward,
-                    pivotsearch=pivotsearch,
-                    verbosity=verbosity,
-                    #extraouterIset=extraouterIset,
-                    #extraouterJset=extraouterJset,
-                )
-                updatemaxsample!(tci, [maxsamplevalue])
-                updateerrors!(tci, bondindex, errors)
-                globalpivots!(globalpivots_new, Iset, Jset)
-            end
+        Isets = Vector{Vector{MultiIndex}}(undef, length(tci))
+        Isets[1] = MultiIndex[]
+        Jsets = Vector{Vector{MultiIndex}}(undef, length(tci))
+        Jsets[end] = MultiIndex[]
+        for bondindex in 1:n-1
+            Iset, Jset, errors, maxsamplevalue = updatepivots(
+                tci, bondindex, f, true;
+                abstol=abstol,
+                maxbonddim=maxbonddim,
+                sweepdirection=:forward,
+                pivotsearch=pivotsearch,
+                verbosity=verbosity,
+            )
+            @show bondindex, length(Iset)
+            Isets[bondindex+1] = Iset
+            Jsets[bondindex] = Jset
+            updatemaxsample!(tci, [maxsamplevalue])
+            updateerrors!(tci, bondindex, errors)
         end
-        #@show length(globalpivots_new)
-        replaceglobalpivots!(tci, globalpivots_new)
-        #@show length(tci.globalpivots)
+
+        #globalpivots_new = MultiIndex[]
+        #for bondindex in 1:n-1
+            #globalpivots!(globalpivots_new, Isets[bondindex+1], Jsets[bondindex])
+        #end
+
+        replaceglobalpivots!(tci, globalpivots(Isets, Jsets, tci.localdims))
     end
 
     nothing
