@@ -241,7 +241,7 @@ function sitetensors(
     Jset_ = [Jset(tci, b) for b in 1:length(tci)]
 
     @show length.(Iset_), length.(Jset_)
-    Iset_, Jset_ = _restore_full_nesting(Iset_, Jset_)
+    Iset_, Jset_ = _restore_full_nesting2(Iset_, Jset_)
     @show length.(Iset_), length.(Jset_)
     printnestinginfo(Iset_, Jset_)
 
@@ -766,6 +766,16 @@ function _restore_full_nesting(Iset, Jset)
         Jset[b+1] = unique(Jset[b+1])
     end
 
+    return Iset, Jset
+end
+
+
+function _restore_full_nesting2(Iset, Jset)
+    globalpivots =  _globalpivots(Iset, Jset)
+    for bondindex in 1:length(Iset)-1
+        Iset[bondindex+1] = unique(x[1:bondindex] for x in globalpivots)
+        Jset[bondindex] = unique(x[bondindex+1:end] for x in globalpivots)
+    end
     return Iset, Jset
 end
 
