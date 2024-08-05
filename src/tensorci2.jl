@@ -5,7 +5,8 @@
 Type that represents tensor cross interpolations created using the TCI2 algorithm. Users may want to create these using [`crossinterpolate2`](@ref) rather than calling a constructor directly.
 """
 mutable struct TensorCI2{ValueType}
-    globalpivots::Vector{MultiIndex}
+    Iset::Vector{Vector{MultiIndex}}
+    Jset::Vector{Vector{MultiIndex}}
     localdims::Vector{Int}
 
     "Error estimate for backtruncation of bonds."
@@ -20,7 +21,8 @@ mutable struct TensorCI2{ValueType}
     ) where {ValueType,N}
         length(localdims) > 1 || error("localdims should have at least 2 elements!")
         new{ValueType}(
-            MultiIndex[],                           # globalpivots
+            [Vector{MultiIndex}() for _ in 1:length(localdims)],    # Iset
+            [Vector{MultiIndex}() for _ in 1:length(localdims)],    # Jset
             collect(localdims),                     # localdims
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors
@@ -31,7 +33,11 @@ end
 
 Base.length(tci::TensorCI2) = length(tci.localdims)
 
-rank(tci::TensorCI2) = length(tci.globalpivots)
+function linkdims(tci::TensorCI2{T})::Vector{Int} where {T}
+    return [length(tci.Iset[b+1]) for b in 1:length(tci)-1]
+end
+
+rank(tci::TensorCI2)::Int = maximum(linkdims(tci))
 
 function TensorCI2{ValueType}(
     func::F,
@@ -46,33 +52,12 @@ function TensorCI2{ValueType}(
 end
 
 function Iset(tci::TensorCI2{T}, i::Int)::Vector{MultiIndex} where {T}
-    return collect(Set(p[1:i-1] for p in tci.globalpivots))
+    return tci.Iset[i]
 end
 
 function Jset(tci::TensorCI2{T}, i::Int)::Vector{MultiIndex} where {T}
-    return collect(Set(p[i+1:end] for p in tci.globalpivots))
+    return tci.Jset[i]
 end
-
-function linkdims(tci::TensorCI2{T})::Vector{Int} where {T}
-    return [min(length(Iset(tci, b+1)), length(Jset(tci, b))) for b in 1:length(tci)-1]
-end
-
-"""
-Invalidate the site tensor at bond `b`.
-"""
-#function invalidatesitetensors!(tci::TensorCI2{T}) where {T}
-    #for b in 1:length(tci)
-        #tci.sitetensors[b] = zeros(T, 0, 0, 0)
-    #end
-    #nothing
-#end
-
-"""
-Return if site tensors are available
-"""
-#function issitetensorsavailable(tci::TensorCI2{T}) where {T}
-    #return all(length(tci.sitetensors[b]) != 0 for b in 1:length(tci))
-#end
 
 
 function updatebonderror!(
@@ -126,67 +111,33 @@ function addglobalpivots!(
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
     end
 
-    tci.globalpivots = unique(vcat(tci.globalpivots, pivots))
+    for pivot in pivots
+        for b in 1:length(tci)
+            pushunique!(tci.Iset[b], pivot[1:b-1])
+            pushunique!(tci.Jset[b], pivot[b+1:end])
+        end
+    end
 
     nothing
 end
+
 
 """
 Extract a list of existing pivots from a TCI2 object.
 """
 function globalpivots(tci::TensorCI2{ValueType})::Vector{MultiIndex} where {ValueType}
-    return tci.globalpivots
+    return _globalpivots(tci.Iset, tci.Jset)
 end
 
-
-function globalpivots(Isets, Jsets, localdims)::Vector{MultiIndex}
+function _globalpivots(Isets, Jsets)::Vector{MultiIndex}
     L = length(Isets)
     p = Set{MultiIndex}()
-
-    # Pivot matrices
     for bondindex in 1:L-1
-        #for x in Isets[bondindex+1], y in Jsets[bondindex]
         for (x, y) in zip(Isets[bondindex+1], Jsets[bondindex])
             push!(p, vcat(x, y))
         end
     end
-
-    # T tensors
-    #==
-    for l in 1:L
-        for x in Isets[l], y in Jsets[l], m in 1:localdims[l]
-            push!(p, vcat(x, m, y))
-        end
-    end
-    ==#
     return collect(p)
-end
-
-function reducedglobalpivots(globalpivots::Vector{MultiIndex})::Vector{MultiIndex}
-    res = MultiIndex[]
-    L = length(first(globalpivots))
-    for i in 1:L-1
-        Iset = collect(Set(p[1:i] for p in globalpivots))
-        Jset = collect(Set(p[i+1:end] for p in globalpivots))
-        for (x, y) in zip(Iset, Jset)
-            pushunique!(res, vcat(x, y))
-        end 
-    end
-    return res
-end
-
-
-function fullglobalpivots(globalpivots::Vector{MultiIndex})::Vector{MultiIndex}
-    res = MultiIndex[]
-    L = length(first(globalpivots))
-    for i in 1:L-1
-        Iset = collect(Set(p[1:i] for p in globalpivots))
-        Jset = collect(Set(p[i+1:end] for p in globalpivots))
-        for x in Iset, y in Jset
-            pushunique!(res, vcat(x, y))
-        end 
-    end
-    return res
 end
 
 
@@ -272,27 +223,32 @@ end
     #)
 #end
 
+#function sitetensors(
+    #tci::TensorCI2{ValueType}, f; orthocenter = length(tci) ÷ 2
+#)::Vector{Array{ValueType,3}} where {ValueType}
+    #tensors = Array{ValueType,3}[]
+    #for b in 1:orthocenter-1
+        #push!(tensors, Atensor(tci,f, b))
+    ##end
+    #push!(tensors, Ttensor(tci, f, orthocenter))
+    #for b in orthocenter+1:length(tci)
+        ##push!(tensors, Btensor(tci,f, b))
+    #end
+    #return tensors
+#end
+
+
+#function TensorTrain(tci::TensorCI2{ValueType}, f; reltol=1e-14, abstol=0.0) where {ValueType}
+    #return TensorTrain{ValueType,3}(
+        #sitetensors(tci, f; reltol, abstol)
+    #)
+#end
+
 function sitetensors(
-    tci::TensorCI2{ValueType}, f; orthocenter = length(tci) ÷ 2
-)::Vector{Array{ValueType,3}} where {ValueType}
-    tensors = Array{ValueType,3}[]
-    for b in 1:orthocenter-1
-        push!(tensors, Atensor(tci,f, b))
-    end
-    push!(tensors, Ttensor(tci, f, orthocenter))
-    for b in orthocenter+1:length(tci)
-        push!(tensors, Btensor(tci,f, b))
-    end
-    return tensors
-end
-
-
-function sitetensors_site0update(
     tci::TensorCI2{ValueType}, f;
     reltol=1e-14,
     abstol=0.0
 )::Vector{Array{ValueType,3}} where {ValueType}
-
     # site0 update
     Iset_ = [Iset(tci, b) for b in 1:length(tci)]
     Jset_ = [Jset(tci, b) for b in 1:length(tci)]
@@ -394,9 +350,7 @@ function Btensor(
     return reshape(Tmat, length(Jset_bm1), tci.localdims[b], length(Jset_b))
 end
 
-
-
-
+#==
 function setsitetensor!(
     tci::TensorCI2{ValueType}, f, b::Int; leftorthogonal=true
 ) where {ValueType}
@@ -428,6 +382,7 @@ function setsitetensor!(
     tci.sitetensors[b] = reshape(Tmat, length(Iset_b), tci.localdims[b], length(Iset_bp1))
     return tci.sitetensors[b]
 end
+==#
 
 
 function updatemaxsample!(tci::TensorCI2{V}, samples::Array{V}) where {V}
@@ -479,12 +434,12 @@ function updatepivots(
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
-    verbosity::Int=0
+    verbosity::Int=0,
+    extraouterIset::Vector{MultiIndex}=MultiIndex[],
+    extraouterJset::Vector{MultiIndex}=MultiIndex[],
 ) where {F,ValueType}
-    Iset_b = Iset(tci, b)
-    Jset_bp1 = Jset(tci, b+1)
-    Icombined = kronecker(Iset_b, tci.localdims[b])
-    Jcombined = kronecker(tci.localdims[b+1], Jset_bp1)
+    Icombined = kronecker(unique(vcat(tci.Iset[b], extraouterIset)), tci.localdims[b])
+    Jcombined = kronecker(tci.localdims[b+1], unique(vcat(tci.Jset[b+1], extraouterJset)))
 
     @assert length(unique(length.(Icombined))) == 1
     @assert length(unique(length.(Jcombined))) == 1
@@ -751,16 +706,20 @@ function sweep2site!(
     sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
+    externalglobalpivots::Vector{MultiIndex}=MultiIndex[]
 ) where {ValueType}
     n = length(tci)
 
+    allpivots::Vector{MultiIndex} = vcat(globalpivots(tci), externalglobalpivots)
+
     for _ in iter1:iter1+niter-1
         flushpivoterror!(tci)
-        Isets = Vector{Vector{MultiIndex}}(undef, length(tci))
-        Isets[1] = MultiIndex[]
-        Jsets = Vector{Vector{MultiIndex}}(undef, length(tci))
-        Jsets[end] = MultiIndex[]
+        #Isets = Vector{Vector{MultiIndex}}(undef, length(tci))
+        #Isets[1] = MultiIndex[]
+        #Jsets = Vector{Vector{MultiIndex}}(undef, length(tci))
+        #Jsets[end] = MultiIndex[]
         for bondindex in 1:n-1
+            extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
             Iset, Jset, errors, maxsamplevalue = updatepivots(
                 tci, bondindex, f, true;
                 abstol=abstol,
@@ -768,10 +727,11 @@ function sweep2site!(
                 sweepdirection=:forward,
                 pivotsearch=pivotsearch,
                 verbosity=verbosity,
+                extraouterIset=extraouterIset,
+                extraouterJset=extraouterJset,
             )
-            @show bondindex, length(Iset)
-            Isets[bondindex+1] = Iset
-            Jsets[bondindex] = Jset
+            tci.Iset[bondindex+1] = Iset
+            tci.Jset[bondindex] = Jset
             updatemaxsample!(tci, [maxsamplevalue])
             updateerrors!(tci, bondindex, errors)
         end
@@ -781,7 +741,7 @@ function sweep2site!(
             #globalpivots!(globalpivots_new, Isets[bondindex+1], Jsets[bondindex])
         #end
 
-        replaceglobalpivots!(tci, globalpivots(Isets, Jsets, tci.localdims))
+        #replaceglobalpivots!(tci, globalpivots(Isets, Jsets, tci.localdims))
     end
 
     nothing
@@ -853,4 +813,23 @@ function replaceglobalpivots!(tci::TensorCI2{V}, p::AbstractVector{MultiIndex}) 
     tci.globalpivots = deepcopy(p)
     #empty!(tci.globalpivots)
     #addglobalpivots!(tci, deepcopy(p))
+end
+
+
+function _project_globalpivots(globalpivots::Vector{MultiIndex}, bondindex::Int)
+    i = 
+    if bondindex > 1
+        collect(Set(p[1:bondindex-1] for p in globalpivots))
+    else
+        MultiIndex[]
+    end
+
+    j = 
+    if bondindex == length(first(globalpivots)) - 1
+        MultiIndex[]
+    else
+        collect(Set(p[bondindex+2:end] for p in globalpivots))
+    end
+
+    return i, j
 end
