@@ -153,24 +153,42 @@ function addglobalpivots2sitesweep!(
     normalizeerror::Bool=true,
     maxbonddim=typemax(Int),
     pivotsearch::Symbol=:full,
-    verbosity::Int=0
-)::Nothing where {F,ValueType}
+    verbosity::Int=0,
+    ntry::Int=10,
+)::Int where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
     end
 
-    errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-    abstol = tolerance * errornormalization
+    pivots_ = pivots
 
-    addglobalpivots!(tci, pivots)
-    sweep2site!(
-        tci, f, 2;
-        abstol=abstol,
-        maxbonddim=maxbonddim,
-        pivotsearch=pivotsearch,
-        verbosity=verbosity
-        )
-    nothing
+    for _ in 1:ntry
+        errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+        abstol = tolerance * errornormalization
+
+        addglobalpivots!(tci, pivots_)
+
+        sweep2site!(
+            tci, f, 2;
+            abstol=abstol,
+            maxbonddim=maxbonddim,
+            pivotsearch=pivotsearch,
+            verbosity=verbosity)
+
+        tt = TensorTrain(sitetensors(tci, f))
+        newpivots = [p for p in pivots if abs(evaluate(tt, p) - f(p)) > abstol]
+
+        if verbosity > 0
+            println("Trying to add $(length(pivots_)) global pivots, $(length(newpivots)) still remain.")
+        end
+
+        if length(newpivots) == 0 || Set(newpivots) == Set(pivots_)
+            return length(newpivots)
+        end
+
+        pivots_ = newpivots
+    end
+    return length(pivots_)
 end
 
 function filltensor(
@@ -212,37 +230,6 @@ function kronecker(
     return MultiIndex[[i, js...] for i in 1:localdim, js in Jset][:]
 end
 
-#function setsitetensor!(
-    #tci::TensorCI2{ValueType}, b::Int, T::AbstractArray{ValueType,N}
-#) where {ValueType,N}
-    #tci.sitetensors[b] = reshape(
-        #T,
-        #length(Iset(tci, b)),
-        #tci.localdims[b],
-        #length(Jset(tci, b))
-    #)
-#end
-
-#function sitetensors(
-    #tci::TensorCI2{ValueType}, f; orthocenter = length(tci) ÷ 2
-#)::Vector{Array{ValueType,3}} where {ValueType}
-    #tensors = Array{ValueType,3}[]
-    #for b in 1:orthocenter-1
-        #push!(tensors, Atensor(tci,f, b))
-    ##end
-    #push!(tensors, Ttensor(tci, f, orthocenter))
-    #for b in orthocenter+1:length(tci)
-        ##push!(tensors, Btensor(tci,f, b))
-    #end
-    #return tensors
-#end
-
-
-#function TensorTrain(tci::TensorCI2{ValueType}, f; reltol=1e-14, abstol=0.0) where {ValueType}
-    #return TensorTrain{ValueType,3}(
-        #sitetensors(tci, f; reltol, abstol)
-    #)
-#end
 
 function sitetensors(
     tci::TensorCI2{ValueType}, f;
@@ -252,6 +239,11 @@ function sitetensors(
     # site0 update
     Iset_ = [Iset(tci, b) for b in 1:length(tci)]
     Jset_ = [Jset(tci, b) for b in 1:length(tci)]
+
+    @show length.(Iset_), length.(Jset_)
+    Iset_, Jset_ = _restore_full_nesting(Iset_, Jset_)
+    @show length.(Iset_), length.(Jset_)
+    printnestinginfo(Iset_, Jset_)
 
     for b in 1:length(tci)-1
          P = reshape(
@@ -299,90 +291,6 @@ function sitetensors(
 
     return tensors
 end
-
-function Ttensor(
-    tci::TensorCI2{ValueType}, f, b::Int
-)::Array{ValueType,3} where {ValueType}
-    Iset_b = Iset(tci, b)
-    Jset_b = Jset(tci, b)
-    return filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1))
-end
-
-
-function Atensor(
-    tci::TensorCI2{ValueType}, f, b::Int
-)::Array{ValueType,3} where {ValueType}
-    Iset_b = Iset(tci, b)
-    Jset_b = Jset(tci, b)
-
-    Pi1 = reshape(
-        filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1)),
-        length(Iset_b) * tci.localdims[b], length(Jset_b))
-
-    Iset_bp1 = Iset(tci, b+1)
-    P = reshape(
-        filltensor(ValueType, f, tci.localdims, Iset_bp1, Jset_b, Val(0)),
-        length(Iset_bp1), length(Jset_b))
-
-    # T P^{-1}
-    Tmat = transpose(transpose(P) \ transpose(Pi1))
-    return reshape(Tmat, length(Iset_b), tci.localdims[b], length(Iset_bp1))
-end
-
-
-function Btensor(
-    tci::TensorCI2{ValueType}, f, b::Int
-)::Array{ValueType,3} where {ValueType}
-    Iset_b = Iset(tci, b)
-    Jset_b = Jset(tci, b)
-    Jset_bm1 = Jset(tci, b-1)
-
-    Pi1 = reshape(
-        filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1)),
-        length(Iset_b), tci.localdims[b] * length(Jset_b))
-
-    P = reshape(
-        filltensor(ValueType, f, tci.localdims, Iset_b, Jset_bm1, Val(0)),
-        length(Iset_b), length(Jset_bm1))
-
-    # P^{-1} T
-    Tmat = P \ Pi1
-    return reshape(Tmat, length(Jset_bm1), tci.localdims[b], length(Jset_b))
-end
-
-#==
-function setsitetensor!(
-    tci::TensorCI2{ValueType}, f, b::Int; leftorthogonal=true
-) where {ValueType}
-    leftorthogonal || error("leftorthogonal==false is not supported!")
-
-    Iset_b = Iset(tci, b)
-    Jset_b = Jset(tci, b)
-
-    Is = leftorthogonal ? kronecker(Iset_b, tci.localdims[b]) : Iset_b
-    Js = leftorthogonal ? Jset_b : kronecker(tci.localdims[b], Jset_b)
-    Pi1 = reshape(
-        filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1)),
-        length(Is), length(Js))
-    updatemaxsample!(tci, Pi1)
-
-    if (leftorthogonal && b == length(tci)) ||
-       (!leftorthogonal && b == 1)
-        setsitetensor!(tci, b, Pi1)
-        return tci.sitetensors[b]
-    end
-
-    Iset_bp1 = Iset(tci, b+1)
-    P = reshape(
-        filltensor(ValueType, f, tci.localdims, Iset_bp1, Jset_b, Val(0)),
-        length(Iset_bp1), length(Jset_b))
-
-    # T P^{-1}
-    Tmat = transpose(transpose(P) \ transpose(Pi1))
-    tci.sitetensors[b] = reshape(Tmat, length(Iset_b), tci.localdims[b], length(Iset_bp1))
-    return tci.sitetensors[b]
-end
-==#
 
 
 function updatemaxsample!(tci::TensorCI2{V}, samples::Array{V}) where {V}
@@ -720,6 +628,7 @@ function sweep2site!(
         #Jsets[end] = MultiIndex[]
         for bondindex in 1:n-1
             extraouterIset, extraouterJset = _project_globalpivots(allpivots, bondindex)
+            @show length(extraouterIset), length(extraouterJset)
             Iset, Jset, errors, maxsamplevalue = updatepivots(
                 tci, bondindex, f, true;
                 abstol=abstol,
@@ -832,4 +741,57 @@ function _project_globalpivots(globalpivots::Vector{MultiIndex}, bondindex::Int)
     end
 
     return i, j
+end
+
+
+
+function _restore_full_nesting(Iset, Jset)
+    Iset = deepcopy(Iset)
+    Jset = deepcopy(Jset)
+    for b in reverse(2:length(Iset))
+        for i in Iset[b]
+            if !(i[1:end-1] ∈ Iset[b-1])
+                push!(Iset[b-1], i[1:end-1])
+            end
+        end
+        Iset[b-1] = unique(Iset[b-1])
+    end
+
+    for b in 1:length(Jset)-1
+        for j in Jset[b]
+            if !(j[2:end] ∈ Jset[b+1])
+                push!(Jset[b+1], j[2:end])
+            end
+        end
+        Jset[b+1] = unique(Jset[b+1])
+    end
+
+    return Iset, Jset
+end
+
+
+function printnestinginfo(Iset, Jset) where {T}
+    printnestinginfo(stdout, Iset, Jset)
+end
+
+
+function printnestinginfo(io::IO, Iset, Jset) where {T}
+    println(io, "Nesting info: Iset")
+    for i in 1:length(Iset)-1
+        if isnested(Iset[i], Iset[i+1], :row)
+            println(io, "  Nested: $(i) < $(i+1)")
+        else
+            println(io, "  Not nested: $(i) !< $(i+1)")
+        end
+    end
+
+    println(io)
+    println(io, "Nesting info: Jset")
+    for i in 1:length(Jset)-1
+        if isnested(Jset[i+1], Jset[i], :col)
+            println(io, "  Nested: $(i+1) < $i")
+        else
+            println(io, "  Not nested: ! $(i+1) < $i")
+        end
+    end
 end
