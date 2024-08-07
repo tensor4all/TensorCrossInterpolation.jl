@@ -279,6 +279,7 @@ function sitetensors(
     for b in 1:orthocenter-1
         push!(tensors, Atensor(tci,f, b))
     end
+    @show orthocenter
     push!(tensors, Ttensor(tci, f, orthocenter))
     for b in orthocenter+1:length(tci)
         push!(tensors, Btensor(tci,f, b))
