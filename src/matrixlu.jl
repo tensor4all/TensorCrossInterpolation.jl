@@ -413,6 +413,9 @@ Return x
 Note: Not optimized for performance
 """
 function solve(L::Matrix{T}, U::Matrix{T}, b::Matrix{T}) where{T}
+    #@show size(L)
+    #@show size(U)
+    #@show size(b)
     N1, N2, N3 = size(L, 1), size(L, 2), size(U, 2)
     M = size(b, 2)
     
@@ -449,7 +452,7 @@ Override solving Ax = b using LU decomposition
 """
 function Base.:\(A::rrLU{T}, b::AbstractMatrix{T}) where{T}
     size(A, 1) == size(A, 2) || error("Matrix must be square.")
-    A.npivot == size(A, 1) || error("rank-deficient matrix is not supportred!")
+    #A.npivot == size(A, 1) || error("rank-deficient matrix is not supportred!")
     b_perm = b[A.rowpermutation, :]
     x_perm = solve(A.L, A.U, b_perm)
     x = similar(x_perm)

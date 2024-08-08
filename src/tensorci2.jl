@@ -290,9 +290,9 @@ end
 
 function sitetensors_site0update(
     tci::TensorCI2{ValueType}, f;
-    reltol=1e-14,
+    reltol=1e-16,
     abstol=0.0
-)::Vector{Array{ValueType,3}} where {ValueType}
+) where {ValueType}
 
     # site0 update
     Iset_ = [Iset(tci, b) for b in 1:length(tci)]
@@ -342,8 +342,70 @@ function sitetensors_site0update(
         filltensor(ValueType, f, tci.localdims, Iset_[end], Jset_[end], Val(1))
     )
 
+    return tensors, Iset_, Jset_
+end
+
+
+function localpivots(
+    tci::TensorCI2{ValueType}, f;
+    reltol=1e-16,
+    abstol=0.0
+) where {ValueType}
+    # site0 update
+    Iset_ = [Iset(tci, b) for b in 1:length(tci)]
+    Jset_ = [Jset(tci, b) for b in 1:length(tci)]
+
+    for b in 1:length(tci)-1
+         P = reshape(
+             filltensor(ValueType, f, tci.localdims, Iset_[b+1], Jset_[b], Val(0)),
+             length(Iset_[b+1]), length(Jset_[b]))
+
+         F = MatrixLUCI(
+             P,
+             reltol=reltol,
+             abstol=abstol,
+             leftorthogonal=true
+         )
+
+         ndiag = sum(abs(F.lu.U[i,i]) > abstol && abs(F.lu.U[i,i]/F.lu.U[1,1]) > reltol for i in eachindex(diag(F.lu.U)))
+
+         Iset_[b+1] = Iset_[b+1][rowindices(F)[1:ndiag]]
+         Jset_[b] = Jset_[b][colindices(F)[1:ndiag]]
+    end
+
+    return Iset_, Jset_
+end
+
+
+function sitetensors(
+    ::Type{ValueType}, Iset, Jset, f, localdims; orthocenter = 1
+) where {ValueType}
+    tensors = Array{ValueType,3}[]
+
+    for l in 1:orthocenter-1
+        push!(tensors, Atensor(ValueType, Iset, Jset, f, l, localdims))
+    end
+    push!(tensors, Ttensor(ValueType, Iset, Jset, f, orthocenter, localdims))
+    for l in orthocenter+1:length(localdims)
+        push!(tensors, Btensor(ValueType, Iset, Jset, f, l, localdims))
+    end
+
     return tensors
 end
+
+function Atensors(
+    ::Type{ValueType}, Iset, Jset, f, localdims
+) where {ValueType}
+    return sitetensors(ValueType, Iset, Jset, f, localdims; orthocenter=length(localdims))[1:end-1]
+end
+
+
+function Btensors(
+    ::Type{ValueType}, Iset, Jset, f, localdims
+) where {ValueType}
+    return sitetensors(ValueType, Iset, Jset, f, localdims; orthocenter=1)[2:end]
+end
+
 
 function Ttensor(
     tci::TensorCI2{ValueType}, f, b::Int
@@ -351,6 +413,36 @@ function Ttensor(
     Iset_b = Iset(tci, b)
     Jset_b = Jset(tci, b)
     return filltensor(ValueType, f, tci.localdims, Iset_b, Jset_b, Val(1))
+end
+
+
+function Ttensor(
+    ::Type{ValueType}, Isets, Jsets, f, b::Int, localdims
+)::Array{ValueType,3} where {ValueType}
+    Iset_b = Isets[b]
+    Jset_b = Jsets[b]
+    return filltensor(ValueType, f, localdims, Iset_b, Jset_b, Val(1))
+end
+
+
+function Atensor(
+    ::Type{ValueType}, Isets, Jsets, f, b::Int, localdims
+)::Array{ValueType,3} where {ValueType}
+    Iset_b = Isets[b]
+    Jset_b = Jsets[b]
+
+    Pi1 = reshape(
+        filltensor(ValueType, f, localdims, Iset_b, Jset_b, Val(1)),
+        length(Iset_b) * localdims[b], length(Jset_b))
+
+    Iset_bp1 = Isets[b+1]
+    P = reshape(
+        filltensor(ValueType, f, localdims, Iset_bp1, Jset_b, Val(0)),
+        length(Iset_bp1), length(Jset_b))
+
+    # T P^{-1}
+    Tmat = transpose(transpose(P) \ transpose(Pi1))
+    return reshape(Tmat, length(Iset_b), localdims[b], length(Iset_bp1))
 end
 
 
@@ -395,6 +487,29 @@ function Btensor(
     return reshape(Tmat, length(Jset_bm1), tci.localdims[b], length(Jset_b))
 end
 
+function Btensor(
+    ::Type{ValueType}, Isets, Jsets, f, b::Int, localdims
+)::Array{ValueType,3} where {ValueType}
+    Iset_b = Isets[b]
+    Jset_b = Jsets[b]
+    Jset_bm1 = Jsets[b-1]
+
+    Pi1 = reshape(
+        filltensor(ValueType, f, localdims, Iset_b, Jset_b, Val(1)),
+        length(Iset_b), localdims[b] * length(Jset_b))
+
+    P = reshape(
+        filltensor(ValueType, f, localdims, Iset_b, Jset_bm1, Val(0)),
+        length(Iset_b), length(Jset_bm1))
+    
+    @show LinearAlgebra.cond(P)
+
+    # P^{-1} T
+    #Tmat = P \ Pi1
+    Tmat = AinvtimesB(P, Pi1)
+    #Tmat = rrlu(P) \ Pi1
+    return reshape(Tmat, length(Jset_bm1), localdims[b], length(Jset_b))
+end
 
 
 
