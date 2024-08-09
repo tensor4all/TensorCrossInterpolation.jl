@@ -1037,3 +1037,123 @@ function sitetensors(
 
     return tensors, Iset_, Jset_
 end
+
+
+function sitetensors2(
+    tci::TensorCI2{ValueType}, f,
+    tolerance # desired tolerance for interpolation
+    ;
+    reltol=1e-14,
+    abstol=0.0,
+    verbosity=0,
+) where {ValueType}
+    Iset_ext = deepcopy(tci.Iset)
+    Jset_ext = deepcopy(tci.Jset)
+
+    Pref = Matrix{ValueType}[]
+    for b in 1:length(tci) - 1
+        ref = reshape(
+            filltensor(ValueType, f, tci.localdims, tci.Iset[b+1], tci.Jset[b], Val(0)),
+            length(tci.Iset[b+1]), length(tci.Jset[b]))
+        push!(Pref, ref)
+    end
+
+    tensors, _, _ = __sitetensors_site0sweep(ValueType, tci.localdims, Iset_ext, Jset_ext, f; reltol, abstol, verbosity)
+    tt = TensorTrain(tensors)
+    ttc = TTCache(tt)
+
+    while true
+        # Check interpolation erorr on pivot matrices
+        globalpivots = Set{MultiIndex}()
+        for b in 1:length(tci)-1
+            for (i_, i) in enumerate(tci.Iset[b+1]), (j_, j) in enumerate(tci.Jset[b])
+                diff = abs(evaluate(ttc, vcat(i,j)) - Pref[b][i_, j_])
+                if diff > tolerance
+                    push!(globalpivots, vcat(i, j))
+                end
+            end
+        end
+
+        if verbosity > 0
+            println("# of global pivots: $(length(globalpivots))")
+        end
+        
+        if length(globalpivots) == 0
+            break
+        end
+
+        for p in globalpivots
+            for b in 1:length(tci)
+                pushunique!(Iset_ext[b], p[1:b-1])
+                pushunique!(Jset_ext[b], p[b+1:end])
+            end
+        end
+
+        tensors, _, _ = __sitetensors_site0sweep(ValueType, tci.localdims, Iset_ext, Jset_ext, f; reltol, abstol, verbosity)
+        tt = TensorTrain(tensors)
+        ttc = TTCache(tt)
+    end
+
+    return tensors, Iset_ext, Jset_ext
+end
+
+
+function __sitetensors_site0sweep(
+    ::Type{ValueType},
+    localdims,
+    Iset::Vector{Vector{MultiIndex}},
+    Jset::Vector{Vector{MultiIndex}},
+    f;
+    reltol=1e-14,
+    abstol=0.0,
+    verbosity=0,
+) where {ValueType}
+    Iset_ = deepcopy(Iset)
+    Jset_ = deepcopy(Jset)
+    for b in 1:length(Iset)-1
+        P = reshape(
+            filltensor(ValueType, f, localdims, Iset_[b+1], Jset_[b], Val(0)),
+            length(Iset_[b+1]), length(Jset_[b]))
+
+        F = MatrixLUCI(
+            P,
+            reltol=reltol,
+            abstol=abstol,
+            leftorthogonal=true
+        )
+
+        ndiag = sum(abs(F.lu.U[i,i]) > abstol && abs(F.lu.U[i,i]/F.lu.U[1,1]) > reltol for i in eachindex(diag(F.lu.U)))
+        if verbosity > 0
+            println("  Site0 sweep at bond $b, size=($(length(Iset_[b+1])), $(length(Jset_[b]))), leaving $(ndiag) pivots")
+        end
+ 
+        Iset_[b+1] = Iset_[b+1][rowindices(F)[1:ndiag]]
+        Jset_[b] = Jset_[b][colindices(F)[1:ndiag]]
+    end
+
+    # Compute a TCI: A_1 A_2 , ..., A_{L-1} T_L
+    tensors = Array{ValueType,3}[]
+    for l in 1:length(Iset)-1
+        Iset_l = Iset_[l]
+        Jset_l = Jset_[l]
+        Iset_lp1 = Iset_[l+1]
+        T = reshape(
+            filltensor(ValueType, f, localdims, Iset_l, Jset_l, Val(1)),
+            length(Iset_l) * localdims[l], length(Jset_l))
+    
+        P = reshape(
+            filltensor(ValueType, f, localdims, Iset_lp1, Jset_l, Val(0)),
+            length(Iset_lp1), length(Jset_l))
+    
+        # T P^{-1}
+        Tmat = transpose(transpose(P) \ transpose(T))
+        push!(tensors, reshape(Tmat, length(Iset_l), localdims[l], length(Iset_lp1)))
+    end
+
+    push!(
+        tensors,
+        filltensor(ValueType, f, localdims, Iset_[end], Jset_[end], Val(1))
+    )
+
+    return tensors, Iset_, Jset_
+end

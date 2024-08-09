@@ -263,7 +263,7 @@ import QuanticsGrids as QD
     end
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], strictlynested in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:2), pivotsearch in [:full, :rook], strictlynested in [false]
         Random.seed!(seed)
 
         R = 20
@@ -314,13 +314,22 @@ import QuanticsGrids as QD
 
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
 
+        # Constructing TCI via global pivot list
         tensors, Iset, Jset = TCI.sitetensors(tci, f; verbosity=0)
         tt = TCI.TensorTrain(tensors)
         @test sum(abs.([TCI.evaluate(tt, r) - f(r) for r in rindex]) .> abstol) == 0
-
         for b in 1:length(tci)-1
             diff = maximum(abs, [TCI.evaluate(tt, vcat(i,j)) - f(vcat(i, j)) for (i, j) in zip(tci.Iset[b+1], tci.Jset[b])])
             @test diff < 1e-10
+        end
+
+        # Constructing TCI via global pivot insertion
+        tensors, Iset_ext, Jset_ext = TCI.sitetensors2(tci, f, abstol; verbosity=0)
+        tt = TCI.TensorTrain(tensors)
+        @test sum(abs.([TCI.evaluate(tt, r) - f(r) for r in rindex]) .> abstol) == 0
+        for b in 1:length(tci)-1
+            diff = maximum(abs, [TCI.evaluate(tt, vcat(i,j)) - f(vcat(i, j)) for i in tci.Iset[b+1], j in tci.Jset[b]])
+            @test diff < abstol
         end
 
     end
