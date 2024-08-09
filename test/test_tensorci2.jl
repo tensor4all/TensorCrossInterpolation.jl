@@ -313,6 +313,16 @@ import QuanticsGrids as QD
         )
 
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
+
+        tensors, Iset, Jset = TCI.sitetensors(tci, f; verbosity=0)
+        tt = TCI.TensorTrain(tensors)
+        @test sum(abs.([TCI.evaluate(tt, r) - f(r) for r in rindex]) .> abstol) == 0
+
+        for b in 1:length(tci)-1
+            diff = maximum(abs, [TCI.evaluate(tt, vcat(i,j)) - f(vcat(i, j)) for (i, j) in zip(tci.Iset[b+1], tci.Jset[b])])
+            @test diff < 1e-10
+        end
+
     end
 
     @testset "insert_global_pivots" begin

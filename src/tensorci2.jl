@@ -941,3 +941,99 @@ function searchglobalpivots(
     return [p for (_,p) in pivots]
 end
 
+
+function _globalpivots(Isets, Jsets; onlydiagonal=true)::Vector{MultiIndex}
+    L = length(Isets)
+    p = Set{MultiIndex}()
+    # Pivot matrices
+    for bondindex in 1:L-1
+        if onlydiagonal
+            for (x, y) in zip(Isets[bondindex+1], Jsets[bondindex])
+                push!(p, vcat(x, y))
+            end
+        else
+            for x in Isets[bondindex+1], y in Jsets[bondindex]
+                push!(p, vcat(x, y))
+            end
+        end
+    end
+    return collect(p)
+end
+
+function _Iset(globalpivots, i::Int)::Vector{MultiIndex} 
+    return collect(Set(p[1:i-1] for p in globalpivots))
+end
+
+function _Jset(globalpivots, i::Int)::Vector{MultiIndex}
+    return collect(Set(p[i+1:end] for p in globalpivots))
+end
+
+"""
+Experimental implmentation of constructing a bettter interpolation from local pivots.
+
+First, we transform all local pivots to global pivots.
+Then, we construct new local pivots from the global pivots, and remove redundant local pivots.
+"""
+function sitetensors(
+    tci::TensorCI2{ValueType}, f;
+    reltol=1e-14,
+    abstol=0.0,
+    verbosity=0,
+    onlydiagonal=true
+) where {ValueType}
+    # Transform all local pivots to global pivots
+    globalpivots = _globalpivots(tci.Iset, tci.Jset; onlydiagonal)
+    if verbosity > 1
+        println("  Generated $(length(globalpivots)) global pivots")
+    end
+
+    # Remove redundant local pivots by a site0 sweep
+    Iset_ = [_Iset(globalpivots, i) for i in 1:length(tci)]
+    Jset_ = [_Jset(globalpivots, i) for i in 1:length(tci)]
+    for b in 1:length(tci)-1
+        P = reshape(
+            filltensor(ValueType, f, tci.localdims, Iset_[b+1], Jset_[b], Val(0)),
+            length(Iset_[b+1]), length(Jset_[b]))
+
+        F = MatrixLUCI(
+            P,
+            reltol=reltol,
+            abstol=abstol,
+            leftorthogonal=true
+        )
+
+        ndiag = sum(abs(F.lu.U[i,i]) > abstol && abs(F.lu.U[i,i]/F.lu.U[1,1]) > reltol for i in eachindex(diag(F.lu.U)))
+        if verbosity > 0
+            println("  Site0 sweep at bond $b, size=($(length(Iset_[b+1])), $(length(Jset_[b]))), leaving $(ndiag) pivots")
+        end
+ 
+        Iset_[b+1] = Iset_[b+1][rowindices(F)[1:ndiag]]
+        Jset_[b] = Jset_[b][colindices(F)[1:ndiag]]
+    end
+
+    # Compute a TCI: A_1 A_2 , ..., A_{L-1} T_L
+    tensors = Array{ValueType,3}[]
+    for l in 1:length(tci)-1
+        Iset_l = Iset_[l]
+        Jset_l = Jset_[l]
+        Iset_lp1 = Iset_[l+1]
+        T = reshape(
+            filltensor(ValueType, f, tci.localdims, Iset_l, Jset_l, Val(1)),
+            length(Iset_l) * tci.localdims[l], length(Jset_l))
+    
+        P = reshape(
+            filltensor(ValueType, f, tci.localdims, Iset_lp1, Jset_l, Val(0)),
+            length(Iset_lp1), length(Jset_l))
+    
+        # T P^{-1}
+        Tmat = transpose(transpose(P) \ transpose(T))
+        push!(tensors, reshape(Tmat, length(Iset_l), tci.localdims[l], length(Iset_lp1)))
+    end
+
+    push!(
+        tensors,
+        filltensor(ValueType, f, tci.localdims, Iset_[end], Jset_[end], Val(1))
+    )
+
+    return tensors, Iset_, Jset_
+end
