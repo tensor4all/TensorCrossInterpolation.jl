@@ -1067,6 +1067,7 @@ function sitetensors2(
         globalpivots = Set{MultiIndex}()
         for b in 1:length(tci)-1
             for (i_, i) in enumerate(tci.Iset[b+1]), (j_, j) in enumerate(tci.Jset[b])
+                # TODO: Batch evaluation for ttc.
                 diff = abs(evaluate(ttc, vcat(i,j)) - Pref[b][i_, j_])
                 if diff > tolerance
                     push!(globalpivots, vcat(i, j))
