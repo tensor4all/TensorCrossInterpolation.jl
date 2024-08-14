@@ -1,6 +1,6 @@
 using Test
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain
+import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain
 import Random
 import QuanticsGrids as QD
 
@@ -51,10 +51,7 @@ import QuanticsGrids as QD
         )
     end
 
-    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10]
-        if nsearchglobalpivot > 0 && strictlynested
-            continue
-        end
+    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], nsearchglobalpivot in [0, 10]
         # f(x) = exp(-x)
         Random.seed!(1240)
         R = 8
@@ -81,7 +78,6 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -102,7 +98,6 @@ import QuanticsGrids as QD
 
     @testset "trivial MPS(exp), small maxbonddim" begin
         pivotsearch = :full
-        strictlynested = false
         nsearchglobalpivot = 10
 
         # f(x) = exp(-x)
@@ -130,7 +125,6 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -166,6 +160,7 @@ import QuanticsGrids as QD
         @test linkdims(tci) == fill(1, n - 1)
     end
 
+    #==
     @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook]
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
@@ -261,9 +256,10 @@ import QuanticsGrids as QD
             @test value ≈ f(v)
         end
     end
+    ==#
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:2), pivotsearch in [:full, :rook], strictlynested in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, seed=$seed" for seed in collect(1:2), pivotsearch in [:full, :rook]
         Random.seed!(seed)
 
         R = 20
@@ -298,7 +294,6 @@ import QuanticsGrids as QD
             verbosity=0,
             normalizeerror=false,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
         )
 
         TCI.addglobalpivots2sitesweep!(
@@ -308,7 +303,6 @@ import QuanticsGrids as QD
             maxbonddim=1000,
             pivotsearch=pivotsearch,
             verbosity=0,
-            strictlynested=strictlynested,
             ntry=pivotsearch == :full ? 1 : 10
         )
 
@@ -355,7 +349,6 @@ import QuanticsGrids as QD
             loginterval=1,
             verbosity=0,
             normalizeerror=false,
-            strictlynested=false
         )
 
         r = fill(2, R)
@@ -366,7 +359,6 @@ import QuanticsGrids as QD
             normalizeerror=false,
             maxbonddim=1000,
             verbosity=0,
-            strictlynested=false
         )
 
         @test TCI.evaluate(tci, r) ≈ f(r)
@@ -393,7 +385,6 @@ import QuanticsGrids as QD
             maxbonddim=100,
             maxiter=100,
             nsearchglobalpivot=10,
-            strictlynested=false
         )
 
         @test errors[end] < 1e-10

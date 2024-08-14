@@ -4,12 +4,10 @@
 
 Type that represents tensor cross interpolations created using the TCI2 algorithm. Users may want to create these using [`crossinterpolate2`](@ref) rather than calling a constructor directly.
 """
-mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
+mutable struct TensorCI2{ValueType}
     Iset::Vector{Vector{MultiIndex}}
     Jset::Vector{Vector{MultiIndex}}
     localdims::Vector{Int}
-
-    sitetensors::Vector{Array{ValueType,3}}
 
     "Error estimate for backtruncation of bonds."
     pivoterrors::Vector{Float64}
@@ -17,9 +15,6 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
     bonderrors::Vector{Float64}
     #"Maximum sample for error normalization."
     maxsamplevalue::Float64
-
-    Iset_history::Vector{Vector{Vector{MultiIndex}}}
-    Jset_history::Vector{Vector{Vector{MultiIndex}}}
 
     function TensorCI2{ValueType}(
         localdims::Union{Vector{Int},NTuple{N,Int}}
@@ -30,15 +25,14 @@ mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
             [Vector{MultiIndex}() for _ in 1:n],    # Iset
             [Vector{MultiIndex}() for _ in 1:n],    # Jset
             collect(localdims),                     # localdims
-            [zeros(0, d, 0) for d in localdims],    # sitetensors
             [],                                     # pivoterrors
             zeros(length(localdims) - 1),           # bonderrors
             0.0,                                    # maxsamplevalue
-            Vector{Vector{MultiIndex}}[],           # Iset_history
-            Vector{Vector{MultiIndex}}[],           # Jset_history
         )
     end
 end
+
+Base.length(tci::TensorCI2) = length(tci.localdims)
 
 function TensorCI2{ValueType}(
     func::F,
@@ -49,65 +43,15 @@ function TensorCI2{ValueType}(
     addglobalpivots!(tci, initialpivots)
     tci.maxsamplevalue = maximum(abs, (func(x) for x in initialpivots))
     abs(tci.maxsamplevalue) > 0.0 || error("maxsamplevalue is zero!")
-    invalidatesitetensors!(tci)
     return tci
-end
-
-@doc raw"""
-    function printnestinginfo(tci::TensorCI2{T}) where {T}
-
-Print information about fulfillment of the nesting criterion (``I_\ell < I_{\ell+1}`` and ``J_\ell < J_{\ell+1}``) on each pair of bonds ``\ell, \ell+1`` of `tci` to stdout.
-"""
-function printnestinginfo(tci::TensorCI2{T}) where {T}
-    printnestinginfo(stdout, tci)
 end
 
 function linkdims(tci::TensorCI2{T})::Vector{Int} where {T}
     return [length(tci.Iset[b+1]) for b in 1:length(tci)-1]
 end
 
-"""
-Invalidate the site tensor at bond `b`.
-"""
-function invalidatesitetensors!(tci::TensorCI2{T}) where {T}
-    for b in 1:length(tci)
-        tci.sitetensors[b] = zeros(T, 0, 0, 0)
-    end
-    nothing
-end
-
-"""
-Return if site tensors are available
-"""
-function issitetensorsavailable(tci::TensorCI2{T}) where {T}
-    return all(length(tci.sitetensors[b]) != 0 for b in 1:length(tci))
-end
-
-
-@doc raw"""
-    function printnestinginfo(io::IO, tci::TensorCI2{T}) where {T}
-
-Print information about fulfillment of the nesting criterion (``I_\ell < I_{\ell+1}`` and ``J_\ell < J_{\ell+1}``) on each pair of bonds ``\ell, \ell+1`` of `tci` to `io`.
-"""
-function printnestinginfo(io::IO, tci::TensorCI2{T}) where {T}
-    println(io, "Nesting info: Iset")
-    for i in 1:length(tci.Iset)-1
-        if isnested(tci.Iset[i], tci.Iset[i+1], :row)
-            println(io, "  Nested: $(i) < $(i+1)")
-        else
-            println(io, "  Not nested: $(i) !< $(i+1)")
-        end
-    end
-
-    println(io)
-    println(io, "Nesting info: Jset")
-    for i in 1:length(tci.Jset)-1
-        if isnested(tci.Jset[i+1], tci.Jset[i], :col)
-            println(io, "  Nested: $(i+1) < $i")
-        else
-            println(io, "  Not nested: ! $(i+1) < $i")
-        end
-    end
+function rank(tci::TensorCI2{T})::Int where {T}
+    return maximum(linkdims(tci))
 end
 
 
@@ -169,10 +113,6 @@ function addglobalpivots!(
         end
     end
 
-    if length(pivots) > 0
-        invalidatesitetensors!(tci)
-    end
-
     nothing
 end
 
@@ -180,6 +120,7 @@ end
 """
 Add global pivots to index sets and perform a 1site sweep
 """
+#==
 function addglobalpivots1sitesweep!(
     tci::TensorCI2{ValueType},
     f::F,
@@ -191,6 +132,7 @@ function addglobalpivots1sitesweep!(
     addglobalpivots!(tci, pivots)
     makecanonical!(tci, f; reltol=reltol, abstol=abstol, maxbonddim=maxbonddim)
 end
+==#
 
 
 function existaspivot(
@@ -204,6 +146,7 @@ end
 Add global pivots to index sets and perform a 2site sweep.
 Retry until all pivots are added or until `ntry` iterations are reached.
 """
+#==
 function addglobalpivots2sitesweep!(
     tci::TensorCI2{ValueType},
     f::F,
@@ -250,6 +193,7 @@ function addglobalpivots2sitesweep!(
     end
     return length(pivots_)
 end
+==#
 
 function filltensor(
     ::Type{ValueType},
@@ -290,23 +234,11 @@ function kronecker(
     return MultiIndex[[i, js...] for i in 1:localdim, js in Jset][:]
 end
 
-function setsitetensor!(
-    tci::TensorCI2{ValueType}, b::Int, T::AbstractArray{ValueType,N}
-) where {ValueType,N}
-    tci.sitetensors[b] = reshape(
-        T,
-        length(tci.Iset[b]),
-        tci.localdims[b],
-        length(tci.Jset[b])
-    )
-end
-
 
 function sweep0site!(
     tci::TensorCI2{ValueType}, f, b::Int;
     reltol=1e-14, abstol=0.0
 ) where {ValueType}
-    invalidatesitetensors!(tci)
     P = reshape(
         filltensor(ValueType, f, tci.localdims, tci.Iset[b+1], tci.Jset[b], Val(0)),
         length(tci.Iset[b+1]), length(tci.Jset[b]))
@@ -328,40 +260,9 @@ end
 # Backward compatibility
 const rmbadpivots! = sweep0site!
 
-function setsitetensor!(
-    tci::TensorCI2{ValueType}, f, b::Int; leftorthogonal=true
-) where {ValueType}
-    leftorthogonal || error("leftorthogonal==false is not supported!")
-
-    Is = leftorthogonal ? kronecker(tci.Iset[b], tci.localdims[b]) : tci.Iset[b]
-    Js = leftorthogonal ? tci.Jset[b] : kronecker(tci.localdims[b], tci.Jset[b])
-    Pi1 = reshape(
-        filltensor(ValueType, f, tci.localdims, tci.Iset[b], tci.Jset[b], Val(1)),
-        length(Is), length(Js))
-    updatemaxsample!(tci, Pi1)
-
-    if (leftorthogonal && b == length(tci)) ||
-       (!leftorthogonal && b == 1)
-        setsitetensor!(tci, b, Pi1)
-        return tci.sitetensors[b]
-    end
-
-    P = reshape(
-        filltensor(ValueType, f, tci.localdims, tci.Iset[b+1], tci.Jset[b], Val(0)),
-        length(tci.Iset[b+1]), length(tci.Jset[b]))
-    length(tci.Iset[b+1]) == length(tci.Jset[b]) || error("Pivot matrix at bond $(b) is not square!")
-
-    #Tmat = transpose(transpose(rrlu(P)) \ transpose(Pi1))
-    Tmat = transpose(transpose(P) \ transpose(Pi1))
-    tci.sitetensors[b] = reshape(Tmat, length(tci.Iset[b]), tci.localdims[b], length(tci.Iset[b+1]))
-    return tci.sitetensors[b]
-end
-
-
 function updatemaxsample!(tci::TensorCI2{V}, samples::Array{V}) where {V}
     tci.maxsamplevalue = maxabs(tci.maxsamplevalue, samples)
 end
-
 
 function sweep1site!(
     tci::TensorCI2{ValueType},
@@ -369,12 +270,9 @@ function sweep1site!(
     sweepdirection::Symbol=:forward;
     reltol::Float64=1e-14,
     abstol::Float64=0.0,
-    maxbonddim::Int=typemax(Int),
-    updatetensors::Bool=true
+    maxbonddim::Int=typemax(Int)
 ) where {ValueType}
     flushpivoterror!(tci)
-
-    invalidatesitetensors!(tci)
 
     if !(sweepdirection === :forward || sweepdirection === :backward)
         throw(ArgumentError("Unknown sweep direction $sweepdirection: choose between :forward, :backward."))
@@ -397,45 +295,15 @@ function sweep1site!(
         )
         tci.Iset[b+forwardsweep] = Is[rowindices(luci)]
         tci.Jset[b-!forwardsweep] = Js[colindices(luci)]
-        if updatetensors
-            setsitetensor!(tci, b, forwardsweep ? left(luci) : right(luci))
-        end
-        if any(isnan.(tci.sitetensors[b]))
-            error("Error: NaN in tensor T[$b]")
-        end
         updateerrors!(
             tci, b - !forwardsweep,
             pivoterrors(luci),
         )
     end
 
-    # Update last tensor according to last index set
-    if updatetensors
-        lastupdateindex = forwardsweep ? length(tci) : 1
-        shape = if forwardsweep
-            (length(tci.Iset[end]), tci.localdims[end])
-        else
-            (tci.localdims[begin], length(tci.Jset[begin]))
-        end
-        localtensor = reshape(filltensor(
-                ValueType, f, tci.localdims, tci.Iset[lastupdateindex], tci.Jset[lastupdateindex], Val(1)), shape)
-        setsitetensor!(tci, lastupdateindex, localtensor)
-    end
     nothing
 end
 
-function makecanonical!(
-    tci::TensorCI2{ValueType},
-    f::F;
-    reltol::Float64=1e-14,
-    abstol::Float64=0.0,
-    maxbonddim::Int=typemax(Int)
-) where {F,ValueType}
-    # The first half-sweep is performed exactly without compression.
-    sweep1site!(tci, f, :forward; reltol=0.0, abstol=0.0, maxbonddim=typemax(Int), updatetensors=false)
-    sweep1site!(tci, f, :backward; reltol, abstol, maxbonddim, updatetensors=false)
-    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=true)
-end
 
 mutable struct SubMatrix{T}
     f::Function
@@ -469,7 +337,6 @@ end
 
 """
 Update pivots at bond `b` of `tci` using the TCI2 algorithm.
-Site tensors will be invalidated.
 """
 function updatepivots!(
     tci::TensorCI2{ValueType},
@@ -479,14 +346,11 @@ function updatepivots!(
     reltol::Float64=1e-14,
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int),
-    sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     extraIset::Vector{MultiIndex}=MultiIndex[],
     extraJset::Vector{MultiIndex}=MultiIndex[],
 ) where {F,ValueType}
-    invalidatesitetensors!(tci)
-
     Icombined = union(kronecker(tci.Iset[b], tci.localdims[b]), extraIset)
     Jcombined = union(kronecker(tci.localdims[b+1], tci.Jset[b+1]), extraJset)
 
@@ -562,10 +426,6 @@ function updatepivots!(
     end
     tci.Iset[b+1] = Icombined[rowindices(luci)]
     tci.Jset[b] = Jcombined[colindices(luci)]
-    if length(extraIset) == 0 && length(extraJset) == 0
-        setsitetensor!(tci, b, left(luci))
-        setsitetensor!(tci, b + 1, right(luci))
-    end
     updateerrors!(tci, b, pivoterrors(luci))
     nothing
 end
@@ -609,7 +469,6 @@ end
         maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=false
     ) where {ValueType}
 
 Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
@@ -631,7 +490,6 @@ Arguments:
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 
 Notes:
@@ -657,7 +515,6 @@ function optimize!(
     maxnglobalpivot::Int=5,
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
-    strictlynested::Bool=false,
     checkbatchevaluatable::Bool=false
 ) where {ValueType}
     errors = Float64[]
@@ -669,7 +526,6 @@ function optimize!(
     end
 
     #if maxnglobalpivot > 0 && nsearchglobalpivot > 0
-    #!strictlynested || error("nglobalpivots > 0 requires strictlynested=false!")
     #end
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
@@ -699,7 +555,6 @@ function optimize!(
             abstol=abstol,
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested,
             verbosity=verbosity,
             sweepstrategy=sweepstrategy,
             fillsitetensors=true
@@ -777,24 +632,16 @@ function sweep2site!(
     sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
-    strictlynested::Bool=false,
     fillsitetensors::Bool=true
 ) where {ValueType}
-    invalidatesitetensors!(tci)
-
     n = length(tci)
 
     for iter in iter1:iter1+niter-1
 
         extraIset = [MultiIndex[] for _ in 1:n]
         extraJset = [MultiIndex[] for _ in 1:n]
-        if !strictlynested && length(tci.Iset_history) > 0
-            extraIset = tci.Iset_history[end]
-            extraJset = tci.Jset_history[end]
-        end
-
-        push!(tci.Iset_history, deepcopy(tci.Iset))
-        push!(tci.Jset_history, deepcopy(tci.Jset))
+        extraIset = deepcopy(tci.Iset)
+        extraJset = deepcopy(tci.Jset)
 
         flushpivoterror!(tci)
         if forwardsweep(sweepstrategy, iter) # forward sweep
@@ -803,7 +650,6 @@ function sweep2site!(
                     tci, bondindex, f, true;
                     abstol=abstol,
                     maxbonddim=maxbonddim,
-                    sweepdirection=:forward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
                     extraIset=extraIset[bondindex+1],
@@ -816,7 +662,6 @@ function sweep2site!(
                     tci, bondindex, f, false;
                     abstol=abstol,
                     maxbonddim=maxbonddim,
-                    sweepdirection=:backward,
                     pivotsearch=pivotsearch,
                     verbosity=verbosity,
                     extraIset=extraIset[bondindex+1],
@@ -826,9 +671,6 @@ function sweep2site!(
         end
     end
 
-    if fillsitetensors
-        fillsitetensors!(tci, f)
-    end
     nothing
 end
 
@@ -910,12 +752,9 @@ function searchglobalpivots(
         return MultiIndex[]
     end
 
-    if !issitetensorsavailable(tci)
-        fillsitetensors!(tci, f)
-    end
-
     pivots = Dict{Float64,MultiIndex}()
-    ttcache = TTCache(tci)
+    tt = TensorTrain(sitetensors2(tci, f, abstol)[1])
+    ttcache = TTCache(tt)
     for _ in 1:nsearch
         pivot, error = _floatingzone(ttcache, f; earlystoptol=10 * abstol, nsweeps=100)
         if error > abstol
