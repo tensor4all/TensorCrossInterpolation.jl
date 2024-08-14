@@ -83,13 +83,12 @@ import QuanticsGrids as QD
         @test all(TCI.linkdims(tci) .== 1)
 
         # Conversion to TT
-        tt = TCI.TensorTrain(tci)
+        tt = TCI.TensorTrain(tci, f, abstol; normalizeerror=false)
 
         for x in [0.1, 0.3, 0.6, 0.9]
             indexset = QD.origcoord_to_quantics(
                 grid, (x,)
             )
-            @test abs(TCI.evaluate(tci, indexset) - f(indexset)) < abstol
             @test abs(TCI.evaluate(tt, indexset) - f(indexset)) < abstol
         end
 
@@ -130,13 +129,12 @@ import QuanticsGrids as QD
         @test all(TCI.linkdims(tci) .== 1)
 
         # Conversion to TT
-        tt = TCI.TensorTrain(tci)
+        tt = TCI.TensorTrain(tci, f, abstol; normalizeerror=false)
 
         for x in [0.1, 0.3, 0.6, 0.9]
             indexset = QD.origcoord_to_quantics(
                 grid, (x,)
             )
-            @test abs(TCI.evaluate(tci, indexset) - f(indexset)) < 1e-4
             @test abs(TCI.evaluate(tt, indexset) - f(indexset)) < 1e-4
         end
     end
@@ -302,30 +300,11 @@ import QuanticsGrids as QD
             normalizeerror=false,
             maxbonddim=1000,
             pivotsearch=pivotsearch,
-            verbosity=0,
-            ntry=pivotsearch == :full ? 1 : 10
+            verbosity=0
         )
 
-        @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
-
-        # Constructing TCI via global pivot list
-        tensors, Iset, Jset = TCI.sitetensors(tci, f; verbosity=0)
-        tt = TCI.TensorTrain(tensors)
+        tt = TCI.TensorTrain(tci, f, abstol; normalizeerror=false)
         @test sum(abs.([TCI.evaluate(tt, r) - f(r) for r in rindex]) .> abstol) == 0
-        for b in 1:length(tci)-1
-            diff = maximum(abs, [TCI.evaluate(tt, vcat(i,j)) - f(vcat(i, j)) for (i, j) in zip(tci.Iset[b+1], tci.Jset[b])])
-            @test diff < 1e-10
-        end
-
-        # Constructing TCI via global pivot insertion
-        tensors, Iset_ext, Jset_ext = TCI.sitetensors2(tci, f, abstol; verbosity=0)
-        tt = TCI.TensorTrain(tensors)
-        @test sum(abs.([TCI.evaluate(tt, r) - f(r) for r in rindex]) .> abstol) == 0
-        for b in 1:length(tci)-1
-            diff = maximum(abs, [TCI.evaluate(tt, vcat(i,j)) - f(vcat(i, j)) for i in tci.Iset[b+1], j in tci.Jset[b]])
-            @test diff < abstol
-        end
-
     end
 
     @testset "insert_global_pivots" begin
@@ -361,7 +340,8 @@ import QuanticsGrids as QD
             verbosity=0,
         )
 
-        @test TCI.evaluate(tci, r) ≈ f(r)
+        tt = TCI.TensorTrain(tci, f, abstol; normalizeerror=false)
+        @test TCI.evaluate(tt, r) ≈ f(r)
     end
 
     @testset "globalsearch" begin
@@ -398,6 +378,7 @@ import QuanticsGrids as QD
         bonddims = [1, 2, 3, 2, 1]
         @assert length(bonddims) == N + 1
         localdims = [2, 3, 3, 2]
+        tol = 1e-10
 
         tt = TCI.TensorTrain{ValueType,3}([rand(bonddims[n], localdims[n], bonddims[n+1]) for n in 1:N])
         ttc = TCI.TTCache(tt)
@@ -406,11 +387,11 @@ import QuanticsGrids as QD
             ValueType,
             ttc,
             localdims;
-            tolerance=1e-10,
+            tolerance=tol,
             maxbonddim=10
         )
 
-        tt_reconst = TCI.TensorTrain(tci2)
+        tt_reconst = TCI.TensorTrain(tci2, ttc, tol)
 
         vals_reconst = [tt_reconst(collect(indices)) for indices in Iterators.product((1:d for d in localdims)...)]
         vals_ref = [tt(collect(indices)) for indices in Iterators.product((1:d for d in localdims)...)]

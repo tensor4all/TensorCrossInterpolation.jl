@@ -66,23 +66,6 @@ function _gen_testdata_TTO_TTS()
 end
 
 @testset "MPO-MPO contraction" for f in [nothing, x -> 2 * x], algorithm in [:TCI, :naive]
-    #==
-    N = 4
-    bonddims_a = [1, 2, 3, 2, 1]
-    bonddims_b = [1, 2, 3, 2, 1]
-    localdims1 = [2, 2, 2, 2]
-    localdims2 = [3, 3, 3, 3]
-    localdims3 = [2, 2, 2, 2]
-
-    a = TensorTrain{ComplexF64,4}([
-        rand(ComplexF64, bonddims_a[n], localdims1[n], localdims2[n], bonddims_a[n+1])
-        for n = 1:N
-    ])
-    b = TensorTrain{ComplexF64,4}([
-        rand(ComplexF64, bonddims_b[n], localdims2[n], localdims3[n], bonddims_b[n+1])
-        for n = 1:N
-    ])
-    ==#
     N, a, b, localdims1, localdims2, localdims3 = _gen_testdata_TTO_TTO()
 
     if f !== nothing && algorithm === :naive

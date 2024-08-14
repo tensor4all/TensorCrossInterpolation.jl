@@ -29,9 +29,10 @@ import QuanticsGrids as QD
     )
 
 
-    pivoterrors = TCI.estimatetrueerror(TCI.TensorTrain(tci), f)
+    tt = TCI.TensorTrain(tci, f, abstol; normalizeerror=false)
+    pivoterrors = TCI.estimatetrueerror(tt, f)
 
     errors = [e for (_, e) in pivoterrors] 
-    @test all([abs(f(p) - tci(p)) for (p, _) in pivoterrors] .== errors)
+    @test all([abs(f(p) - tt(p)) for (p, _) in pivoterrors] .== errors)
     @test all(errors[1:end-1] .>= errors[2:end]) # check if errors are sorted in descending order
 end

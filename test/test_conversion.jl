@@ -1,7 +1,7 @@
 using Test
 import TensorCrossInterpolation: TensorCI1, TensorCI2, sitedims, linkdims, rank,
     addglobalpivot!, crossinterpolate1, crossinterpolate2, optimize!, MatrixACA, rrlu,
-    nrows, ncols, evaluate, left, right, pivoterror, tensortrain
+    nrows, ncols, evaluate, left, right, pivoterror, tensortrain, TensorTrain
 
 @testset "Conversion between rrLU and ACA" begin
     A = [
@@ -31,7 +31,6 @@ end
     @test rank(tci2) == 0
     @test all(isempty.(tci2.Iset))
     @test all(isempty.(tci2.Jset))
-    @test all(isempty.(tci2.sitetensors))
 
     globalpivot = [2, 2, 3, 1]
     tci1 = TensorCI1{ComplexF64}(rand, fill(d, n), globalpivot)
@@ -59,23 +58,25 @@ end
     @test linkdims(tci2) == linkdims(tci1)
     @test linkdims(tci1_backconverted) == linkdims(tci1)
     @test linkdims(tci2_backconverted) == linkdims(tci2)
+    tt_tci2 = TensorTrain(tci2, f, 1e-6)
     for v in Iterators.product([1:d for p in 1:n]...)
-        @test tci1(v) ≈ tci2(v)
+        @test tci1(v) ≈ tt_tci2(v)
         @test tci1(v) ≈ tci1_backconverted(v)
     end
 
     optimize!(tci2, f; tolerance=1e-12)
     @test pivoterror(tci2) <= 1e-12
     @test rank(tci2) > rank(tci1)
+    tt_tci2 = TensorTrain(tci2, f, 1e-12)
     for v in Iterators.product([1:d for p in 1:n]...)
-        @test tci2(v) ≈ f(v)
+        @test tt_tci2(v) ≈ f(v)
     end
 end
 
 @testset "Conversion between TT and TCI2" begin
     f(v) = (1.0 + 2.0im) ./ (sum(v .^ 2) + 1)
     tci, = crossinterpolate2(ComplexF64, f, fill(4, 4); tolerance=1e-14, maxbonddim=5)
-    tt = tensortrain(tci)
+    tt = TensorTrain(tci, f, 1e-14)
     tcib = TensorCI2{ComplexF64}(tt; tolerance=1e-14)
 
     @test rank(tt) == 5
@@ -86,13 +87,15 @@ end
     @test linkdims(tcib) == linkdims(tt)
     @test sitedims(tcib) == fill([4], 4)
 
+    tt_tcib = TensorTrain(tcib, f, 1e-14)
     for v in Iterators.product([1:4 for _ in 1:4]...)
-        @test abs(tt(v) - tci(v)) < 1e-13
-        @test abs(tcib(v) - tci(v)) < 1e-13
+        @test abs(tt(v) - tt(v)) < 1e-13
+        @test abs(tt_tcib(v) - tt(v)) < 1e-13
     end
 
     optimize!(tcib, f; tolerance=1e-14)
+    tt_tcib = TensorTrain(tcib, f, 1e-14)
     for v in Iterators.product([1:4 for _ in 1:4]...)
-        @test abs(tcib(v) - f(v)) < 1e-13
+        @test abs(tt_tcib(v) - f(v)) < 1e-13
     end
 end

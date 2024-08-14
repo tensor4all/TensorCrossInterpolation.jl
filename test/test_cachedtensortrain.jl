@@ -1,6 +1,6 @@
 using Test
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain
+import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain
 import Random
 import QuanticsGrids as QD
 

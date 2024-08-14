@@ -74,12 +74,15 @@ end
 
         L = 20
         localdims = fill(2, L)
+        tol = 1e-8
         parf = TCI.ThreadedBatchEvaluator{Float64}(f, localdims)
 
-        tci, ranks, errors = TCI.crossinterpolate2(Float64, parf, localdims)
+        tci, ranks, errors = TCI.crossinterpolate2(Float64, parf, localdims; tolerance=tol)
 
         tci_ref, ranks_ref, errors_ref = TCI.crossinterpolate2(Float64, f, localdims)
 
-        @test TCI.fulltensor(TCI.TensorTrain(tci)) ≈ TCI.fulltensor(TCI.TensorTrain(tci_ref))
+        tt = TCI.TensorTrain(tci, f, tol)
+        tt_ref = TCI.TensorTrain(tci_ref, f, tol)
+        @test TCI.fulltensor(tt) ≈ TCI.fulltensor(tt_ref)
     end
 end

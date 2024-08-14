@@ -430,8 +430,9 @@ function contract_TCI(
         kwargs...,
     )
     legdims = [_localdims(matrixproduct, i) for i = 1:length(tci)]
+    tt = TensorTrain(tci, matrixproduct, 1e-14) # 1e-14 is the default tolerance for safety
     return TensorTrain{ValueType,4}(
-        [_reshape_splitsites(t, d) for (t, d) in zip(tci, legdims)]
+        [_reshape_splitsites(t, d) for (t, d) in zip(tt, legdims)]
     )
 end
 

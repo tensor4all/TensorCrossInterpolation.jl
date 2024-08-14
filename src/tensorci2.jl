@@ -54,6 +54,9 @@ function rank(tci::TensorCI2{T})::Int where {T}
     return maximum(linkdims(tci))
 end
 
+function sitedims(tci::TensorCI2{V})::Vector{Vector{Int}} where {V}
+    return [[x] for x in tci.localdims]
+end
 
 function updatebonderror!(
     tci::TensorCI2{T}, b::Int, error::Float64
@@ -114,6 +117,41 @@ function addglobalpivots!(
     end
 
     nothing
+end
+
+"""
+Add global pivots to index sets and perform a 2site sweep.
+Retry until all pivots are added or until `ntry` iterations are reached.
+"""
+function addglobalpivots2sitesweep!(
+    tci::TensorCI2{ValueType},
+    f::F,
+    pivots::Vector{MultiIndex};
+    tolerance::Float64=1e-8,
+    normalizeerror::Bool=true,
+    maxbonddim=typemax(Int),
+    pivotsearch::Symbol=:full,
+    verbosity::Int=0,
+) where {F,ValueType}
+    if any(length(tci) .!= length.(pivots))
+        throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
+    end
+
+    pivots_ = pivots
+
+    errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
+    abstol = tolerance * errornormalization
+
+    addglobalpivots!(tci, pivots_)
+
+    sweep2site!(
+        tci, f, 2;
+        abstol=abstol,
+        maxbonddim=maxbonddim,
+        pivotsearch=pivotsearch,
+        verbosity=verbosity)
+
+    return nothing
 end
 
 
@@ -882,8 +920,8 @@ function sitetensors2(
     tci::TensorCI2{ValueType}, f,
     tolerance # desired tolerance for interpolation
     ;
-    reltol=1e-14,
-    abstol=0.0,
+    reltol=1e-14, # relative tolerance for site0 sweep
+    abstol=0.0, # absolute tolerance for site0 sweep
     verbosity=0,
 ) where {ValueType}
     Iset_ext = deepcopy(tci.Iset)

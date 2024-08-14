@@ -32,7 +32,7 @@ end
     function f(x)
         return 1000 * cos(10 * sum(x .^ 2)) * exp(-sum(x)^4 / 1000)
     end
-    I15 = TCI.integrate(Float64, f, fill(-1.0, 10), fill(+1.0, 10); GKorder=15, tolerance=1e-8)
+    I15 = TCI.integrate(Float64, f, fill(-1.0, 10), fill(+1.0, 10); GKorder=15, tolerance=1e-8, normalizeerror=true)
     Iref = -5.4960415218049
     @test abs(I15 - Iref) < 1e-3
 end

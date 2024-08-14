@@ -61,9 +61,6 @@ function TensorCI2{ValueType}(tci1::TensorCI1{ValueType}) where {ValueType}
     tci2.Iset = [i.fromint for i in tci1.Iset]
     tci2.Jset = [j.fromint for j in tci1.Jset]
     tci2.localdims = tci1.localdims
-    L = length(tci1)
-    tci2.sitetensors[1:L-1] = TtimesPinv.(tci1, 1:L-1)
-    tci2.sitetensors[end] = tci1.T[end]
     tci2.pivoterrors = Float64[]
     tci2.bonderrors = tci1.pivoterrors
     tci2.maxsamplevalue = tci1.maxsamplevalue
@@ -168,9 +165,8 @@ function TensorCI2{ValueType}(
     tci2 = TensorCI2{ValueType}(first.(sitedims(tt)))
     tci2.Iset = Iset
     tci2.Jset = Jset
-    tci2.sitetensors = sitetensors(tt)
     tci2.pivoterrors = pivoterrors
-    tci2.maxsamplevalue = maximum(maximum.(abs, tci2.sitetensors))
+    tci2.maxsamplevalue = maximum(maximum.(abs, tt.sitetensors))
 
     return tci2
 end

@@ -261,3 +261,10 @@ function fulltensor(obj::TensorTrain{T,N})::Array{T} where {T,N}
     returnsize = collect(Iterators.flatten(sitedims_))
     return reshape(r, returnsize...)
 end
+
+function TensorTrain(
+    tci::TensorCI2{V}, f, tolerance::Float64=1e-8;
+    normalizeerror::Bool=true) where V
+    abstol = normalizeerror ? tci.maxsamplevalue * tolerance : tolerance
+    return TensorTrain(sitetensors2(tci, f, abstol)[1])
+end

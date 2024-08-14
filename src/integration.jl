@@ -23,6 +23,8 @@ function integrate(
     a::Vector{ValueType},
     b::Vector{ValueType};
     GKorder::Int=15,
+    tolerance=1e-8,
+    normalizeerror=false,
     kwargs...
 ) where {ValueType}
     if iseven(GKorder)
@@ -50,9 +52,10 @@ function integrate(
         ValueType,
         F,
         localdims;
-        nsearchglobalpivot=10,
+        nsearchglobalpivot=0,
         kwargs...
     )
+    tt = TensorTrain(tci2, F, tolerance; normalizeerror=normalizeerror)
 
-    return sum(tci2) / normalization
+    return sum(tt) / normalization
 end
