@@ -253,11 +253,17 @@ function (obj::TensorTrainFit{ValueType})(x::Vector{ValueType}) where {ValueType
 end
 
 
-
 function fulltensor(obj::TensorTrain{T,N})::Array{T} where {T,N}
     sitedims_ = sitedims(obj)
     localdims = collect(prod.(sitedims_))
-    r = [obj(collect(Tuple(i))) for i in CartesianIndices(Tuple(localdims))]
+    result::Matrix{T} = reshape(obj.sitetensors[1], localdims[1], :)
+    leftdim = localdims[1]
+    for l in 2:length(obj)
+        nextmatrix = reshape(
+            obj.sitetensors[l], size(obj.sitetensors[l], 1), localdims[l] * size(obj.sitetensors[l])[end])
+        leftdim *= localdims[l]
+        result = reshape(result * nextmatrix, leftdim, size(obj.sitetensors[l])[end])
+    end
     returnsize = collect(Iterators.flatten(sitedims_))
-    return reshape(r, returnsize...)
+    return reshape(result, returnsize...)
 end

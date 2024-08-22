@@ -43,6 +43,25 @@ using Optim
 end
 
 
+function _fulltensor(obj::TCI.TensorTrain{T,N})::Array{T} where {T,N}
+    sitedims_ = TCI.sitedims(obj)
+    localdims = collect(prod.(sitedims_))
+    r = [obj(collect(Tuple(i))) for i in CartesianIndices(Tuple(localdims))]
+    returnsize = collect(Iterators.flatten(sitedims_))
+    return reshape(r, returnsize...)
+end
+
+@testset "TT fulltensor" for T in [Float64, ComplexF64]
+    linkdims = [1, 2, 3, 1]
+    L = length(linkdims) - 1
+    localdims = fill(4, L)
+    tts = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L])
+    tto = TCI.TensorTrain{4}(tts, fill([2, 2], L))
+
+    @test _fulltensor(tts) ≈ TCI.fulltensor(tts)
+end
+
+
 @testset "TT shape conversion" for T in [Float64, ComplexF64]
     linkdims = [1, 2, 3, 1]
     L = length(linkdims) - 1
