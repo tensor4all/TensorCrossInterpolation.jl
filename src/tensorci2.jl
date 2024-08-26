@@ -990,6 +990,9 @@ function __sitetensors_site0sweep(
 ) where {ValueType}
     Iset_ = deepcopy(Iset)
     Jset_ = deepcopy(Jset)
+
+    # First, we need to make pivot matrices square.
+    # This is due to the limitation of the "solve" function with rrLU: non-square matrices are not yet supported.
     for b in 1:length(Iset)-1
         P = reshape(
             filltensor(ValueType, f, localdims, Iset_[b+1], Jset_[b], Val(0)),
@@ -1027,6 +1030,7 @@ function __sitetensors_site0sweep(
 
         # T P^{-1}
         Tmat = transpose(transpose(P) \ transpose(T))
+        #Tmat = transpose(transpose(rrlu(P)) \ transpose(T)) # Non-square matrices are not supported yet.
         push!(tensors, reshape(Tmat, length(Iset_l), localdims[l], length(Iset_lp1)))
     end
 
