@@ -597,7 +597,6 @@ end
         tci::TensorCI2{ValueType},
         f;
         tolerance::Float64=1e-8,
-        pivottolerance::Float64=tolerance,
         maxbonddim::Int=typemax(Int),
         maxiter::Int=200,
         sweepstrategy::Symbol=:backandforth,
@@ -645,7 +644,6 @@ function optimize!(
     tci::TensorCI2{ValueType},
     f;
     tolerance::Float64=1e-8,
-    pivottolerance::Float64=tolerance,
     maxbonddim::Int=typemax(Int),
     maxiter::Int=20,
     sweepstrategy::Symbol=:backandforth,
@@ -686,7 +684,7 @@ function optimize!(
     globalpivots = MultiIndex[]
     for iter in 1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-        abstol = pivottolerance * errornormalization;
+        abstol = tolerance * errornormalization;
 
         if verbosity > 1
             println("  Walltime $(1e-9*(time_ns() - tstart)) sec: starting 2site sweep")
@@ -753,7 +751,7 @@ function optimize!(
     #            or the bond dimension exceeds maxbonddim
     #  (2) Compute site tensors
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-    abstol = pivottolerance * errornormalization;
+    abstol = tolerance * errornormalization;
     sweep1site!(
         tci,
         f,
@@ -839,7 +837,6 @@ end
         localdims::Union{Vector{Int},NTuple{N,Int}},
         initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
         tolerance::Float64=1e-8,
-        pivottolerance::Float64=tolerance,
         maxbonddim::Int=typemax(Int),
         maxiter::Int=200,
         sweepstrategy::Symbol=:backandforth,
@@ -862,7 +859,6 @@ Arguments:
 - `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
 - `initialpivots::Vector{MultiIndex}` is a vector of pivots to be used for initialization. Default: `[1, 1, ...]`.
 - `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
-- `pivottolerance::Float64` is a float that specifies the tolerance for adding new pivots, i.e. the truncation of tensor train bonds. It should be <= tolerance, otherwise convergence may be impossible. Default: `tolerance`.
 - `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
 - `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
