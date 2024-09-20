@@ -487,6 +487,20 @@ function updatepivots!(
 ) where {F,ValueType}
     invalidatesitetensors!(tci)
 
+    if sweepdirection == :parallel && MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        rank = MPI.Comm_rank(comm)
+        juliarank = rank + 1
+        nprocs = MPI.Comm_size(comm)
+        nusedprocs = min(nprocs, length(tci)-1)
+
+        bondsperproc, remainder = divrem(length(tci)-1, nprocs)
+        bondsperproc = [bondsperproc + (i <= remainder ? 1 : 0) for i in 1:nprocs]
+
+        startindex = 1 + cumsum(vcat([0], bondsperproc))[juliarank]
+        endindex = cumsum(bondsperproc)[juliarank]
+    end
+
     Icombined = union(kronecker(tci.Iset[b], tci.localdims[b]), extraIset)
     Jcombined = union(kronecker(tci.localdims[b+1], tci.Jset[b+1]), extraJset)
 
@@ -560,9 +574,31 @@ function updatepivots!(
     else
         throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
     end
-    tci.Iset[b+1] = Icombined[rowindices(luci)]
-    tci.Jset[b] = Jcombined[colindices(luci)]
-    if length(extraIset) == 0 && length(extraJset) == 0
+    # Receive after the send
+    if sweepdirection == :parallel  && MPI.Initialized()
+        sreq = MPI.Request[]
+	    if startindex == endindex && juliarank != 1 && juliarank != nusedprocs
+	        push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=rank - 1, tag=(2*b+1)))
+            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank-1) message with tag=$(2*b+1)")
+            push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=rank + 1, tag=2*(b+1)))
+            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank+1) message with tag=$(2*(b+1))")
+        elseif b == startindex && juliarank > 1
+            push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=rank - 1, tag=(2*b+1)))
+            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank-1) message with tag=$(2*b+1)")
+            tci.Iset[b+1] = Icombined[rowindices(luci)]
+        elseif b == endindex && juliarank < nusedprocs
+            push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=rank + 1, tag=2*(b+1)))
+            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank+1) message with tag=$(2*(b+1))")
+            tci.Jset[b] = Jcombined[colindices(luci)]
+        else
+            tci.Iset[b+1] = Icombined[rowindices(luci)]
+            tci.Jset[b] = Jcombined[colindices(luci)]
+        end
+    else
+        tci.Iset[b+1] = Icombined[rowindices(luci)]
+        tci.Jset[b] = Jcombined[colindices(luci)]
+    end
+    if length(extraIset) == 0 && length(extraJset) == 0 && sweepdirection != :parallel
         setsitetensor!(tci, b, left(luci))
         setsitetensor!(tci, b + 1, right(luci))
     end
@@ -622,7 +658,7 @@ Arguments:
 - `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
 - `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
+- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), back and forth (:backandforth) or in parallel (:parallel) during optimization. Default: `:backandforth`.
 - `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
@@ -683,6 +719,13 @@ function optimize!(
         ))
     end
 
+    if sweepstrategy == :parallel && MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        mpirank = MPI.Comm_rank(comm)
+	    nprocs = MPI.Comm_size(comm)
+        nusedprocs = min(nprocs, length(tci)-1)
+    end
+
     globalpivots = MultiIndex[]
     for iter in 1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
@@ -719,16 +762,16 @@ function optimize!(
             flush(stdout)
         end
 
-        # Find global pivots where the error is too large
-        # Such gloval pivots are added to the TCI, invalidating site tensors.
-        globalpivots = searchglobalpivots(
-            tci, f, tolmarginglobalsearch * abstol,
-            verbosity=verbosity,
-            maxnglobalpivot=maxnglobalpivot,
-            nsearch=nsearchglobalpivot
-        )
-        addglobalpivots!(tci, globalpivots)
-        push!(nglobalpivots, length(globalpivots))
+        if sweepstrategy !=:parallel
+            globalpivots = searchglobalpivots(
+                tci, f, tolmarginglobalsearch * abstol,
+                verbosity=verbosity,
+                maxnglobalpivot=maxnglobalpivot,
+                nsearch=nsearchglobalpivot
+            )
+            addglobalpivots!(tci, globalpivots)
+            push!(nglobalpivots, length(globalpivots))
+        end
 
         if verbosity > 1
             println("  Walltime $(1e-9*(time_ns() - tstart)) sec: done searching global pivots")
@@ -740,11 +783,52 @@ function optimize!(
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue), nglobalpivot=$(length(globalpivots))")
             flush(stdout)
         end
-        if convergencecriterion(
+        if sweepstrategy == :parallel && MPI.Initialized()
+            converged = convergencecriterion(ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory)
+            #println("I am $rank and I reached the convergence barrier")
+            MPI.Barrier(comm)
+            global_converged = MPI.Allreduce(converged, MPI.LAND, comm)
+            if global_converged
+                break
+            end
+        elseif convergencecriterion(
             ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory
         )
             break
         end
+    end
+
+    if sweepstrategy == :parallel && MPI.Initialized()
+        bondsperproc, remainder = divrem(length(tci)-1, nprocs)
+        bondsperproc = [bondsperproc + (i <= remainder ? 1 : 0) for i in 1:nprocs]
+
+        startindexes = cumsum(vcat([0], bondsperproc)) .+ 1
+        endindexes = cumsum(bondsperproc)
+        startindex = 1 + cumsum(vcat([0], bondsperproc))[mpirank + 1]
+        endindex = cumsum(bondsperproc)[mpirank + 1]
+        if mpirank == 0
+            for juliarank in 2:nusedprocs
+                for b in startindexes[juliarank]:endindexes[juliarank]
+                    serialized_info = MPI.recv(comm; source=juliarank-1, tag=2*(b))
+                    tci.Iset[b] = serialized_info[1]
+                    serialized_info = MPI.recv(comm; source=juliarank-1, tag=2*(b+1)+1)
+                    tci.Jset[b+1] = serialized_info[1]
+                    if juliarank == nusedprocs
+                        serialized_info = MPI.recv(comm; source=juliarank-1, tag=2*(length(tci)+1)+1)
+                        tci.Iset[length(tci)] = serialized_info[1]
+                    end
+                end
+            end
+        else # Other processors
+            for b in startindex:endindex
+                MPI.send([tci.Iset[b]], comm; dest=0, tag=2*(b))
+                MPI.send([tci.Jset[b+1]], comm; dest=0, tag=2*(b+1)+1)
+                if mpirank == (nusedprocs - 1)
+                    MPI.send([tci.Iset[length(tci)]], comm; dest=0, tag=2*(length(tci)+1)+1)
+                end
+            end
+        end
+        #MPI.Finalize()
     end
 
     # Extra one sweep by the 1-site update to
@@ -784,6 +868,18 @@ function sweep2site!(
 
     n = length(tci)
 
+    if sweepstrategy == :parallel && MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        rank = MPI.Comm_rank(comm)
+        juliarank = rank + 1
+        nprocs = MPI.Comm_size(comm)
+        nusedprocs = min(nprocs, length(tci)-1)
+        #if juliarank > nprocs
+	    #println("Too many, I am $rank but only need $nusedprocs")
+            #return nothing
+        #end
+    end
+
     for iter in iter1:iter1+niter-1
 
         extraIset = [MultiIndex[] for _ in 1:n]
@@ -797,7 +893,43 @@ function sweep2site!(
         push!(tci.Jset_history, deepcopy(tci.Jset))
 
         flushpivoterror!(tci)
-        if forwardsweep(sweepstrategy, iter) # forward sweep
+        if sweepstrategy == :parallel && MPI.Initialized()
+            bondsperproc, remainder = divrem(n-1, nprocs)
+            bondsperproc = [bondsperproc + (i <= remainder ? 1 : 0) for i in 1:nprocs] # TODO prima era 1:(n-1)
+
+            startindex = 1 + cumsum(vcat([0], bondsperproc))[juliarank]
+            endindex = cumsum(bondsperproc)[juliarank]
+
+            for bondindex in startindex:endindex
+                updatepivots!(
+                    tci, bondindex, f, true;
+                    abstol=abstol,
+                    maxbonddim=maxbonddim,
+                    sweepdirection=:parallel,
+                    pivotsearch=pivotsearch,
+                    verbosity=verbosity,
+                    extraIset=extraIset[bondindex+1],
+                    extraJset=extraJset[bondindex],
+                )
+            end
+            
+            for b in startindex:endindex
+                if b == startindex && juliarank > 1
+                    #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I am waiting from $(rank-1) message with tag=$(2*b)")
+                    serialized_info = MPI.recv(comm; source=rank - 1, tag=2*b)
+		            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I received from $(rank-1) message with tag=$(2*b)")
+                    tci.Iset[b] = serialized_info[1]
+                end
+                if b == endindex && juliarank < nusedprocs
+                    #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I am waiting from $(rank+1) message with tag=$(2*(b + 1) + 1)")
+                    serialized_info = MPI.recv(comm; source=rank + 1, tag=2*(b + 1) + 1)
+	                #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I received from $(rank+1) message with tag=$(2*(b + 1) + 1)")
+                    tci.Jset[b + 1] = serialized_info[1]
+                end
+            end
+            #println("I am $rank and I have reached the recv barrier")
+            MPI.Barrier(comm)
+        elseif forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
                 updatepivots!(
                     tci, bondindex, f, true;
@@ -826,7 +958,7 @@ function sweep2site!(
         end
     end
 
-    if fillsitetensors
+    if fillsitetensors && sweepstrategy != :parallel
         fillsitetensors!(tci, f)
     end
     nothing
@@ -865,7 +997,7 @@ Arguments:
 - `pivottolerance::Float64` is a float that specifies the tolerance for adding new pivots, i.e. the truncation of tensor train bonds. It should be <= tolerance, otherwise convergence may be impossible. Default: `tolerance`.
 - `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
+- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) or in parallel (:parallel) during optimization. Default: `:backandforth`.
 - `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.

@@ -4,6 +4,10 @@ import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addgl
 import Random
 import QuanticsGrids as QD
 
+TCI.initializempi()
+
+# TODO write test for parallel subfunctions
+
 @testset "TensorCI2" begin
     @testset "kronecker util function" begin
         multiset = [collect(1:5) for _ in 1:5]
@@ -23,7 +27,7 @@ import QuanticsGrids as QD
         end
     end
 
-    @testset "pivoterrors" begin
+    @testset "pivoterrors" for sweepstrategy in [:backandforth, :parallel]
         diags = [1.0, 1e-5, 0.0]
         f(x) = (x[1] == x[2] ? diags[x[1]] : 0.0)
         localdims = [3, 3]
@@ -33,11 +37,12 @@ import QuanticsGrids as QD
             localdims,
             [[1, 1]];
             tolerance=1e-8,
+            sweepstrategy=:sweepstrategy
         )
         @test tci.pivoterrors == diags
     end
 
-    @testset "checkbatchevaluatable" begin
+    @testset "checkbatchevaluatable" for sweepstrategy in [:backandforth, :parallel]
         f(x) = 1.0 # Constant function without batch evaluation
         L = 10
         localdims = fill(2, L)
@@ -47,11 +52,12 @@ import QuanticsGrids as QD
             f,
             localdims,
             firstpivots;
-            checkbatchevaluatable=true
+            checkbatchevaluatable=true,
+            sweepstrategy=:sweepstrategy
         )
     end
 
-    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10]
+    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10], sweepstrategy in [:backandforth, :parallel]
         if nsearchglobalpivot > 0 && strictlynested
             continue
         end
@@ -81,7 +87,8 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
+            strictlynested=strictlynested,
+            sweepstrategy=:sweepstrategy
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -100,7 +107,7 @@ import QuanticsGrids as QD
 
     end
 
-    @testset "trivial MPS(exp), small maxbonddim" begin
+    @testset "trivial MPS(exp), small maxbonddim" for sweepstrategy in [:backandforth, :parallel]
         pivotsearch = :full
         strictlynested = false
         nsearchglobalpivot = 10
@@ -130,7 +137,8 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
+            strictlynested=strictlynested,
+            sweepstrategy=:sweepstrategy
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -166,7 +174,9 @@ import QuanticsGrids as QD
         @test linkdims(tci) == fill(1, n - 1)
     end
 
-    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook]
+    # This is a stochastic test
+    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for seed in collect(1:20), coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook], sweepstrategy in [:backandforth, :parallel]
+        Random.seed!(seed)
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
 
@@ -208,7 +218,7 @@ import QuanticsGrids as QD
             tolerance=1e-8,
             pivottolerance=1e-8,
             maxiter=8,
-            sweepstrategy=:forward,
+            sweepstrategy=:sweepstrategy,
             pivotsearch=pivotsearch
         )
 
@@ -224,7 +234,8 @@ import QuanticsGrids as QD
             [ones(Int, n)];
             tolerance=1e-12,
             maxiter=200,
-            pivotsearch
+            pivotsearch,
+            sweepstrategy=:sweepstrategy
         )
 
         @test pivoterror(tci3) <= 2e-12
@@ -246,7 +257,8 @@ import QuanticsGrids as QD
             initialpivots;
             tolerance=1e-12,
             maxiter=200,
-            pivotsearch
+            pivotsearch,
+            sweepstrategy=:sweepstrategy
         )
 
         @test pivoterror(tci4) <= 2e-12
@@ -263,7 +275,7 @@ import QuanticsGrids as QD
     end
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], strictlynested in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], strictlynested in [false], sweepstrategy in [:backandforth, :parallel]
         Random.seed!(seed)
 
         R = 20
@@ -298,7 +310,8 @@ import QuanticsGrids as QD
             verbosity=0,
             normalizeerror=false,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
+            strictlynested=strictlynested,
+            sweepstrategy=:sweepstrategy
         )
 
         TCI.addglobalpivots2sitesweep!(
@@ -315,7 +328,7 @@ import QuanticsGrids as QD
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
     end
 
-    @testset "insert_global_pivots" begin
+    @testset "insert_global_pivots" for sweepstrategy in [:backandforth, :parallel]
         Random.seed!(1234)
 
         R = 20
@@ -336,7 +349,8 @@ import QuanticsGrids as QD
             loginterval=1,
             verbosity=0,
             normalizeerror=false,
-            strictlynested=false
+            strictlynested=false,
+            sweepstrategy=:sweepstrategy
         )
 
         r = fill(2, R)
@@ -353,7 +367,7 @@ import QuanticsGrids as QD
         @test TCI.evaluate(tci, r) ≈ f(r)
     end
 
-    @testset "globalsearch" begin
+    @testset "globalsearch" for sweepstrategy in [:backandforth, :parallel]
         Random.seed!(1234)
 
         n = 10
@@ -374,14 +388,15 @@ import QuanticsGrids as QD
             maxbonddim=100,
             maxiter=100,
             nsearchglobalpivot=10,
-            strictlynested=false
+            strictlynested=false,
+            sweepstrategy=:parallel
         )
 
         @test errors[end] < 1e-10
     end
 
 
-    @testset "crossinterpolate2_ttcache" begin
+    @testset "crossinterpolate2_ttcache" for sweepstrategy in [:backandforth, :parallel]
         ValueType = Float64
 
         N = 4
@@ -397,7 +412,8 @@ import QuanticsGrids as QD
             ttc,
             localdims;
             tolerance=1e-10,
-            maxbonddim=10
+            maxbonddim=10,
+            sweepstrategy=:sweepstrategy
         )
 
         tt_reconst = TCI.TensorTrain(tci2)
@@ -460,3 +476,5 @@ import QuanticsGrids as QD
         end
     end
 end
+
+TCI.finalizempi()
