@@ -305,7 +305,7 @@ end
 """
     function initializempi()
 
-Initialize the MPI environment if it has not been initialized yet.
+Initialize the MPI environment if it has not been initialized yet. If mute=true, then all the processes with rank>0 (i.e. not the root node) won't output anything to stdout.
 """
 function initializempi(mute::Bool=true)
     if !MPI.Initialized()
