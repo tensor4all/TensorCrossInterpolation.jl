@@ -5,12 +5,13 @@ function using the usual function call syntax.
 The type `K` denotes the type of the keys used to cache function values, which could be an integer type. This defaults to `UInt128`. A safer but slower alternative is `BigInt`, which is better suited for functions with a large number of arguments.
 `CachedFunction` does not support batch evaluation of function values.
 """
-struct CachedFunction{ValueType,K<:Union{UInt32,UInt64,UInt128,BigInt}} <: BatchEvaluator{ValueType}
-    f::Function
+struct CachedFunction{ValueType,F,K<:Union{UInt32,UInt64,UInt128,BigInt}} <: BatchEvaluator{ValueType}
+    f::F
     localdims::Vector{Int}
     cache::Dict{K,ValueType}
     coeffs::Vector{K}
-    function CachedFunction{ValueType,K}(f, localdims, cache) where {ValueType,K}
+
+    function CachedFunction{ValueType,F,K}(f::F, localdims, cache) where {ValueType,F,K}
         coeffs = ones(K, length(localdims))
         for n in 2:length(localdims)
             coeffs[n] = localdims[n-1] * coeffs[n-1]
@@ -47,21 +48,28 @@ function CachedFunction{ValueType,K}(
     f::Function,
     localdims::Vector{Int}
 ) where {ValueType,K}
-    return CachedFunction{ValueType,K}(f, localdims, Dict{K,ValueType}())
+    return CachedFunction{ValueType,typeof(f),K}(f, localdims, Dict{K,ValueType}())
+end
+
+function CachedFunction{ValueType,F,K}(
+    f::F,
+    localdims::Vector{Int}
+) where {ValueType,F,K}
+    return CachedFunction{ValueType,F,K}(f, localdims, Dict{K,ValueType}())
 end
 
 
 function CachedFunction{ValueType}(
-    f::Function,
+    f::F,
     localdims::Vector{Int}
-) where {ValueType}
-    return CachedFunction{ValueType,UInt128}(f, localdims)
+) where {ValueType,F}
+    return CachedFunction{ValueType,F,UInt128}(f, localdims)
 end
 
 
-function (cf::CachedFunction{ValueType,K})(
+function (cf::CachedFunction{ValueType,F,K})(
     x::Vector{T}
-) where {ValueType, T<:Number, K}
+) where {ValueType, F, T<:Number, K}
     length(x) == length(cf.coeffs) || error("Invalid length of x")
     return get!(cf.cache, _key(cf, x)) do
         cf.f(x)
@@ -69,11 +77,11 @@ function (cf::CachedFunction{ValueType,K})(
 end
 
 
-function (f::CachedFunction{V,K})(
+function (f::CachedFunction{V,F,K})(
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
-)::Array{V,M + 2} where {V,K,M}
+)::Array{V,M + 2} where {V,F,K,M}
     if length(leftindexset) * length(rightindexset) == 0
         return Array{V,M+2}(undef, ntuple(d->0, M+2)...)
     end
@@ -85,11 +93,11 @@ function (f::CachedFunction{V,K})(
 end
 
 
-function _batcheval_imp_default(f::CachedFunction{V,K},
+function _batcheval_imp_default(f::CachedFunction{V,F,K},
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
-)::Array{V,M + 2} where {V,K,M}
+)::Array{V,M + 2} where {V,F,K,M}
     if length(leftindexset) * length(rightindexset) == 0
         return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
     end
@@ -111,11 +119,11 @@ function _batcheval_imp_default(f::CachedFunction{V,K},
 end
 
 
-function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,K},
+function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,F,K},
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
-)::Array{V,M + 2} where {V,K,M}
+)::Array{V,M + 2} where {V,F,K,M}
     if length(leftindexset) * length(rightindexset) == 0
         return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
     end
@@ -167,11 +175,11 @@ function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,K},
     return result
 end
 
-function Base.setindex!(cf::CachedFunction{ValueType,K}, val::ValueType, indexset::Vector{T})::T where {ValueType, T<:Number, K}
+function Base.setindex!(cf::CachedFunction{ValueType,F,K}, val::ValueType, indexset::Vector{T})::T where {ValueType, F, T<:Number, K}
     cf.cache[_key(cf, indexset)] = val
 end
 
-function _key(cf::CachedFunction{ValueType,K}, indexset::Vector{T})::K where {ValueType, T<:Number, K}
+function _key(cf::CachedFunction{ValueType,F,K}, indexset::Vector{T})::K where {ValueType, F, T<:Number, K}
     result = zero(K)
     length(indexset) == length(cf.coeffs) || error("Invalid length of indexset")
     @inbounds @fastmath for i in 1:length(indexset)
@@ -180,9 +188,9 @@ function _key(cf::CachedFunction{ValueType,K}, indexset::Vector{T})::K where {Va
     return result
 end
 
-encodecachekey(cf::CachedFunction{ValueType,K}, index::Vector{Int}) where {ValueType, K} = _key(cf, index)
+encodecachekey(cf::CachedFunction{ValueType,F,K}, index::Vector{Int}) where {ValueType, F, K} = _key(cf, index)
 
-function decodecachekey(cf::CachedFunction{ValueType,K}, key::K) where {ValueType, K}
+function decodecachekey(cf::CachedFunction{ValueType,F,K}, key::K) where {ValueType, F, K}
     N = length(cf.localdims)
     index = Vector{Int}(undef, N)
     for i in 1:N
@@ -195,8 +203,8 @@ end
 """
 Get all cached data of a `CachedFunction` object.
 """
-function cachedata(cf::CachedFunction{ValueType,K}) where {ValueType, K}
+function cachedata(cf::CachedFunction{ValueType,F,K}) where {ValueType, F, K}
     return Dict(decodecachekey(cf, k) => v for (k, v) in cf.cache)
 end
 
-Base.in(x::Vector{T}, cf::CachedFunction{ValueType,K}) where {ValueType, T<:Number, K} = _key(cf, x) ∈ keys(cf.cache)
+Base.in(x::Vector{T}, cf::CachedFunction{ValueType,F,K}) where {ValueType, F, T<:Number, K} = _key(cf, x) ∈ keys(cf.cache)

@@ -31,11 +31,11 @@ Otherwise, the function is evaluated on each index individually using the usual 
 """
 function _batchevaluate_dispatch(
     ::Type{V},
-    f,
+    f::F,
     localdims::Vector{Int},
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
-    ::Val{M})::Array{V,M + 2} where {V,M}
+    ::Val{M})::Array{V,M + 2} where {V,F,M}
 
     if length(leftindexset) * length(rightindexset) == 0
         return Array{V,M + 2}(undef, ntuple(i -> 0, M + 2)...)

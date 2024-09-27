@@ -253,12 +253,12 @@ end
 
 function filltensor(
     ::Type{ValueType},
-    f,
+    f::F,
     localdims::Vector{Int},
     Iset::Vector{MultiIndex},
     Jset::Vector{MultiIndex},
     ::Val{M}
-)::Array{ValueType,M+2} where {ValueType,M}
+)::Array{ValueType,M+2} where {ValueType,F,M}
     if length(Iset) * length(Jset) == 0
         return Array{ValueType,M+2}(undef, ntuple(i->0, M+2)...)
     end
