@@ -93,7 +93,7 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int
+    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int
 )::Tuple{Matrix{V},Matrix{V},Int} where {V}
     if method === :LU
         factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
