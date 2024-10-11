@@ -47,9 +47,10 @@ end
 
 function sitetensor(tt::TTCache{V}, i::Integer) where {V}
     sitetensor = tt.sitetensors[i]
+    sz = vcat(size(sitetensor, 1), tt.sitedims[i], size(sitetensor, ndims(sitetensor)))
     return reshape(
         sitetensor,
-        size(sitetensor)[1], tt.sitedims[i]..., size(sitetensor)[end]
+        sz...
     )
 end
 
@@ -200,7 +201,7 @@ function batchevaluate(tt::TTCache{V},
         T_ = begin
             slice, slice_size = projector_to_slice(projector[n-nleft])
             s = sitetensor(tt, n)[:, slice..., :]
-            reshape(s, size(s)[1], :, size(s)[end])
+            reshape(s, size(s, 1), :, size(s, ndims(s)))
         end
         localdim[n-nleft] = size(T_, 2)
         bonddim_ = size(T_, 1)
