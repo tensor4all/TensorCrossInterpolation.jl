@@ -1,12 +1,12 @@
 """
 Wrap any function to support batch evaluation.
 """
-struct BatchEvaluatorAdapter{T} <: BatchEvaluator{T}
-    f::Function
+struct BatchEvaluatorAdapter{T, F} <: BatchEvaluator{T}
+    f::F
     localdims::Vector{Int}
 end
 
-makebatchevaluatable(::Type{T}, f, localdims) where {T} = BatchEvaluatorAdapter{T}(f, localdims)
+makebatchevaluatable(::Type{T}, f::F, localdims) where {T, F} = BatchEvaluatorAdapter{T, F}(f, localdims)
 
 function (bf::BatchEvaluatorAdapter{T})(indexset::MultiIndex)::T where T
     bf.f(indexset)
