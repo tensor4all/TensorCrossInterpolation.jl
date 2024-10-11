@@ -267,12 +267,12 @@ function filltensor(
     nl = length(first(Iset))
     nr = length(first(Jset))
     ncent = N - nl - nr
-    expected_size = (length(Iset), localdims[nl+1:nl+ncent]..., length(Jset))
+    expected_size = vcat(length(Iset), localdims[nl+1:nl+ncent], length(Jset))
     M == ncent || error("Invalid number of central indices")
     return reshape(
         _batchevaluate_dispatch(ValueType, f, localdims, Iset, Jset, Val(ncent)),
         expected_size...
-    )
+    )::Array{ValueType,M+2}
 end
 
 
@@ -280,14 +280,14 @@ function kronecker(
     Iset::Union{Vector{MultiIndex},IndexSet{MultiIndex}},
     localdim::Int
 )
-    return MultiIndex[[is..., j] for is in Iset, j in 1:localdim][:]
+    return MultiIndex[vcat(is, j) for is in Iset, j in 1:localdim][:]
 end
 
 function kronecker(
     localdim::Int,
     Jset::Union{Vector{MultiIndex},IndexSet{MultiIndex}}
 )
-    return MultiIndex[[i, js...] for i in 1:localdim, js in Jset][:]
+    return MultiIndex[vcat(i, js) for i in 1:localdim, js in Jset][:]
 end
 
 function setsitetensor!(

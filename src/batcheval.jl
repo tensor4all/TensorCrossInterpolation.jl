@@ -57,7 +57,8 @@ function _batchevaluate_dispatch(
             end
         end
     end
-    return reshape(result, length(leftindexset), localdims[nl+1:L-nr]..., length(rightindexset))
+    sz = vcat(length(leftindexset), localdims[nl+1:L-nr], length(rightindexset))
+    return Array{V,M + 2}(reshape(result, sz...))
 end
 
 
@@ -79,7 +80,7 @@ function _batchevaluate_dispatch(
     nl = length(first(Iset))
     nr = length(first(Jset))
     ncent = N - nl - nr
-    return f(Iset, Jset, Val(ncent))
+    return f(Iset, Jset, Val(ncent))::Array{V,M + 2}
 end
 
 
