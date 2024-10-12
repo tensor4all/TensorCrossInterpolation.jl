@@ -93,25 +93,44 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int
+    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true
 )::Tuple{Matrix{V},Matrix{V},Int} where {V}
+    reltol = 1e-14
+    abstol = 0.0
+    if normalizeerror
+        reltol = tolerance
+    else
+        abstol = tolerance
+    end
     if method === :LU
-        factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
+        factorization = rrlu(A, abstol=abstol, reltol=reltol, maxrank=maxbonddim, leftorthogonal=leftorthogonal)
         return left(factorization), right(factorization), npivots(factorization)
     elseif method === :CI
-        factorization = MatrixLUCI(A, abstol=tolerance, maxrank=maxbonddim)
+        factorization = MatrixLUCI(A, abstol=abstol, reltol=reltol, maxrank=maxbonddim, leftorthogonal=leftorthogonal)
         return left(factorization), right(factorization), npivots(factorization)
     elseif method === :SVD
         factorization = LinearAlgebra.svd(A)
+        err = [sum(factorization.S[n+1:end] .^ 2) for n in 1:length(factorization.S)]
+        normalized_err = err ./ sum(factorization.S .^ 2)
+
         trunci = min(
-            replacenothing(findlast(>(tolerance), factorization.S), 1),
+            replacenothing(findfirst(<(abstol^2), err), length(err)),
+            replacenothing(findfirst(<(reltol^2), normalized_err), length(normalized_err)),
             maxbonddim
         )
-        return (
-            factorization.U[:, 1:trunci],
-            Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
-            trunci
-        )
+        if leftorthogonal
+            return (
+                factorization.U[:, 1:trunci],
+                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+                trunci
+            )
+        else
+            return (
+                factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci]),
+                factorization.Vt[1:trunci, :],
+                trunci
+            )
+        end
     else
         error("Not implemented yet.")
     end
@@ -131,13 +150,15 @@ function compress!(
     tt::TensorTrain{V,N},
     method::Symbol=:LU;
     tolerance::Float64=1e-12,
-    maxbonddim::Int=typemax(Int)
+    maxbonddim::Int=typemax(Int),
+    normalizeerror::Bool=true
 ) where {V,N}
+    # From left to right
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])
         left, right, newbonddim = _factorize(
             reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]),
-            method; tolerance, maxbonddim
+            method; tolerance=0.0, maxbonddim=typemax(Int), leftorthogonal=true # no truncation
         )
         tt.sitetensors[ell] = reshape(left, shapel[1:end-1]..., newbonddim)
         shaper = size(tt.sitetensors[ell+1])
@@ -145,11 +166,12 @@ function compress!(
         tt.sitetensors[ell+1] = reshape(nexttensor, newbonddim, shaper[2:end]...)
     end
 
+    # From right to left
     for ell in length(tt):-1:2
         shaper = size(tt.sitetensors[ell])
         left, right, newbonddim = _factorize(
             reshape(tt.sitetensors[ell], shaper[1], prod(shaper[2:end])),
-            method; tolerance, maxbonddim
+            method; tolerance, maxbonddim, normalizeerror, leftorthogonal=false
         )
         tt.sitetensors[ell] = reshape(right, newbonddim, shaper[2:end]...)
         shapel = size(tt.sitetensors[ell-1])
@@ -211,6 +233,7 @@ function Base.reverse(tt::AbstractTensorTrain{V}) where {V}
         permutedims(T, (ndims(T), (2:ndims(T)-1)..., 1)) for T in sitetensors(tt)
     ]))
 end
+
 
 """
 Fitting data with a TensorTrain object.
