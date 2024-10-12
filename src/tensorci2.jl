@@ -597,7 +597,6 @@ end
         tci::TensorCI2{ValueType},
         f;
         tolerance::Float64=1e-8,
-        pivottolerance::Float64=tolerance,
         maxbonddim::Int=typemax(Int),
         maxiter::Int=200,
         sweepstrategy::Symbol=:backandforth,
@@ -644,8 +643,8 @@ See also: [`crossinterpolate2`](@ref), [`optfirstpivot`](@ref), [`CachedFunction
 function optimize!(
     tci::TensorCI2{ValueType},
     f;
-    tolerance::Float64=1e-8,
-    pivottolerance::Float64=tolerance,
+    tolerance::Union{Float64, Nothing}=nothing,
+    pivottolerance::Union{Float64, Nothing}=nothing,
     maxbonddim::Int=typemax(Int),
     maxiter::Int=20,
     sweepstrategy::Symbol=:backandforth,
@@ -663,6 +662,7 @@ function optimize!(
     errors = Float64[]
     ranks = Int[]
     nglobalpivots = Int[]
+    local tol::Float64
 
     if checkbatchevaluatable && !(f isa BatchEvaluator)
         error("Function `f` is not batch evaluatable")
@@ -675,9 +675,23 @@ function optimize!(
         error("nsearchglobalpivot < maxnglobalpivot!")
     end
 
+    # Deprecate the pivottolerance option
+    if !isnothing(pivottolerance)
+        if !isnothing(tolerance) && (tolerance != pivottolerance)
+            throw(ArgumentError("Got different values for pivottolerance and tolerance in optimize!(TCI2). For TCI2, both of these options have the same meaning. Please assign only `tolerance`."))
+        else
+            @warn "The option `pivottolerance` of `optimize!(tci::TensorCI2, f)` is deprecated. Please update your code to use `tolerance`, as `pivottolerance` will be removed in the future."
+            tol = pivottolerance
+        end
+    elseif !isnothing(tolerance)
+        tol = tolerance
+    else # pivottolerance == tolerance == nothing, therefore set tol to default value
+        tol = 1e-8
+    end
+
     tstart = time_ns()
 
-    if maxbonddim >= typemax(Int) && tolerance <= 0
+    if maxbonddim >= typemax(Int) && tol <= 0
         throw(ArgumentError(
             "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"
         ))
@@ -686,7 +700,7 @@ function optimize!(
     globalpivots = MultiIndex[]
     for iter in 1:maxiter
         errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-        abstol = pivottolerance * errornormalization;
+        abstol = tol * errornormalization;
 
         if verbosity > 1
             println("  Walltime $(1e-9*(time_ns() - tstart)) sec: starting 2site sweep")
@@ -753,7 +767,7 @@ function optimize!(
     #            or the bond dimension exceeds maxbonddim
     #  (2) Compute site tensors
     errornormalization = normalizeerror ? tci.maxsamplevalue : 1.0
-    abstol = pivottolerance * errornormalization;
+    abstol = tol * errornormalization;
     sweep1site!(
         tci,
         f,
@@ -792,7 +806,7 @@ function sweep2site!(
             extraIset = tci.Iset_history[end]
             extraJset = tci.Jset_history[end]
         end
-    
+
         push!(tci.Iset_history, deepcopy(tci.Iset))
         push!(tci.Jset_history, deepcopy(tci.Jset))
 
@@ -940,4 +954,3 @@ function searchglobalpivots(
 
     return [p for (_,p) in pivots]
 end
-

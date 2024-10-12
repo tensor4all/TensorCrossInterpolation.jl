@@ -93,7 +93,7 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true
+    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true
 )::Tuple{Matrix{V},Matrix{V},Int} where {V}
     reltol = 1e-14
     abstol = 0.0
