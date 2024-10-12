@@ -90,6 +90,9 @@ function _batcheval_imp_default(f::CachedFunction{V,K},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
 )::Array{V,M + 2} where {V,K,M}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
+    end
     nl = length(first(leftindexset))
     nr = length(first(rightindexset))
     L = length(f.localdims)
@@ -113,6 +116,9 @@ function _batcheval_imp_for_batchevaluator(f::CachedFunction{V,K},
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M}
 )::Array{V,M + 2} where {V,K,M}
+    if length(leftindexset) * length(rightindexset) == 0
+        return Array{V,M + 2}(undef, ntuple(d -> 0, M + 2)...)
+    end
     nl = length(first(leftindexset))
     nr = length(first(rightindexset))
     L = length(f.localdims)

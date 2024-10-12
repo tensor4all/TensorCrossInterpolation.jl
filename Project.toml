@@ -1,7 +1,7 @@
 name = "TensorCrossInterpolation"
 uuid = "b261b2ec-6378-4871-b32e-9173bb050604"
 authors = ["Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de>, Hiroshi Shinaoka <h.shinaoka@gmail.com> and contributors"]
-version = "0.9.7"
+version = "0.9.12"
 
 [deps]
 EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"

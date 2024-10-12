@@ -47,7 +47,7 @@ function TensorCI2{ValueType}(
 ) where {F,ValueType,N}
     tci = TensorCI2{ValueType}(localdims)
     addglobalpivots!(tci, initialpivots)
-    tci.maxsamplevalue = maximum(abs, func.(initialpivots))
+    tci.maxsamplevalue = maximum(abs, (func(x) for x in initialpivots))
     abs(tci.maxsamplevalue) > 0.0 || error("maxsamplevalue is zero!")
     invalidatesitetensors!(tci)
     return tci
@@ -431,7 +431,8 @@ function makecanonical!(
     abstol::Float64=0.0,
     maxbonddim::Int=typemax(Int)
 ) where {F,ValueType}
-    sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=false)
+    # The first half-sweep is performed exactly without compression.
+    sweep1site!(tci, f, :forward; reltol=0.0, abstol=0.0, maxbonddim=typemax(Int), updatetensors=false)
     sweep1site!(tci, f, :backward; reltol, abstol, maxbonddim, updatetensors=false)
     sweep1site!(tci, f, :forward; reltol, abstol, maxbonddim, updatetensors=true)
 end

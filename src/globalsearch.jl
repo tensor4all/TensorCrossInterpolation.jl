@@ -80,7 +80,9 @@ function _floatingzone(
             )
             err = vec(abs.(exactdata .- prediction))
             pivot[ipos] = argmax(err)
-            maxerror = maximum(err)
+            # In RHS, we compare the maximum of the error vector with the current maxerror
+            # to make sure that the error does not decrease even if maxerror is close to machine precision.
+            maxerror = max(maximum(err), maxerror)
         end
 
         if maxerror == prev_maxerror || maxerror > earlystoptol # early stop

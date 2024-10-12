@@ -95,6 +95,9 @@ struct ThreadedBatchEvaluator{T} <: BatchEvaluator{T}
     end
 end
 
+function (obj::ThreadedBatchEvaluator{T})(indexset::Vector{Int})::T where {T}
+    return obj.f(indexset)
+end
 
 # Batch evaluation (loop over all index sets)
 function (obj::ThreadedBatchEvaluator{T})(leftindexset::Vector{Vector{Int}}, rightindexset::Vector{Vector{Int}}, ::Val{M})::Array{T,M + 2} where {T,M}

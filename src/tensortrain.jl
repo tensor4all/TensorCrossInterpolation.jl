@@ -30,6 +30,17 @@ mutable struct TensorTrain{ValueType,N} <: AbstractTensorTrain{ValueType}
     end
 end
 
+function Base.show(io::IO, obj::TensorTrain{V,N}) where {V,N}
+    print(
+        io,
+        "$(typeof(obj)) of rank $(maximum(linkdims(obj)))"
+    )
+end
+
+function TensorTrain{V2,N}(tt::TensorTrain{V})::TensorTrain{V2,N} where {V,V2,N}
+    return TensorTrain{V2,N}(Array{V2}.(sitetensors(tt)))
+end
+
 """
     function TensorTrain(sitetensors::Vector{Array{V, 3}}) where {V}
 
@@ -53,7 +64,7 @@ function TensorTrain(tci::AbstractTensorTrain{V})::TensorTrain{V,3} where {V}
 end
 
 """
-    function TensorTrain{N}(tci::AbstractTensorTrain{V}) where {V,N}
+    function TensorTrain{V2,N}(tci::AbstractTensorTrain{V}) where {V,V2,N}
 
 Convert a tensor-train-like object into a tensor train.
 
@@ -62,15 +73,15 @@ Arguments:
 - `localdims`: a vector of local dimensions for each tensor in the tensor train. A each element
   of `localdims` should be an array-like object of `N-2` integers.
 """
-function TensorTrain{V,N}(tt::AbstractTensorTrain{V}, localdims)::TensorTrain{V,N} where {V,N}
+function TensorTrain{V2,N}(tt::AbstractTensorTrain{V}, localdims)::TensorTrain{V2,N} where {V,V2,N}
     for d in localdims
         length(d) == N - 2 || error("Each element of localdims be a list of N-2 integers.")
     end
     for n in 1:length(tt)
         prod(size(tt[n])[2:end-1]) == prod(localdims[n]) || error("The local dimensions at n=$n must match the tensor sizes.")
     end
-    return TensorTrain{V,N}(
-        [reshape(t, size(t, 1), localdims[n]..., size(t)[end]) for (n, t) in enumerate(sitetensors(tt))])
+    return TensorTrain{V2,N}(
+        [reshape(Array{V2}(t), size(t, 1), localdims[n]..., size(t)[end]) for (n, t) in enumerate(sitetensors(tt))])
 end
 
 function TensorTrain{N}(tt::AbstractTensorTrain{V}, localdims)::TensorTrain{V,N} where {V,N}
@@ -262,4 +273,20 @@ end
 function (obj::TensorTrainFit{ValueType})(x::Vector{ValueType}) where {ValueType}
     tensors = to_tensors(obj, x)
     return sum((abs2(_evaluate(tensors, indexset) - obj.values[i]) for (i, indexset) in enumerate(obj.indexsets)))
+end
+
+
+function fulltensor(obj::TensorTrain{T,N})::Array{T} where {T,N}
+    sitedims_ = sitedims(obj)
+    localdims = collect(prod.(sitedims_))
+    result::Matrix{T} = reshape(obj.sitetensors[1], localdims[1], :)
+    leftdim = localdims[1]
+    for l in 2:length(obj)
+        nextmatrix = reshape(
+            obj.sitetensors[l], size(obj.sitetensors[l], 1), localdims[l] * size(obj.sitetensors[l])[end])
+        leftdim *= localdims[l]
+        result = reshape(result * nextmatrix, leftdim, size(obj.sitetensors[l])[end])
+    end
+    returnsize = collect(Iterators.flatten(sitedims_))
+    return reshape(result, returnsize...)
 end

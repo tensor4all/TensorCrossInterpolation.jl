@@ -44,6 +44,25 @@ using Optim
 end
 
 
+function _fulltensor(obj::TCI.TensorTrain{T,N})::Array{T} where {T,N}
+    sitedims_ = TCI.sitedims(obj)
+    localdims = collect(prod.(sitedims_))
+    r = [obj(collect(Tuple(i))) for i in CartesianIndices(Tuple(localdims))]
+    returnsize = collect(Iterators.flatten(sitedims_))
+    return reshape(r, returnsize...)
+end
+
+@testset "TT fulltensor" for T in [Float64, ComplexF64]
+    linkdims = [1, 2, 3, 1]
+    L = length(linkdims) - 1
+    localdims = fill(4, L)
+    tts = TCI.TensorTrain{T,3}([randn(T, linkdims[n], localdims[n], linkdims[n+1]) for n in 1:L])
+    tto = TCI.TensorTrain{4}(tts, fill([2, 2], L))
+
+    @test _fulltensor(tts) ≈ TCI.fulltensor(tts)
+end
+
+
 @testset "TT shape conversion" for T in [Float64, ComplexF64]
     linkdims = [1, 2, 3, 1]
     L = length(linkdims) - 1
@@ -218,3 +237,19 @@ end
     TCI.compress!(tt_compressed, :SVD; tolerance=LA.norm(tt) * tol, normalizeerror=false)
     @test sqrt(LA.norm2(tt - tt_compressed) / LA.norm2(tt)) < sqrt(N) * tol
 end
+
+@testset "tensor train cast" begin
+    Random.seed!(10)
+    localdims = [2, 2, 2]
+    linkdims_ = [1, 2, 3, 1]
+    L = length(localdims)
+
+    tt1 = TCI.TensorTrain{Float64,3}([randn(Float64, linkdims_[n], localdims[n], linkdims_[n+1]) for n in 1:L])
+
+    tt2 = TCI.TensorTrain{ComplexF64,3}(tt1, localdims)
+    @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt2)
+
+    tt3 = TCI.TensorTrain{Float64,3}(tt2, localdims)
+    @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt3)
+end
+
