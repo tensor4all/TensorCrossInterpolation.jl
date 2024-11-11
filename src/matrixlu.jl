@@ -319,8 +319,17 @@ function cols2Lmatrix!(C::AbstractMatrix, P::AbstractMatrix, leftorthogonal::Boo
     end
 
     for k in axes(P, 1)
-        C[:, k] /= P[k, k]
-        C[:, k+1:end] -= C[:, k] * transpose(P[k, k+1:end])
+        C[:, k] ./= P[k, k]
+        # C[:, k+1:end] .-= C[:, k] * transpose(P[k, k+1:end])
+        x = @view C[:, k]
+        y = @view P[k, k+1:end]
+        C̃ = @view C[:, k+1:end]
+        @inbounds for j in eachindex(axes(C̃, 2), y)
+            for i in eachindex(axes(C̃, 1), x)
+                # update `C[:, k+1:end]`
+                C̃[i, j] -= x[i] * y[j]
+            end
+        end
     end
     return C
 end
@@ -333,8 +342,17 @@ function rows2Umatrix!(R::AbstractMatrix, P::AbstractMatrix, leftorthogonal::Boo
     end
 
     for k in axes(P, 1)
-        R[k, :] /= P[k, k]
-        R[k+1:end, :] -= P[k+1:end, k] * transpose(R[k, :])
+        R[k, :] ./= P[k, k]
+        # R[k+1:end, :] -= P[k+1:end, k] * transpose(R[k, :])
+        x = @view P[k+1:end, k]
+        y = @view R[k, :]
+        R̃ = @view R[k+1:end, :]
+        @inbounds for j in eachindex(axes(R̃, 2), y)
+            for i in eachindex(axes(R̃, 1), x)
+                # update R[k+1:end, :]
+                R̃[i, j] -= x[i] * y[j]
+            end
+        end
     end
     return R
 end
