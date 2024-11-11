@@ -96,13 +96,19 @@ function rrLU{T}(A::AbstractMatrix{T}; leftorthogonal::Bool=true) where {T}
 end
 
 function swaprow!(lu::rrLU{T}, A::AbstractMatrix{T}, a, b) where {T}
-    lu.rowpermutation[[a, b]] = lu.rowpermutation[[b, a]]
-    A[[a, b], :] = A[[b, a], :]
+    lurp = lu.rowpermutation
+    lurp[a], lurp[b] = lurp[b], lurp[a]
+    @inbounds for j in axes(A, 2)
+        A[a, j], A[b, j] = A[b, j], A[a, j]
+    end
 end
 
 function swapcol!(lu::rrLU{T}, A::AbstractMatrix{T}, a, b) where {T}
-    lu.colpermutation[[a, b]] = lu.colpermutation[[b, a]]
-    A[:, [a, b]] = A[:, [b, a]]
+    lucp = lu.colpermutation
+    lucp[a], lucp[b] = lucp[b], lucp[a]
+    @inbounds for i in axes(A, 1)
+        A[i, a], A[i, b] = A[i, b], A[i, a]
+    end
 end
 
 function addpivot!(lu::rrLU{T}, A::AbstractMatrix{T}, newpivot) where {T}
