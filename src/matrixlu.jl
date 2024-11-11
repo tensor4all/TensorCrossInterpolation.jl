@@ -159,8 +159,8 @@ function _optimizerrlu!(
         addpivot!(lu, A, newpivot)
     end
 
-    lu.L = tril(A[:, 1:lu.npivot])
-    lu.U = triu(A[1:lu.npivot, :])
+    lu.L = tril(@view A[:, 1:lu.npivot])
+    lu.U = triu(@view A[1:lu.npivot, :])
     if any(isnan.(lu.L))
         error("lu.L contains NaNs")
     end
@@ -277,16 +277,16 @@ function arrlu(
         I2 = setdiff(1:matrixsize[1], I0)
         lu.rowpermutation = vcat(I0, I2)
         L2 = _batchf(I2, J0)
-        cols2Lmatrix!(L2, lu.U[1:lu.npivot, 1:lu.npivot], leftorthogonal)
-        lu.L = vcat(lu.L[1:lu.npivot, 1:lu.npivot], L2)
+        cols2Lmatrix!(L2, (@view lu.U[1:lu.npivot, 1:lu.npivot]), leftorthogonal)
+        lu.L = vcat((@view lu.L[1:lu.npivot, 1:lu.npivot]), L2)
     end
 
     if size(lu.U, 2) < matrixsize[2]
         J2 = setdiff(1:matrixsize[2], J0)
         lu.colpermutation = vcat(J0, J2)
         U2 = _batchf(I0, J2)
-        rows2Umatrix!(U2, lu.L[1:lu.npivot, 1:lu.npivot], leftorthogonal)
-        lu.U = hcat(lu.U[1:lu.npivot, 1:lu.npivot], U2)
+        rows2Umatrix!(U2, (@view lu.L[1:lu.npivot, 1:lu.npivot]), leftorthogonal)
+        lu.U = hcat((@view lu.U[1:lu.npivot, 1:lu.npivot]), U2)
     end
 
     return lu
