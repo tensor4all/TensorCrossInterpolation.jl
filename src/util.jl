@@ -53,7 +53,7 @@ end
 
 function pushrandomsubset!(subset, set, n::Int)
     topush = randomsubset(setdiff(set, subset), n)
-    push!(subset, topush...)
+    append!(subset, topush)
     nothing
 end
 
