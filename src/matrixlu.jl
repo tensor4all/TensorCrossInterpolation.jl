@@ -117,9 +117,9 @@ function addpivot!(lu::rrLU{T}, A::AbstractMatrix{T}, newpivot) where {T}
     swapcol!(lu, A, k, newpivot[2])
 
     if lu.leftorthogonal
-        A[k+1:end, k] /= A[k, k]
+        A[k+1:end, k] ./= A[k, k]
     else
-        A[k, k+1:end] /= A[k, k]
+        A[k, k+1:end] ./= A[k, k]
     end
 
     # perform BLAS subroutine manually: A <- -x * transpose(y) + A
@@ -145,12 +145,12 @@ function _optimizerrlu!(
     reltol::Number=1e-14,
     abstol::Number=0.0
 ) where {T}
-    maxrank = min(maxrank, size(A)...)
+    maxrank = min(maxrank, size(A, 1), size(A, 2))
     maxerror = 0.0
     while lu.npivot < maxrank
         k = lu.npivot + 1
         newpivot = submatrixargmax(abs2, A, k)
-        lu.error = abs(A[newpivot...])
+        lu.error = abs(A[newpivot[1], newpivot[2]])
         # Add at least 1 pivot to get a well-defined L * U
         if (abs(lu.error) < reltol * maxerror || abs(lu.error) < abstol) && lu.npivot > 0
             break
