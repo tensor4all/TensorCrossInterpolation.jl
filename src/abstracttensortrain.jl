@@ -301,35 +301,3 @@ Subtraction of two tensor trains. If `c = a - b`, then `c(v) ≈ a(v) - b(v)` at
 function Base.:-(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where {V}
     return subtract(lhs, rhs)
 end
-
-"""
-    function initializempi()
-
-Initialize the MPI environment if it has not been initialized yet. If mute=true, then all the processes with rank>0 (i.e. not the root node) won't output anything to stdout.
-"""
-function initializempi(mute::Bool=true)
-    if !MPI.Initialized()
-        MPI.Init()
-    end
-    comm = MPI.COMM_WORLD
-    rank = MPI.Comm_rank(comm)
-    if mute
-        if rank != 0
-            open("/dev/null", "w") do devnull
-                redirect_stdout(devnull)
-                redirect_stderr(devnull)
-            end
-        end
-    end
-end
-
-"""
-    function finalizempi()
-
-Finalize the MPI environment if it has not been finalized yet.
-"""
-function finalizempi()
-    if !MPI.Finalized()
-        MPI.Finalize()
-    end
-end

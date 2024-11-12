@@ -466,6 +466,43 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
+function _bondsperproc(nbonds, nprocs, localdim)
+    bondsperproc = ones(Int, nprocs)
+    if localdim == 2 # First and last processor have 3 or 4 extra bonds
+        if nbonds < nprocs + 6
+            remaining = nbonds - nprocs
+            bondsperproc[1] = 1 + div(remaining, 2)
+            bondsperproc[end] = 1 + remaining - div(remaining, 2)
+        else
+            bondsperproc[1] = 4
+            bondsperproc[end] = 4
+            division, remainder = divrem(nbonds - nprocs - 6, nprocs)
+            addbondsperproc = [division + (i <= remainder ? 1 : 0) for i in 1:nprocs]
+            #The priority is: "First bond, last bond, second bond, second to last bond, others"
+            left_indices = 1:2:nprocs
+            right_indices = (nprocs-rem(nprocs,2)):-2:1
+            addbondsperproc = addbondsperproc[vcat(left_indices,right_indices)]
+            bondsperproc = bondsperproc + addbondsperproc
+        end
+    else # localdims > 2. First and last processor have 2 or 3 extra bonds
+        if nbonds < nprocs + 4
+            remaining = nbonds - nprocs
+            bondsperproc[1] = 1 + div(remaining, 2)
+            bondsperproc[end] = 1 + remaining - div(remaining, 2)
+        else
+            bondsperproc[1] = 3
+            bondsperproc[end] = 3
+            division, remainder = divrem(nbonds - nprocs - 4, nprocs)
+            addbondsperproc = [division + (i <= remainder ? 1 : 0) for i in 1:nprocs]
+            #The priority is: "First bond, last bond, second bond, second to last bond, others"
+            left_indices = 1:2:nprocs
+            right_indices = (nprocs-rem(nprocs,2)):-2:1
+            addbondsperproc = addbondsperproc[vcat(left_indices,right_indices)]
+            bondsperproc = bondsperproc + addbondsperproc
+        end
+    end
+    return bondsperproc
+end
 
 """
 Update pivots at bond `b` of `tci` using the TCI2 algorithm.
@@ -492,11 +529,10 @@ function updatepivots!(
         rank = MPI.Comm_rank(comm)
         juliarank = rank + 1
         nprocs = MPI.Comm_size(comm)
-        nusedprocs = min(nprocs, length(tci)-1)
-
-        bondsperproc, remainder = divrem(length(tci)-1, nprocs)
-        bondsperproc = [bondsperproc + (i <= remainder ? 1 : 0) for i in 1:nprocs]
-
+        nusedprocs = min(nprocs, length(tci)-1) # if nbonds < nprocs we don't use all the processors
+        bondsperproc = _bondsperproc(length(tci) - 1, nusedprocs, tci.localdims[1])
+        
+        # Start and End index of the bonds on which each processor works
         startindex = 1 + cumsum(vcat([0], bondsperproc))[juliarank]
         endindex = cumsum(bondsperproc)[juliarank]
     end
@@ -577,20 +613,16 @@ function updatepivots!(
     # Receive after the send
     if sweepdirection == :parallel  && MPI.Initialized()
         sreq = MPI.Request[]
-	    if startindex == endindex && juliarank != 1 && juliarank != nusedprocs
+	    if startindex == endindex && juliarank != 1 && juliarank != nusedprocs # If processor has only 1 bond then communicates both left and right
 	        push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=rank - 1, tag=(2*b+1)))
-            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank-1) message with tag=$(2*b+1)")
             push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=rank + 1, tag=2*(b+1)))
-            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank+1) message with tag=$(2*(b+1))")
-        elseif b == startindex && juliarank > 1
+        elseif b == startindex && juliarank > 1 # processor communicates left
             push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=rank - 1, tag=(2*b+1)))
-            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank-1) message with tag=$(2*b+1)")
             tci.Iset[b+1] = Icombined[rowindices(luci)]
-        elseif b == endindex && juliarank < nusedprocs
+        elseif b == endindex && juliarank < nusedprocs # processor communicates right
             push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=rank + 1, tag=2*(b+1)))
-            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I sent to $(rank+1) message with tag=$(2*(b+1))")
             tci.Jset[b] = Jcombined[colindices(luci)]
-        else
+        else # normal updates without MPI communications
             tci.Iset[b+1] = Icombined[rowindices(luci)]
             tci.Jset[b] = Jcombined[colindices(luci)]
         end
@@ -783,12 +815,12 @@ function optimize!(
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue), nglobalpivot=$(length(globalpivots))")
             flush(stdout)
         end
+        # Checks if every processor has converged with its own subtensor
         if sweepstrategy == :parallel && MPI.Initialized()
             converged = convergencecriterion(ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory)
-            #println("I am $rank and I reached the convergence barrier")
             MPI.Barrier(comm)
             global_converged = MPI.Allreduce(converged, MPI.LAND, comm)
-            if global_converged
+            if global_converged # If all the processors have converged
                 break
             end
         elseif convergencecriterion(
@@ -798,15 +830,16 @@ function optimize!(
         end
     end
 
+    # After convergence
     if sweepstrategy == :parallel && MPI.Initialized()
-        bondsperproc, remainder = divrem(length(tci)-1, nprocs)
-        bondsperproc = [bondsperproc + (i <= remainder ? 1 : 0) for i in 1:nprocs]
+        bondsperproc = _bondsperproc(length(tci) - 1, nusedprocs, tci.localdims[1])
 
+        # start and end indexes of each processor
         startindexes = cumsum(vcat([0], bondsperproc)) .+ 1
         endindexes = cumsum(bondsperproc)
         startindex = 1 + cumsum(vcat([0], bondsperproc))[mpirank + 1]
         endindex = cumsum(bondsperproc)[mpirank + 1]
-        if mpirank == 0
+        if mpirank == 0 # If we are the first processor, we take all the information from the other processes
             for juliarank in 2:nusedprocs
                 for b in startindexes[juliarank]:endindexes[juliarank]
                     serialized_info = MPI.recv(comm; source=juliarank-1, tag=2*(b))
@@ -819,7 +852,7 @@ function optimize!(
                     end
                 end
             end
-        else # Other processors
+        else # Other processors pass the infomation to the first one
             for b in startindex:endindex
                 MPI.send([tci.Iset[b]], comm; dest=0, tag=2*(b))
                 MPI.send([tci.Jset[b+1]], comm; dest=0, tag=2*(b+1)+1)
@@ -828,7 +861,6 @@ function optimize!(
                 end
             end
         end
-        #MPI.Finalize()
     end
 
     # Extra one sweep by the 1-site update to
@@ -874,10 +906,6 @@ function sweep2site!(
         juliarank = rank + 1
         nprocs = MPI.Comm_size(comm)
         nusedprocs = min(nprocs, length(tci)-1)
-        #if juliarank > nprocs
-	    #println("Too many, I am $rank but only need $nusedprocs")
-            #return nothing
-        #end
     end
 
     for iter in iter1:iter1+niter-1
@@ -894,12 +922,11 @@ function sweep2site!(
 
         flushpivoterror!(tci)
         if sweepstrategy == :parallel && MPI.Initialized()
-            bondsperproc, remainder = divrem(n-1, nprocs)
-            bondsperproc = [bondsperproc + (i <= remainder ? 1 : 0) for i in 1:nprocs] # TODO prima era 1:(n-1)
-
+            bondsperproc = _bondsperproc(length(tci) - 1, nusedprocs, tci.localdims[1])
+                
+            # Start and end indexes for each processor
             startindex = 1 + cumsum(vcat([0], bondsperproc))[juliarank]
             endindex = cumsum(bondsperproc)[juliarank]
-
             for bondindex in startindex:endindex
                 updatepivots!(
                     tci, bondindex, f, true;
@@ -912,22 +939,19 @@ function sweep2site!(
                     extraJset=extraJset[bondindex],
                 )
             end
+
             
             for b in startindex:endindex
                 if b == startindex && juliarank > 1
-                    #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I am waiting from $(rank-1) message with tag=$(2*b)")
                     serialized_info = MPI.recv(comm; source=rank - 1, tag=2*b)
-		            #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I received from $(rank-1) message with tag=$(2*b)")
                     tci.Iset[b] = serialized_info[1]
                 end
                 if b == endindex && juliarank < nusedprocs
-                    #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I am waiting from $(rank+1) message with tag=$(2*(b + 1) + 1)")
                     serialized_info = MPI.recv(comm; source=rank + 1, tag=2*(b + 1) + 1)
-	                #println("I am $rank with s:e=$(startindex):$endindex on bond $b and I received from $(rank+1) message with tag=$(2*(b + 1) + 1)")
                     tci.Jset[b + 1] = serialized_info[1]
                 end
             end
-            #println("I am $rank and I have reached the recv barrier")
+
             MPI.Barrier(comm)
         elseif forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
@@ -1073,3 +1097,34 @@ function searchglobalpivots(
     return [p for (_,p) in pivots]
 end
 
+"""
+    function initializempi()
+
+Initialize the MPI environment if it has not been initialized yet. If mute=true, then all the processes with rank>0 (i.e. not the root node) won't output anything to stdout.
+"""
+function initializempi(mute::Bool=true)
+    if !MPI.Initialized()
+        MPI.Init()
+    end
+    comm = MPI.COMM_WORLD
+    rank = MPI.Comm_rank(comm)
+    if mute # Mute all processors which have rank != 0.
+        if rank != 0
+            open("/dev/null", "w") do devnull
+                redirect_stdout(devnull)
+                redirect_stderr(devnull)
+            end
+        end
+    end
+end
+
+"""
+    function finalizempi()
+
+Finalize the MPI environment if it has not been finalized yet.
+"""
+function finalizempi()
+    if !MPI.Finalized()
+        MPI.Finalize()
+    end
+end
