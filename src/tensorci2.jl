@@ -751,11 +751,20 @@ function optimize!(
         ))
     end
 
+    if sweepstrategy == :parallel && !MPI.Initialized()
+        println("Warning! Parallel strategy has been chosen, but MPI is not initialized, please use initializempi() before using crossinterpolate2() and remember to use finalizempi() at the end")
+    end
+
     if sweepstrategy == :parallel && MPI.Initialized()
         comm = MPI.COMM_WORLD
         mpirank = MPI.Comm_rank(comm)
-	    nprocs = MPI.Comm_size(comm)
+	nprocs = MPI.Comm_size(comm)
         nusedprocs = min(nprocs, length(tci)-1)
+	if nusedprocs < nprocs
+            throw(ArgumentError(
+                "The number of nodes is bigger than number of bonds, this feature is not supported"
+            ))
+        end
     end
 
     globalpivots = MultiIndex[]
