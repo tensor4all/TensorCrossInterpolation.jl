@@ -3,8 +3,9 @@ module TensorCrossInterpolation
 using LinearAlgebra
 using EllipsisNotation
 using MPI
-import QuadGK
+using Base.Threads
 
+import QuadGK
 # To add a method for rank(tci)
 import LinearAlgebra: rank, diag
 import LinearAlgebra as LA
