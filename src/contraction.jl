@@ -443,7 +443,7 @@ function contract_zipup(
     A::TensorTrain{ValueType,4},
     B::TensorTrain{ValueType,4};
     tolerance::Float64=1e-12,
-    method::Symbol=:SVD, # :SVD, :LU
+    method::Symbol=:SVD, # :SVD, :LU, :CI
     maxbonddim::Int=typemax(Int)
 ) where {ValueType}
     if length(A) != length(B)
@@ -455,12 +455,14 @@ function contract_zipup(
     for n in 1:length(A)
         # R:     (link_ab, link_an, link_bn)
         # A[n]:  (link_an, s_n, s_n', link_anp1)
+        #println("Time RA:")
         RA = _contract(R, A[n], (2,), (1,))
 
         # RA[n]: (link_ab, link_bn, s_n, s_n' link_anp1)
         # B[n]:  (link_bn, s_n', s_n'', link_bnp1)
         # C:     (link_ab, s_n, link_anp1, s_n'', link_bnp1)
         #  =>    (link_ab, s_n, s_n'', link_anp1, link_bnp1)
+        #println("Time C:")
         C = permutedims(_contract(RA, B[n], (2, 4), (1, 2)), (1, 2, 4, 3, 5))
         if n == length(A)
             sitetensors[n] = reshape(C, size(C)[1:3]..., 1)
@@ -470,6 +472,7 @@ function contract_zipup(
         # Cmat:  (link_ab * s_n * s_n'', link_anp1 * link_bnp1)
 
         #lu = rrlu(Cmat; reltol, abstol, leftorthogonal=true)
+        # println("Time factorize:")
         left, right, newbonddim = _factorize(
             reshape(C, prod(size(C)[1:3]), prod(size(C)[4:5])),
             method; tolerance, maxbonddim
@@ -518,6 +521,7 @@ function contract(
     algorithm::Symbol=:TCI,
     tolerance::Float64=1e-12,
     maxbonddim::Int=typemax(Int),
+    method::Symbol=:SVD,
     f::Union{Nothing,Function}=nothing,
     kwargs...
 )::TensorTrain{promote_type(V1,V2),4} where {V1,V2}
@@ -535,7 +539,7 @@ function contract(
         if f !== nothing
             error("Zipup contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
         end
-        return contract_zipup(A_, B_; tolerance, maxbonddim)
+        return contract_zipup(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end
@@ -557,4 +561,13 @@ function contract(
 )::TensorTrain{promote_type(V,V2),3} where {V,V2}
     tt = contract(A, TensorTrain{4}(B, [(s..., 1) for s in sitedims(B)]); kwargs...)
     return TensorTrain{3}(tt, prod.(sitedims(tt)))
+end
+
+function contract(
+    A::Union{TensorCI1{V},TensorCI2{V},TensorTrain{V,3}},
+    B::Union{TensorCI1{V2},TensorCI2{V2},TensorTrain{V2,3}};
+    kwargs...
+)::promote_type(V,V2) where {V,V2}
+    tt = contract(TensorTrain{4}(A, [(1, s...) for s in sitedims(A)]), TensorTrain{4}(B, [(s..., 1) for s in sitedims(B)]); kwargs...)
+    return prod(prod.(tt.sitetensors))
 end
