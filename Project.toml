@@ -8,10 +8,12 @@ EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
+RandomizedLinAlg = "0448d7d9-159c-5637-8537-fd72090fea46"
 
 [compat]
-EllipsisNotation = "1"
-QuadGK = "2.9"
+EllipsisNotation = "1.8.0"
+QuadGK = "2.11.1"
+RandomizedLinAlg = "0.1.0"
 julia = "1.6"
 
 [extras]
