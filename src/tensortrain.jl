@@ -93,7 +93,7 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, p::Int=16, t::Int=64
+    A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, p::Int=16, t::Int=64, dt::Int=32, q::Int=0
 )::Tuple{Matrix{V},Matrix{V},Int} where {V}
     if method === :LU
         factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
@@ -121,20 +121,23 @@ function _factorize(
         if maxbonddim + p > size(A)[1] || maxbonddim + p > size(A)[2]
             factorization = LinearAlgebra.svd(A)
         else
-            factorization = RandomizedLinAlg.rsvd(A, maxbonddim, p)
+            m, n = size(A)
+            G = randn(n, maxbonddim + p)
+            Y = A*G
+            for _ in 1:q
+                Y = A'*Y
+                Y = A*Y
+            end
+            # TODO increase stability by using Gram-Schmidt with double reorthogonalization
+            Q = Matrix(LinearAlgebra.qr!(Y).Q)
+            B = Q'A
+            factorization = LinearAlgebra.svd!(B)
+            factorization = SVD((Q*factorization.U)[:,1:maxbonddim], factorization.S[1:maxbonddim], factorization.Vt[1:maxbonddim,:])
         end
         trunci = min(
             replacenothing(findlast(>(tolerance), factorization.S), 1),
             maxbonddim
         )
-        factorization_svd = LinearAlgebra.svd(A)
-        println(size(A))
-        if minimum(size(A)) > maxbonddim
-            print(p)
-            println(factorization_svd.S[1:maxbonddim])
-            println(factorization_svd.S[maxbonddim+1])
-            println(factorization.S[1:maxbonddim])
-        end
         if invert
             return (
             factorization.Vt[1:trunci, :]',
@@ -148,7 +151,7 @@ function _factorize(
                 trunci
             )
         end
-    elseif method === :RRRSVD
+    elseif method === :R3SVD
         converged = false
         invert = false
         if size(A)[1] < size(A)[2]
@@ -156,33 +159,52 @@ function _factorize(
             invert = true
         end
         m, n = size(A)
-        Ul = zeros(m)
-        Sl = zeros(0)
-        Vtl = zeros(n)
-        G = randn(n, t + p)
-        while length(Sl) + t + p < m && length(Sl) + t + p < n && length(Sl) < maxbonddim
+        G = randn(n, t)
+        normA = LinearAlgebra.norm(A)^2
+        Y = A*G
+        for _ in 1:q
+            Y = A'*Y
+            Y = A*Y
+        end
+        Q = Matrix(LinearAlgebra.qr!(Y).Q)
+        B = Q'A
+        normB = LinearAlgebra.norm(B)^2
+        r = t
+        while normA - normB > tolerance && size(B)[1] + dt < m && size(B)[1] < maxbonddim
+            G = randn(n, dt)
             Y = A*G
-            Q = Matrix(LinearAlgebra.qr!(Y).Q)
-            B = Q'A
-            U, S, Vt = LinearAlgebra.svd!(B)
-            U = Q*U
-            Vt = Matrix(LinearAlgebra.qr!(Vt - Vtl*(Vtl'*Vt)).Q)
-            Ul = hcat(Ul, U[:,1:t])
-            Sl = vcat(Sl, S[1:t])
-            Vtl = hcat(Vtl, Vt[:,1:t])
-            if S[t+1] < tolerance
-                converged = true
-                break
+            for _ in 1:q
+                Y = A'*Y
+                Y = A*Y
             end
-            G = G - Vt*(Vt'G)
+            Y = Y - Q*Q'*Y
+            Q_ = Matrix(LinearAlgebra.qr!(Y).Q)
+            B_ = Q_'A
+            Q = hcat(Q_, Q)
+            B = vcat(B_, B)
+            normB = LinearAlgebra.norm(B)^2
+            r = r + dt
         end
         
-        if !converged
+        if normA - normB > tolerance || r > size(A)[1] || r > size(A)[2]
             if maxbonddim + p > size(A)[1] || maxbonddim + p > size(A)[2]
                 factorization = LinearAlgebra.svd(A)
             else
-                factorization = RandomizedLinAlg.rsvd(A, maxbonddim, p)
+                m, n = size(A)
+                G = randn(n, maxbonddim + p)
+                Y = A*G
+                for _ in 1:q
+                    Y = A'*Y
+                    Y = A*Y
+                end
+                Q = Matrix(LinearAlgebra.qr!(Y).Q)
+                B = Q'A
+                factorization = LinearAlgebra.svd!(B)
+                factorization = SVD((Q*factorization.U)[:,1:maxbonddim], factorization.S[1:maxbonddim], factorization.Vt[1:maxbonddim,:])
             end
+        else
+            factorization = LinearAlgebra.svd!(B)
+            factorization = SVD((Q*factorization.U[:,1:r]), factorization.S[1:r], factorization.Vt[1:r,:])
         end
         trunci = min(
             replacenothing(findlast(>(tolerance), factorization.S), 1),
@@ -190,8 +212,8 @@ function _factorize(
         )
         if invert
             return (
-            factorization.Vt[1:trunci, :]',
-            Diagonal(factorization.S[1:trunci]) * factorization.U[:, 1:trunci]',
+            factorization.Vt'[:, 1:trunci],
+            Diagonal(factorization.S[1:trunci]) * factorization.U'[1:trunci, :],
             trunci
         )
         else
