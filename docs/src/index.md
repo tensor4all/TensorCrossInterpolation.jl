@@ -133,7 +133,7 @@ The maximum number of global pivots inserted at once is controlled by the parame
 A rare failure case is that the global search find the index sets with high interpolation errors, but the 2-site algorithm fails to add these pivots into the TCI2 object.
 This will end up adding the same index sets in the next global search, leading to an endless loop.
 
-## Estiamte true interpolation error by random global search
+## Estimate true interpolation error by random global search
 Since most of the TCI update algorithms are local, the true interpolation error is not known. However, the error can be estimated by global searches. This is implemented in the function [`estimatetrueerror`](@ref):
 
 ```julia
