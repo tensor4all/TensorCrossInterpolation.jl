@@ -39,5 +39,6 @@ include("conversion.jl")
 include("integration.jl")
 include("contraction.jl")
 include("globalsearch.jl")
+include("mpi.jl")
 
 end

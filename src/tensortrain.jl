@@ -93,48 +93,42 @@ function tensortrain(tci)
 end
 
 function _factorize(
-     A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, p::Int=16, t::Int=64, dt::Int=32, q::Int=0, diamond::Symbol=:right
+    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true, q::Int=0,
 )::Union{Tuple{Matrix{V},Matrix{V},Int},Tuple{Matrix{V},Matrix{V},Matrix{V},Int}} where {V}
+    reltol = 1e-14
+    abstol = 0.0
+    if normalizeerror
+        reltol = tolerance
+    else
+        abstol = tolerance
+    end
     if method === :LU
-        factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
+        factorization = rrlu(A, abstol=abstol, reltol=reltol, maxrank=maxbonddim, leftorthogonal=leftorthogonal)
         return left(factorization), right(factorization), npivots(factorization)
     elseif method === :CI
-        factorization = MatrixLUCI(A, abstol=tolerance, maxrank=maxbonddim)
+        factorization = MatrixLUCI(A, abstol=abstol, reltol=reltol, maxrank=maxbonddim, leftorthogonal=leftorthogonal)
         return left(factorization), right(factorization), npivots(factorization)
     elseif method === :SVD
         factorization = LinearAlgebra.svd(A)
+        err = [sum(factorization.S[n+1:end] .^ 2) for n in 1:length(factorization.S)]
+        normalized_err = err ./ sum(factorization.S .^ 2)
+
         trunci = min(
             replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
             maxbonddim
         )
-        #if length(factorization.S) < 130
-        #    println(factorization.S)
-        #end
-        #if trunci+1 <= length(factorization.S)
-        #    println("Discarded: $(factorization.S[trunci+1]), with trunci=$trunci")
-        #else
-        #    println("Last sv: : $(factorization.S[trunci]), with trunci=$trunci")
-        #end
-        # TODO if separated also other options
-        if diamond == :separated
-            return (
-                factorization.U[:, 1:trunci],
-                Diagonal(factorization.S[1:trunci]),
-                factorization.Vt[1:trunci, :],
-                trunci
-            )
-        elseif diamond == :right
+        if leftorthogonal
             return (
                 factorization.U[:, 1:trunci],
                 Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
                 trunci
             )
-        else diamond == :left
+        else
             return (
                 factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci]),
                 factorization.Vt[1:trunci, :],
                 trunci
-            ) 
+            )
         end
     elseif method === :RSVD
         invert = false
@@ -163,24 +157,7 @@ function _factorize(
             replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
             maxbonddim
         )
-        # TODO if separated also other options
-        if diamond == :separated
-            if invert
-                return (
-                    Matrix(factorization.Vt[1:trunci, :]'),
-                    Diagonal(factorization.S[1:trunci]),
-                    Matrix(factorization.U[:, 1:trunci]'),
-                    trunci
-                )
-            else
-                return (
-                    factorization.U[:, 1:trunci],
-                    Diagonal(factorization.S[1:trunci]),
-                    factorization.Vt[1:trunci, :],
-                    trunci
-                )
-            end
-        elseif diamond == :right
+        if leftorthogonal
             if invert
                 return (
                 factorization.Vt[1:trunci, :]',
@@ -209,83 +186,6 @@ function _factorize(
                 )
             end
         end
-    #=
-    elseif method === :R3SVD
-
-        converged = false
-        invert = false
-        if size(A)[1] < size(A)[2]
-            A = A'
-            invert = true
-        end
-        m, n = size(A)
-        G = randn(n, t)
-        normA = LinearAlgebra.norm(A)^2
-        Y = A*G
-        Q = Matrix(LinearAlgebra.qr!(Y).Q)
-        for _ in 1:q
-            Y = A'*Q
-            Q = Matrix(LinearAlgebra.qr!(Y).Q)
-            Y = A*Q
-            Q = Matrix(LinearAlgebra.qr!(Y).Q)
-        end
-        B = Q'A
-        normB = LinearAlgebra.norm(B)^2
-        r = t
-        while normA - normB > tolerance && size(B)[1] + dt < m && size(B)[1] < maxbonddim
-            G = randn(n, dt)
-            Y = A*G # THEORETICAL BOTTLENECK
-            for _ in 1:q # q=0 for best performance
-                Y = A'*Y # Less stable than Y,Q,Y,Q
-                Y = A*Y
-            end
-            Y = Y - Q*Q'*Y
-            Q_ = Matrix(LinearAlgebra.qr!(Y).Q)
-            B_ = Q_'A
-            Q = hcat(Q_, Q)
-            B = vcat(B_, B)
-            normB = LinearAlgebra.norm(B)^2
-            r = r + dt
-        end
-        
-        if normA - normB > tolerance || r > size(A)[1] || r > size(A)[2]
-            if maxbonddim + p > size(A)[1] || maxbonddim + p > size(A)[2]
-                factorization = LinearAlgebra.svd(A)
-            else
-                m, n = size(A)
-                G = randn(n, maxbonddim + p)
-                Y = A*G
-                for _ in 1:q
-                    Y = A'*Y
-                    Y = A*Y
-                end
-                Q = Matrix(LinearAlgebra.qr!(Y).Q)
-                B = Q'A
-                factorization = LinearAlgebra.svd(B)
-                factorization = SVD((Q*factorization.U)[:,1:maxbonddim], factorization.S[1:maxbonddim], factorization.Vt[1:maxbonddim,:])
-            end
-        else
-            factorization = LinearAlgebra.svd(B)
-            factorization = SVD((Q*factorization.U[:,1:r]), factorization.S[1:r], factorization.Vt[1:r,:])
-        end
-        trunci = min(
-            replacenothing(findlast(>(tolerance), factorization.S), 1),
-            maxbonddim
-        )
-        if invert
-            return (
-            factorization.Vt'[:, 1:trunci],
-            Diagonal(factorization.S[1:trunci]) * factorization.U'[1:trunci, :],
-            trunci
-        )
-        else
-            return (
-                factorization.U[:, 1:trunci],
-                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
-                trunci
-            )
-        end
-    =#
     else
         error("Not implemented yet.")
     end
@@ -305,13 +205,15 @@ function compress!(
     tt::TensorTrain{V,N},
     method::Symbol=:LU;
     tolerance::Float64=1e-12,
-    maxbonddim::Int=typemax(Int)
+    maxbonddim::Int=typemax(Int),
+    normalizeerror::Bool=true
 ) where {V,N}
+    # From left to right
     for ell in 1:length(tt)-1
         shapel = size(tt.sitetensors[ell])
         left, right, newbonddim = _factorize(
             reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]),
-            method; tolerance, maxbonddim
+            method; tolerance=0.0, maxbonddim=typemax(Int), leftorthogonal=true # no truncation
         )
         tt.sitetensors[ell] = reshape(left, shapel[1:end-1]..., newbonddim)
         shaper = size(tt.sitetensors[ell+1])
@@ -319,11 +221,12 @@ function compress!(
         tt.sitetensors[ell+1] = reshape(nexttensor, newbonddim, shaper[2:end]...)
     end
 
+    # From right to left
     for ell in length(tt):-1:2
         shaper = size(tt.sitetensors[ell])
         left, right, newbonddim = _factorize(
             reshape(tt.sitetensors[ell], shaper[1], prod(shaper[2:end])),
-            method; tolerance, maxbonddim
+            method; tolerance, maxbonddim, normalizeerror, leftorthogonal=false
         )
         tt.sitetensors[ell] = reshape(right, newbonddim, shaper[2:end]...)
         shapel = size(tt.sitetensors[ell-1])
@@ -384,6 +287,7 @@ function Base.reverse(tt::AbstractTensorTrain{V}) where {V}
         permutedims(T, (ndims(T), (2:ndims(T)-1)..., 1)) for T in sitetensors(tt)
     ]))
 end
+
 
 """
 Fitting data with a TensorTrain object.

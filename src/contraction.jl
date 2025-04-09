@@ -556,12 +556,12 @@ function contract_distr_zipup(
 
             U = _contract(Q, factorization.U[:, 1:newbonddimr], (5,), (1,))
             US = _contract(U, Diagonal(factorization.S[1:newbonddimr]), (5,), (1,))
-            U, S, Vt, newbonddiml = _factorize(
+            U, Vt, newbonddiml = _factorize(
                 reshape(US, prod(size(US)[1:2]), prod(size(US)[3:5])),
-                method; tolerance, maxbonddim, diamond=:separated
+                method; tolerance, maxbonddim, leftorthogonal=true
             )
             U = reshape(U, (size(A[n])[1], size(B[n])[1], newbonddiml))
-            finalsitetensors[n] = _contract(S, reshape(Vt, newbonddiml, size(US)[3:5]...), (2,), (1,))
+            finalsitetensors[n] = reshape(Vt, newbonddiml, size(US)[3:5]...)
 
             Us[i] = U
             Vts[i] = reshape(factorization.Vt[1:newbonddimr, :], newbonddimr, size(to_svd)[end-1], size(to_svd)[end])
@@ -604,7 +604,7 @@ function contract_distr_zipup(
             newbonddiml = npivots(factorization)
             
             U_3_2 = reshape(U, size(U)[1]*dimsA[2]*dimsB[3], dimsA[4]*dimsB[4])
-            U, Vt, newbonddimr = _factorize(U_3_2, :SVD; tolerance, maxbonddim, diamond=:left)
+            U, Vt, newbonddimr = _factorize(U_3_2, :SVD; tolerance, maxbonddim)
             Us[i] = reshape(L, dimsA[1], dimsB[1], newbonddiml)
             finalsitetensors[n] = reshape(U, newbonddiml, dimsA[2], dimsB[3], newbonddimr)
             Vts[i] = reshape(Vt, newbonddimr, dimsA[4], dimsB[4])

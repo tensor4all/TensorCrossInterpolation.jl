@@ -328,7 +328,7 @@ function Base.:-(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where
     return subtract(lhs, rhs)
 end
 
-function left_canonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
+function leftcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     MPO = tt.sitetensors
     N = length(MPO)  # Number of sites
     for i in 1:N-1
@@ -344,7 +344,7 @@ function left_canonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function right_canonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
+function rightcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     MPO = tt.sitetensors
     N = length(MPO)  # Number of sites
     for i in N:-1:2
@@ -356,8 +356,6 @@ function right_canonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueTyp
         # Perform RQ decomposition: W_mat = R * Q
         F = lq(reverse(W_mat, dims=1))
         R, Q = reverse(F.L), reverse(Matrix(F.Q), dims=1) # https://discourse.julialang.org/t/rq-decomposition/112795/13
-        #Q, R = qr(W_mat')
-        #Q = Matrix(Q)
 
         # Reshape Q back into the MPO tensor
         MPO[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
@@ -370,7 +368,7 @@ function right_canonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueTyp
 end
 
 
-function center_canonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) where {ValueType}
+function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) where {ValueType}
     MPO = tt.sitetensors
     N = length(MPO)  # Number of sites
     # LEFT
@@ -403,69 +401,27 @@ function center_canonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) w
 end
 
 
-function left_canonicalize(tt::AbstractTensorTrain{ValueType}) where {ValueType}
+function leftcanonicalize(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     tt_ = deepcopy(tt)
-    left_canonicalize!(tt_)
+    leftcanonicalize!(tt_)
     return tt_
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function right_canonicalize(tt::AbstractTensorTrain{ValueType}) where {ValueType}
+function rightcanonicalize(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     tt_ = deepcopy(tt)
-    right_canonicalize!(tt_)
+    rightcanonicalize!(tt_)
     return tt_
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function center_canonicalize(tt::AbstractTensorTrain{ValueType}, center::Int) where {ValueType}
+function centercanonicalize(tt::AbstractTensorTrain{ValueType}, center::Int) where {ValueType}
     tt_ = deepcopy(tt)
-    center_canonicalize!(tt_, center)
+    centercanonicalize!(tt_, center)
     return tt_
 end
 
-function extract_sv!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
-    MPO = tt.sitetensors
-    N = length(MPO)  # Number of sites
-    sv = Vector{Vector}(undef, N-1)
-    for i in 2:N
-        # Extract the tensor at the specified index
-        W = MPO[i]
-        χl, d1, d2, χr = size(W)
-        
-        # Reshape the MPO tensor into a matrix for SVD
-        W_mat = reshape(W, χl , d1 * d2 * χr)
-        
-        # Perform SVD to decompose the tensor into U, S, and V
-        U, S, V = svd(W_mat)
-
-        sv[i-1] = S
-        
-        MPO[i] = reshape(U*V', χl, d1, d2, χr)
-    end
-    return sv
-end
-
-function mpo_to_vidal!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
-    N = length(tt)
-    sv = Vector{Vector{ValueType}}(undef, N-1)
-    left_canonicalize!(tt)
-    if !check_left_orthogonality(tt)[1]
-        println("It's not left_orthogonal")
-        return
-    end
-    for i in N:-1:2
-        U, S, V = LinearAlgebra.svd(reshape(tt.sitetensors[i], size(tt.sitetensors[i])[1], prod(size(tt.sitetensors[i])[2:end])))
-        sv[i-1] = S
-        tt.sitetensors[i] = reshape(V', size(tt.sitetensors[i])...)
-        tt.sitetensors[i-1] = _contract(tt.sitetensors[i-1], U*Diagonal(S), (4,), (1,))
-    end
-    for i in N-1:-1:1
-        tt.sitetensors[i] = _contract(tt.sitetensors[i], Diagonal(sv[i].^-1), (4,), (1,))
-    end
-    return sv
-end
-
-function check_orthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueType}
+function checkorthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     ort = Vector{Symbol}(undef, length(tt))
     for i in 1:length(tt)
         W = tt.sitetensors[i]
@@ -486,113 +442,13 @@ function check_orthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueTyp
     return ort
 end
 
-# Function to check if a tensor is left-orthogonal (left canonical form)
-function check_left_orthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueType}
-    for i in 1:length(tt)-1
-        W = tt.sitetensors[i]
-        left_check = _contract(permutedims(W, (4,2,3,1,)), W, (2,3,4,),(2,3,1))
-        if !isapprox(left_check, I, atol=1e-10)
-            return false, i  # Fail at tensor i
-        end
-    end
-    return true, nothing  # All tensors passed
-end
-
-# Function to check if a tensor is left-orthogonal (left canonical form)
-function check_left_orthogonality(tt::AbstractTensorTrain{ValueType}, Ls::Vector{Vector{ValueType}}) where {ValueType}
-    for i in 1:length(tt)-1
-        if i > 1
-            LG = _contract(Diagonal(Ls[i-1]), tt.sitetensors[i], (2,), (1,))
-        else
-            LG = tt.sitetensors[i]
-        end
-        left_check = _contract(permutedims(LG, (4,2,3,1,)), LG, (2,3,4,),(2,3,1))
-        if !isapprox(left_check, I, atol=1e-10)
-            return false, i  # Fail at tensor i
-        end
-    end
-    return true, nothing  # All tensors passed
-end
-
-# Function to check if a tensor is right-orthogonal (right canonical form)
-function check_right_orthogonality(tt::AbstractTensorTrain)
-    for i in length(tt):-1:2
-        W = tt.sitetensors[i]
-        right_check = _contract(W, permutedims(W, (4,2,3,1,)), (2,3,4,),(2,3,1))
-        if !isapprox(right_check, I, atol=1e-10)
-            return false, i  # Fail at tensor i
-        end
-    end
-    return true, nothing  # All tensors passed
-end
-
-# Function to check if a tensor is right-orthogonal (right canonical form)
-function check_right_orthogonality(tt::AbstractTensorTrain{V}, Ls::Vector{Vector{V}}) where {V}
-    for i in length(tt):-1:2
-        if i < length(tt)
-            LG = _contract(tt.sitetensors[i], Diagonal(Ls[i]), (4,), (1,))
-        else
-            LG = tt.sitetensors[i]
-        end
-        right_check = _contract(LG, permutedims(LG, (4,2,3,1,)), (2,3,4,),(2,3,1))
-        if !isapprox(right_check, I, atol=1e-10)
-            return false, i  # Fail at tensor i
-        end
-    end
-    return true, nothing  # All tensors passed
-end
-
-function check_vidal(tt::AbstractTensorTrain{ValueType}, Ls::Vector{Vector{ValueType}}) where {ValueType}
-    check_l, il = check_left_orthogonality(tt, Ls)
-    if !check_l
-        println("Not left orthogonal at site $il")
-    end
-    check_r, ir = check_right_orthogonality(tt, Ls)
-    if !check_r
-        println("Not right orthogonal at site $ir")
-    end
-    return check_l && check_r
-end
-
-# This creates a LCTensorTrain which has every site left-canonical and the shur components are saved in a Vector of Matrices
-function left_canonical_form!(tt::AbstractTensorTrain{V}) where {V}
-    Rs = Vector{Matrix{V}}(undef, length(tt)-1)
-    for ell in 1:(length(tt) - 1)
-        shapel = size(tt.sitetensors[ell])
-
-        Q, R = qr(reshape(tt.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]))  # QR decomposition
-        Q = Matrix(Q)
-        R = Matrix(R)
-        Rs[ell] = R
-        # Update sitetensors[i] with reshaped Q
-        tt.sitetensors[ell] = reshape(Q, shapel[1:end-1]..., size(Q, 2))
-    end
-    return Rs
-end
-
-function left_canonical_form(tt::AbstractTensorTrain{V}) where {V}
-    tt_ = deepcopy(tt)
-    Rs = Vector{Matrix{V}}(undef, length(tt_))
-    for ell in 1:(length(tt_) - 1)
-        shapel = size(tt_.sitetensors[ell])
-
-        Q, R = qr(reshape(tt_.sitetensors[ell], prod(shapel[1:end-1]), shapel[end]))  # QR decomposition
-        Q = Matrix(Q)
-        R = Matrix(R)
-        Rs[ell] = R
-        # Update sitetensors[i] with reshaped Q
-        tt_.sitetensors[ell] = reshape(Q, shapel[1:end-1]..., size(Q, 2))
-    end
-    Rs[end] = reshape([1.0], 1, 1)
-    return tt_, Rs
-end
-
 @doc raw"""
     function makesitediagonal(
-        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int},
+        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_index::Int; local_index::Int
     )
 
-Subtract two tensor trains `lhs` and `rhs`. See [`add`](@ref).
+The function will reshape the tensors in to make it diagonal with respect to the specified index.
+Warning: This function is not yet tested and may not work as expected.
 
 Arguments:
 - `tt`: Tensor train.
@@ -601,6 +457,7 @@ Arguments:
 - `local_index`: Which local index index with respect to make the tensor diagonal.
 
 """
+# Warning: This function is not yet tested and may not work as expected.
 function makesitediagonal!(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_index::Int; local_index::Int=1) where {V}
     prod(theory_dims) != prod(size(sitetensor(tt, 1))[2:(end-1)]) && error("Local dims dimension mismatch") # Assume d equal in all sites
 
@@ -623,6 +480,22 @@ function makesitediagonal!(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int},
     return
 end
 
+@doc raw"""
+    function extractdiagonal!(
+        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_indexes::Union{Vector{Int},Tuple{Int}}, local_index::Int
+    )
+
+The function will reshape the tensors to extract the diagonal with respect to the specified indices.
+Warning: This function is not yet tested and may not work as expected.
+
+Arguments:
+- `tt`: Tensor train.
+- `theory_dims`: Theoretical division of the local index.
+- `theory_index`: Which theoretical index with respect to make the tensor diagonal.
+- `local_index`: Which local index index with respect to make the tensor diagonal.
+
+"""
+# Warning: This function is not yet tested and may not work as expected.
 function extractdiagonal!(tt::AbstractTensorTrain, theory_dims::Vector{Int}, theory_indexes::Union{Vector{Int},Tuple{Int}}; local_index::Int=1)
     prod(theory_dims) != prod(size(sitetensor(tt, 1))[2:(end-1)]) && error("Local dims dimension mismatch") # Assume d equal in all sites
 
@@ -647,6 +520,20 @@ function extractdiagonal!(tt::AbstractTensorTrain, theory_dims::Vector{Int}, the
     return
 end
 
+@doc raw"""
+    function mpo2mps(
+        tt::AbstractTensorTrain{V}
+    )
+
+Converts a Matrix Product Operator (MPO) to a Matrix Product State (MPS) by unifying the physical indices.
+
+Warning: This function is not yet tested and may not work as expected.
+
+Arguments:
+- `tt`: Tensor train.
+
+"""
+# Warning: This function is not yet tested and may not work as expected.
 function mpo2mps(tt::AbstractTensorTrain{V}) where V
     tensors = Vector{Array{V, 3}}(undef, length(tt))
     for b in 1:length(tt)
@@ -656,6 +543,21 @@ function mpo2mps(tt::AbstractTensorTrain{V}) where V
     return TensorTrain{V, 3}(tensors)
 end
 
+@doc raw"""
+    function mposwapindex(
+        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}
+    )
+
+Swaps the physical indices of a tensor train.
+    
+Warning: This function is not yet tested and may not work as expected.
+
+Arguments:
+- `tt`: Tensor train.
+- `theory_dims`: Theoretical division of the local index.
+- `permute`: Permutation of the indices.
+- `output_dims`: The dimensions of the output tensor train indices.
+"""
 # For now it assumes N=4
 function mposwapindex(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}) where V
     tensors = Vector{Array{V, 4}}(undef, length(tt))
@@ -667,16 +569,24 @@ function mposwapindex(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, perm
     end
     wow = TensorTrain{V, 4}(tensors)
 end
-
-function trace(mpoa::AbstractTensorTrain{V}, mpob::AbstractTensorTrain{V}) where {V}
-    T = ones(Float64, 1, 1, 1)
-    for b in 1:length(mpoa)
-        T = _contract(T, mpoa[b], (2,), (1,))
-        T = _contract(T, mpob[b], (2,3,4,), (1,3,2,))
+"""
+Squared Frobenius norm of a tensor train.
+"""
+function LA.norm2(tt::AbstractTensorTrain{V})::Float64 where {V}
+    function _f(n)::Matrix{V}
+        t = sitetensor(tt, n)
+        t3 = reshape(t, size(t)[1], :, size(t)[end])
+        # (lc, s, rc) * (l, s, r) => (lc, rc, l, r)
+        tct = _contract(conj.(t3), t3, (2,), (2,))
+        tct = permutedims(tct, (1, 3, 2, 4))
+        return reshape(tct, size(tct, 1) * size(tct, 2), size(tct, 3) * size(tct, 4))
     end
-    return sum(T)
+    return real(only(reduce(*, (_f(n) for n in 1:length(tt)))))
 end
 
-function frobenius_norm_diff(mpoa::AbstractTensorTrain{V}, mpob::AbstractTensorTrain{V}) where {V}
-    return trace(mpoa, mpoa) + trace(mpob, mpob) - trace(mpoa, mpob) - trace(mpob, mpoa)
+"""
+Frobenius norm of a tensor train.
+"""
+function LA.norm(tt::AbstractTensorTrain{V})::Float64 where {V}
+    sqrt(LA.norm2(tt))
 end

@@ -1,4 +1,5 @@
 import TensorCrossInterpolation as TCI
+import LinearAlgebra as LA
 using Random
 using Zygote
 using Optim
@@ -194,6 +195,47 @@ end
     ttmultileg2 = ttmultileg + ttmultileg
     indicesmultileg = @. collect(zip(indices, indices))
     @test ttmultileg2.(indicesmultileg) ≈ 2 .* ttmultileg.(indicesmultileg)
+end
+
+
+@testset "norm" begin
+    T = Float64
+    sitedims_ = [[2], [2], [2]]
+    N = length(sitedims_)
+    bonddims = [1, 1, 1, 1]
+
+    tt = TCI.TensorTrain([
+        ones(bonddims[n], sitedims_[n]..., bonddims[n+1]) for n in 1:N
+    ])
+
+    @test LA.norm2(tt) ≈ prod(only.(sitedims_))
+    @test LA.norm2(2 * tt) ≈ 4 * prod(only.(sitedims_))
+    @test LA.norm2(tt) ≈ LA.norm(tt)^2
+end
+
+@testset "compress! (SVD)" for T in [Float64, ComplexF64]
+    Random.seed!(1234)
+    T = Float64
+    N = 10
+    sitedims_ = [[2] for _ in 1:N]
+    χ = 10
+
+    tol = 0.1
+    bonddims = vcat(1, χ * ones(Int, N - 1), 1)
+
+    tt = TCI.TensorTrain([
+        randn(bonddims[n], sitedims_[n]..., bonddims[n+1]) for n in 1:N
+    ])
+
+    # normalizeerror=true
+    tt_compressed = deepcopy(tt)
+    TCI.compress!(tt_compressed, :SVD; tolerance=tol)
+    @test sqrt(LA.norm2(tt - tt_compressed) / LA.norm2(tt)) < sqrt(N) * tol
+
+    # normalizeerror=false
+    tt_compressed = deepcopy(tt)
+    TCI.compress!(tt_compressed, :SVD; tolerance=LA.norm(tt) * tol, normalizeerror=false)
+    @test sqrt(LA.norm2(tt - tt_compressed) / LA.norm2(tt)) < sqrt(N) * tol
 end
 
 @testset "tensor train cast" begin

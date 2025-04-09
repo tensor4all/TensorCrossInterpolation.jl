@@ -1,6 +1,6 @@
 using Test
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain
+import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain, optimize!
 import Random
 import QuanticsGrids as QD
 
@@ -174,6 +174,19 @@ TCI.initializempi(false)
         @test linkdims(tci) == fill(1, n - 1)
     end
 
+    @testset "TCI2 errors and warnings" begin
+        n = 5
+        f(v) = 1.0 ./ (sum(v .^ 2) + 1)
+
+        @test_throws ArgumentError crossinterpolate2(Float64, f, fill(2, n); tolerance=1e-9, pivottolerance=1e-2)
+        @test_throws ArgumentError crossinterpolate2(Float64, f, fill(2, n); tolerance=0.0)
+
+        tci, = crossinterpolate2(Float64, f, fill(2, n); tolerance=0.1)
+        @test_throws ArgumentError optimize!(tci, f; pivottolerance = 0.1, tolerance = 0.01)
+        @test_throws ArgumentError optimize!(tci, f; tolerance = 0.0)
+        @test_logs (:warn, "The option `pivottolerance` of `optimize!(tci::TensorCI2, f)` is deprecated. Please update your code to use `tolerance`, as `pivottolerance` will be removed in the future.") optimize!(tci, f; pivottolerance = 0.1)
+    end
+
     # This is a stochastic test
     @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for seed in collect(1:20), coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook], sweepstrategy in [:backandforth, :parallel]
         Random.seed!(seed)
@@ -216,7 +229,6 @@ TCI.initializempi(false)
             fill(10, n),
             [ones(Int, n)];
             tolerance=1e-8,
-            pivottolerance=1e-8,
             maxiter=8,
             sweepstrategy=:sweepstrategy,
             pivotsearch=pivotsearch
