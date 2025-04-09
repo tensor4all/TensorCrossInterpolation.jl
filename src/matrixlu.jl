@@ -388,7 +388,7 @@ function arrlu(
                     _optimizerrlu!(lu, submatrix; maxrank, reltol, abstol)
                     islowrank |= npivots(lu) < minimum(size(submatrix))
                 end    
-            else
+            else # Serial
                 submatrix = if colmove
                     _batchf(I0, lu.colpermutation)
                 else
@@ -398,7 +398,7 @@ function arrlu(
                 _optimizerrlu!(lu, submatrix; maxrank, reltol, abstol)
                 islowrank |= npivots(lu) < minimum(size(submatrix))
             end
-            if !isempty(leaders)
+            if !isempty(leaders) # Parallel
                 tb = time_ns()
                 lu = MPI.bcast([lu], subcomm)[1]
                 islowrank = MPI.bcast([islowrank], subcomm)[1]
@@ -408,7 +408,7 @@ function arrlu(
                 end
                 J0 = colindices(lu)
                 I0 = rowindices(lu)
-            else
+            else # Serial
                 if rowindices(lu) == I0 && colindices(lu) == J0
                     break
                 end

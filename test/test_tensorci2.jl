@@ -4,7 +4,7 @@ import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addgl
 import Random
 import QuanticsGrids as QD
 
-TCI.initializempi()
+TCI.initializempi(false)
 
 # TODO write test for parallel subfunctions
 

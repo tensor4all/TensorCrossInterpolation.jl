@@ -443,8 +443,9 @@ function contract_zipup(
     A::TensorTrain{ValueType,4},
     B::TensorTrain{ValueType,4};
     tolerance::Float64=1e-12,
-    method::Symbol=:SVD, # :SVD, :LU, :CI
-    maxbonddim::Int=typemax(Int)
+    method::Symbol=:SVD, # :SVD, :RSVD, :LU, :CI
+    maxbonddim::Int=typemax(Int),
+    kwargs...
 ) where {ValueType}
     if length(A) != length(B)
         throw(ArgumentError("Cannot contract tensor trains with different length."))
@@ -464,6 +465,7 @@ function contract_zipup(
         #  =>    (link_ab, s_n, s_n'', link_anp1, link_bnp1)
         #println("Time C:")
         C = permutedims(_contract(RA, B[n], (2, 4), (1, 2)), (1, 2, 4, 3, 5))
+        #println(size(C))
         if n == length(A)
             sitetensors[n] = reshape(C, size(C)[1:3]..., 1)
             break
@@ -472,7 +474,6 @@ function contract_zipup(
         # Cmat:  (link_ab * s_n * s_n'', link_anp1 * link_bnp1)
 
         #lu = rrlu(Cmat; reltol, abstol, leftorthogonal=true)
-        # println("Time factorize:")
         left, right, newbonddim = _factorize(
             reshape(C, prod(size(C)[1:3]), prod(size(C)[4:5])),
             method; tolerance, maxbonddim
@@ -486,6 +487,196 @@ function contract_zipup(
     end
 
     return TensorTrain{ValueType,4}(sitetensors)
+end
+
+function contract_distr_zipup(
+    A::TensorTrain{ValueType,4},
+    B::TensorTrain{ValueType,4};
+    tolerance::Float64=1e-12,
+    method::Symbol=:SVD,
+    p::Int=16,
+    maxbonddim::Int=typemax(Int),
+    estimatedbond::Union{Nothing,Int}=nothing,
+    kwargs...
+) where {ValueType}
+    if length(A) != length(B)
+        throw(ArgumentError("Cannot contract tensor trains with different length."))
+    end
+    
+    if !MPI.Initialized()
+        println("Warning! Distributed zipup has been chosen, but MPI is not initialized, please use initializempi() before using contract() and use finalizempi() afterwards")
+    end
+
+    R::Array{ValueType,3} = ones(ValueType, 1, 1, 1)
+
+    if MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        mpirank = MPI.Comm_rank(comm)
+        juliarank = mpirank + 1
+	    nprocs = MPI.Comm_size(comm)
+        if estimatedbond == nothing
+            estimatedbond = maxbonddim == typemax(Int) ? 500 : maxbonddim
+        end
+        noderanges = _noderanges(nprocs, length(A), size(A[1])[2]*size(B[1])[3], estimatedbond, true)
+        Us = Vector{Array{ValueType,3}}(undef, length(noderanges[juliarank]))
+        Vts = Vector{Array{ValueType,3}}(undef, length(noderanges[juliarank]))
+    else
+        juliarank = 1
+        nprocs = 1
+        noderanges = [1:length(A)]
+        Us = Vector{Array{ValueType,3}}(undef, length(A))
+        Vts = Vector{Array{ValueType,3}}(undef, length(A))
+        println("Warning! Distributed strategy has been chosen, but MPI is not initialized, please use initializempi() before contract() and use finalizempi() afterwards")
+    end    
+    
+    finalsitetensors =  Vector{Array{ValueType,4}}(undef, length(A))
+
+    time = time_ns()
+    if method == :SVD || method == :RSVD
+        for (i, n) in enumerate(noderanges[juliarank])
+            # Random matrix
+            G = randn(size(A[n])[end], size(B[n])[end], maxbonddim+p)
+            # Projection on smaller space
+            Y = _contract(A[n], G, (4,), (1,))
+            Y = _contract(B[n], Y, (2,4,), (3,4))
+            Y = permutedims(Y, (3,1,4,2,5,))
+
+            # QR decomposition
+            Q = Matrix(LinearAlgebra.qr!(reshape(Y, (prod(size(Y)[1:4]), size(Y)[end]))).Q)
+            Q = reshape(Q, (size(Y)[1:4]..., min(prod(size(Y)[1:4]), size(Y)[end])))
+            Qt = permutedims(Q, (5, 3, 4, 1, 2))
+            # Smaller object to SVD
+            to_svd = _contract(Qt, A[n], (2,4,), (2,1,))
+            to_svd = _contract(to_svd, B[n], (2,3,4,), (3,1,2,))
+            factorization = svd(reshape(to_svd, (size(to_svd)[1], prod(size(to_svd)[2:3]))))
+            newbonddimr = min(
+                replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
+                maxbonddim
+            )
+
+            U = _contract(Q, factorization.U[:, 1:newbonddimr], (5,), (1,))
+            US = _contract(U, Diagonal(factorization.S[1:newbonddimr]), (5,), (1,))
+            U, S, Vt, newbonddiml = _factorize(
+                reshape(US, prod(size(US)[1:2]), prod(size(US)[3:5])),
+                method; tolerance, maxbonddim, diamond=:separated
+            )
+            U = reshape(U, (size(A[n])[1], size(B[n])[1], newbonddiml))
+            finalsitetensors[n] = _contract(S, reshape(Vt, newbonddiml, size(US)[3:5]...), (2,), (1,))
+
+            Us[i] = U
+            Vts[i] = reshape(factorization.Vt[1:newbonddimr, :], newbonddimr, size(to_svd)[end-1], size(to_svd)[end])
+            #Debug purpouse: println(_contract(_contract(Us[i], finalsitetensors[n], (3,), (1,)), Vts[i], (5,), (1,)) ≈ permutedims(_contract(A[n], B[n], (3,), (2,)), (1, 4, 2, 5, 3, 6)))
+        end
+    elseif method == :CI || method == :LU
+        for (i, n) in enumerate(noderanges[juliarank])
+            dimsA = size(A[n])
+            dimsB = size(B[n])
+            function f24(j,k; print=false)
+                b1, a1 = Tuple(CartesianIndices((dimsB[1], dimsA[1]))[j])  # Extract (a1, b1) from j
+                b4, a4, b3, a2 = Tuple(CartesianIndices((dimsB[4], dimsA[4], dimsB[3], dimsA[2]))[k])  # Extract (a2, b3, a4, b4) from k
+                sum(A[n][a1, a2, c, a4] * B[n][b1, c, b3, b4] for c in 1:dimsA[3])  # Summing over the contracted index
+            end
+            
+            # Non Zero element to start PRRLU decomposition
+            nz = nothing
+            size_A = size(A[n])  # (i, j, k, l)
+            size_B = size(B[n])  # (m, k, n, o)
+            
+            for i in 1:size_A[1], m in 1:size_B[1], j in 1:size_A[2], n in 1:size_B[3], l in 1:size_A[4], o in 1:size_B[4]
+                sum_val = zero(eltype(A[n]))
+                for k in 1:size_A[3]  # k index contraction
+                    if A[n][i, j, k, l] != 0 && B[n][m, k, n, o] != 0
+                        sum_val += A[n][i, j, k, l] * B[n][m, k, n, o]
+                    end
+                end
+                if sum_val != 0
+                    nz = [i, m, j, n, l, o]
+                    break
+                end
+            end
+            
+            # CartesianIndices are read the other way around
+            I0 = [(nz[1]-1)*dimsB[1] + nz[2], (nz[3]-1)*dimsB[3]*dimsA[4]*dimsB[4] + (nz[4]-1)*dimsA[4]*dimsB[4] + (nz[5]-1)*dimsB[4] + nz[6]]
+            J0 = [(nz[1]-1)*dimsB[1] + nz[2], (nz[3]-1)*dimsB[3]*dimsA[4]*dimsB[4] + (nz[4]-1)*dimsA[4]*dimsB[4] + (nz[5]-1)*dimsB[4] + nz[6]]
+            factorization = arrlu(ValueType, f24, (dimsA[1]*dimsB[1], dimsA[2]*dimsB[3]*dimsA[4]*dimsB[4]), I0, J0; abstol=tolerance, maxrank=maxbonddim)
+            L = left(factorization)
+            U = right(factorization)
+            newbonddiml = npivots(factorization)
+            
+            U_3_2 = reshape(U, size(U)[1]*dimsA[2]*dimsB[3], dimsA[4]*dimsB[4])
+            U, Vt, newbonddimr = _factorize(U_3_2, :SVD; tolerance, maxbonddim, diamond=:left)
+            Us[i] = reshape(L, dimsA[1], dimsB[1], newbonddiml)
+            finalsitetensors[n] = reshape(U, newbonddiml, dimsA[2], dimsB[3], newbonddimr)
+            Vts[i] = reshape(Vt, newbonddimr, dimsA[4], dimsB[4])
+            # Debug purpouse: println(_contract(_contract(Us[n], finalsitetensors[n], (3,), (1,)), Vts[n], (5,), (1,)) ≈ permutedims(_contract(A[n], B[n], (3,), (2,)), (1, 4, 2, 5, 3, 6)))
+        end
+    end
+    
+    # Exchange Vt to left
+    if MPI.Initialized()
+        MPI.Barrier(comm)
+        reqs = MPI.Request[]
+        if juliarank < nprocs
+            push!(reqs, MPI.isend(Vts[end], comm; dest=mpirank+1, tag=mpirank))
+        end
+        if juliarank > 1
+            Vts_l = MPI.recv(comm; source=mpirank-1, tag=mpirank-1)
+        end
+        MPI.Waitall(reqs)
+        MPI.Barrier(comm)
+    end
+
+    # contraction
+    time = time_ns()
+    for (i, n) in enumerate(noderanges[juliarank])
+        if i > 1
+            VtU = _contract(Vts[i-1], Us[i], (2,3,), (1,2,))
+            finalsitetensors[n] = _contract(VtU, finalsitetensors[n], (2,), (1,))
+        elseif n > 1
+            VtU = _contract(Vts_l, Us[i], (2,3,), (1,2,))
+            finalsitetensors[n] = _contract(VtU, finalsitetensors[n], (2,), (1,))
+        end
+    end
+    if juliarank == 1
+        finalsitetensors[1] = _contract(_contract(R, Us[1], (2,3,), (1,2,)), finalsitetensors[1], (2,), (1,))
+    end
+    if juliarank == nprocs
+        finalsitetensors[end] = _contract(finalsitetensors[end], _contract(Vts[end], R, (2,3,), (1,2,)), (4,), (1,))
+    end
+
+    # All to all exchange
+    if MPI.Initialized()
+        all_sizes = [length(noderanges[r]) for r in 1:nprocs]
+        shapes = [isassigned(finalsitetensors, i) ? size(finalsitetensors[i]) : (0,0,0,0) for i in 1:length(finalsitetensors)]
+        shapesbuffer = VBuffer(shapes, all_sizes)
+        MPI.Allgatherv!(shapesbuffer, comm)
+
+        lengths = [sum(prod.(shapes)[noderanges[r]]) for r in 1:nprocs]
+        all_length = sum(prod.(shapes))
+        vec_tensors = zeros(all_length)
+
+        if juliarank == 1
+            before_me = 0
+        else
+            before_me = sum(prod.(shapes[1:noderanges[juliarank][1]-1]))
+        end
+        me = sum(prod.(shapes[noderanges[juliarank]]))
+        vec_tensors[before_me+1:before_me+me] = vcat([vec(finalsitetensors[i]) for i in 1:length(finalsitetensors) if isassigned(finalsitetensors, i)]...)
+
+        sendrecvbuf = VBuffer(vec_tensors, lengths)
+        MPI.Allgatherv!(sendrecvbuf, comm)
+
+        idx = 1
+        for i in 1:length(finalsitetensors)
+            s = shapes[i]
+            len = prod(s)
+            finalsitetensors[i] = reshape(view(vec_tensors, idx:idx+len-1), s)
+            idx += len
+        end
+    end
+    MPI.Barrier(comm)
+
+    return TensorTrain{ValueType,4}(finalsitetensors)
 end
 
 """
@@ -523,6 +714,8 @@ function contract(
     maxbonddim::Int=typemax(Int),
     method::Symbol=:SVD,
     f::Union{Nothing,Function}=nothing,
+    RAs::Union{Nothing,Vector{Vector{V1}}}=nothing,
+    RBs::Union{Nothing,Vector{Vector{V2}}}=nothing,
     kwargs...
 )::TensorTrain{promote_type(V1,V2),4} where {V1,V2}
     Vres = promote_type(V1, V2)
@@ -539,7 +732,16 @@ function contract(
         if f !== nothing
             error("Zipup contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
         end
-        return contract_zipup(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method)
+        return contract_zipup(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method, kwargs...)
+    elseif algorithm === :distrzipup
+        if f !== nothing
+            error("Zipup contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
+        end
+        if RAs == nothing || RBs == nothing
+            return contract_distr_zipup(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method, kwargs...)
+        else
+            return contract_distr_zipup(A_, B_; RAs, RBs, tolerance=tolerance, maxbonddim=maxbonddim, method=method, kwargs...)
+        end
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end

@@ -93,8 +93,8 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, p::Int=16, t::Int=64, dt::Int=32, q::Int=0
-)::Tuple{Matrix{V},Matrix{V},Int} where {V}
+     A::Matrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, p::Int=16, t::Int=64, dt::Int=32, q::Int=0, diamond::Symbol=:right
+)::Union{Tuple{Matrix{V},Matrix{V},Int},Tuple{Matrix{V},Matrix{V},Matrix{V},Int}} where {V}
     if method === :LU
         factorization = rrlu(A, abstol=tolerance, maxrank=maxbonddim)
         return left(factorization), right(factorization), npivots(factorization)
@@ -104,14 +104,38 @@ function _factorize(
     elseif method === :SVD
         factorization = LinearAlgebra.svd(A)
         trunci = min(
-            replacenothing(findlast(>(tolerance), factorization.S), 1),
+            replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
             maxbonddim
         )
-        return (
-            factorization.U[:, 1:trunci],
-            Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
-            trunci
-        )
+        #if length(factorization.S) < 130
+        #    println(factorization.S)
+        #end
+        #if trunci+1 <= length(factorization.S)
+        #    println("Discarded: $(factorization.S[trunci+1]), with trunci=$trunci")
+        #else
+        #    println("Last sv: : $(factorization.S[trunci]), with trunci=$trunci")
+        #end
+        # TODO if separated also other options
+        if diamond == :separated
+            return (
+                factorization.U[:, 1:trunci],
+                Diagonal(factorization.S[1:trunci]),
+                factorization.Vt[1:trunci, :],
+                trunci
+            )
+        elseif diamond == :right
+            return (
+                factorization.U[:, 1:trunci],
+                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+                trunci
+            )
+        else diamond == :left
+            return (
+                factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci]),
+                factorization.Vt[1:trunci, :],
+                trunci
+            ) 
+        end
     elseif method === :RSVD
         invert = false
         if size(A)[1] < size(A)[2]
@@ -123,35 +147,71 @@ function _factorize(
         else
             m, n = size(A)
             G = randn(n, maxbonddim + p)
-            Y = A*G
-            for _ in 1:q
-                Y = A'*Y
-                Y = A*Y
+            Y = A*G 
+            Q = Matrix(LinearAlgebra.qr!(Y).Q) # THEORETICAL BOTTLENECK
+            for _ in 1:q # q=0 for best performance
+                Y = A'*Q
+                Q = Matrix(LinearAlgebra.qr!(Y).Q)
+                Y = A*Q
+                Q = Matrix(LinearAlgebra.qr!(Y).Q)
             end
-            # TODO increase stability by using Gram-Schmidt with double reorthogonalization
-            Q = Matrix(LinearAlgebra.qr!(Y).Q)
-            B = Q'A
-            factorization = LinearAlgebra.svd!(B)
+            B = Q' * A
+            factorization = LinearAlgebra.svd(B)
             factorization = SVD((Q*factorization.U)[:,1:maxbonddim], factorization.S[1:maxbonddim], factorization.Vt[1:maxbonddim,:])
         end
         trunci = min(
-            replacenothing(findlast(>(tolerance), factorization.S), 1),
+            replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
             maxbonddim
         )
-        if invert
-            return (
-            factorization.Vt[1:trunci, :]',
-            Diagonal(factorization.S[1:trunci]) * factorization.U[:, 1:trunci]',
-            trunci
-        )
-        else
-            return (
-                factorization.U[:, 1:trunci],
-                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+        # TODO if separated also other options
+        if diamond == :separated
+            if invert
+                return (
+                    Matrix(factorization.Vt[1:trunci, :]'),
+                    Diagonal(factorization.S[1:trunci]),
+                    Matrix(factorization.U[:, 1:trunci]'),
+                    trunci
+                )
+            else
+                return (
+                    factorization.U[:, 1:trunci],
+                    Diagonal(factorization.S[1:trunci]),
+                    factorization.Vt[1:trunci, :],
+                    trunci
+                )
+            end
+        elseif diamond == :right
+            if invert
+                return (
+                factorization.Vt[1:trunci, :]',
+                Diagonal(factorization.S[1:trunci]) * factorization.U[:, 1:trunci]',
                 trunci
             )
+            else
+                return (
+                    factorization.U[:, 1:trunci],
+                    Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+                    trunci
+                )
+            end
+        else
+            if invert
+                return (
+                factorization.Vt[1:trunci, :]' * Diagonal(factorization.S[1:trunci]),
+                factorization.U[:, 1:trunci]',
+                trunci
+            )
+            else
+                return (
+                    factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci]),
+                    factorization.Vt[1:trunci, :],
+                    trunci
+                )
+            end
         end
+    #=
     elseif method === :R3SVD
+
         converged = false
         invert = false
         if size(A)[1] < size(A)[2]
@@ -162,19 +222,21 @@ function _factorize(
         G = randn(n, t)
         normA = LinearAlgebra.norm(A)^2
         Y = A*G
-        for _ in 1:q
-            Y = A'*Y
-            Y = A*Y
-        end
         Q = Matrix(LinearAlgebra.qr!(Y).Q)
+        for _ in 1:q
+            Y = A'*Q
+            Q = Matrix(LinearAlgebra.qr!(Y).Q)
+            Y = A*Q
+            Q = Matrix(LinearAlgebra.qr!(Y).Q)
+        end
         B = Q'A
         normB = LinearAlgebra.norm(B)^2
         r = t
         while normA - normB > tolerance && size(B)[1] + dt < m && size(B)[1] < maxbonddim
             G = randn(n, dt)
-            Y = A*G
-            for _ in 1:q
-                Y = A'*Y
+            Y = A*G # THEORETICAL BOTTLENECK
+            for _ in 1:q # q=0 for best performance
+                Y = A'*Y # Less stable than Y,Q,Y,Q
                 Y = A*Y
             end
             Y = Y - Q*Q'*Y
@@ -199,11 +261,11 @@ function _factorize(
                 end
                 Q = Matrix(LinearAlgebra.qr!(Y).Q)
                 B = Q'A
-                factorization = LinearAlgebra.svd!(B)
+                factorization = LinearAlgebra.svd(B)
                 factorization = SVD((Q*factorization.U)[:,1:maxbonddim], factorization.S[1:maxbonddim], factorization.Vt[1:maxbonddim,:])
             end
         else
-            factorization = LinearAlgebra.svd!(B)
+            factorization = LinearAlgebra.svd(B)
             factorization = SVD((Q*factorization.U[:,1:r]), factorization.S[1:r], factorization.Vt[1:r,:])
         end
         trunci = min(
@@ -223,6 +285,7 @@ function _factorize(
                 trunci
             )
         end
+    =#
     else
         error("Not implemented yet.")
     end
@@ -270,7 +333,6 @@ function compress!(
 
     nothing
 end
-
 
 function multiply!(tt::TensorTrain{V,N}, a) where {V,N}
     tt.sitetensors[end] .= tt.sitetensors[end] .* a

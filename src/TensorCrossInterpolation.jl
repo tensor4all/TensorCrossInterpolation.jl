@@ -1,7 +1,6 @@
 module TensorCrossInterpolation
 
 using LinearAlgebra
-using RandomizedLinAlg
 using EllipsisNotation
 using MPI
 using Base.Threads

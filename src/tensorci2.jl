@@ -538,7 +538,7 @@ function _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}})
 end
 
 function multithreadPi(ValueType, f, localdims, Icombined, Jcombined)
-    Pi = zeros(length(Icombined), length(Jcombined))
+    Pi = zeros(ValueType, length(Icombined), length(Jcombined))
     nthreads = Threads.nthreads()
     chunk_size, remainder = divrem(length(Jcombined), nthreads)
     col_ranges = [((i - 1) * chunk_size + min(i - 1, remainder) + 1):(i * chunk_size + min(i, remainder)) for i in 1:nthreads]
@@ -862,7 +862,7 @@ function optimize!(
     end
 
     if (sweepstrategy == :parallel) && !MPI.Initialized()
-        println("Warning! Parallel strategy has been chosen, but MPI is not initialized, please use initializempi() before using crossinterpolate2() and remember to use finalizempi() at the end")
+        println("Warning! Parallel strategy has been chosen, but MPI is not initialized, please use initializempi() before using crossinterpolate2()/quanticscrossinterpolate() and use finalizempi() afterwards")
     end
 
     if sweepstrategy == :parallel && MPI.Initialized()
@@ -951,6 +951,7 @@ function optimize!(
     end
 
     # After convergence
+    # Allgatherv! not possible given type constraints
     if sweepstrategy == :parallel && MPI.Initialized()
         if juliarank == 1 # If we are the first processor, we take all the information from the other processes
             for leader in leaderslist[2:end]
@@ -976,7 +977,22 @@ function optimize!(
                 end
             end
         end
+        # BCast to all, so that all nodes have full knowledge
+        tci.Iset = MPI.bcast(tci.Iset, comm)
+        tci.Jset = MPI.bcast(tci.Jset, comm)
     end
+
+    #if sweepstrategy == :parallel && MPI.Initialized()
+    #    if leaders[juliarank] != -1
+    #        local_iset = tci.Iset[noderanges[juliarank]]
+    #        local_jset = tci.Jset[noderanges[juliarank].+1]
+    #        counts = [isleader == -1 ? 0 : length(noderanges[proc]) for (proc, isleader) in enumerate(leaders)]
+    #        Ivbuf = VBuffer(tci.Iset, counts)
+    #        Jvbuf = VBuffer(tci.Jset, counts)
+    #        MPI.Allgatherv!(local_iset, Ivbuf, comm)
+    #        MPI.Allgatherv!(local_jset, Jvbuf, comm)
+    #    end
+    #end
 
     # Extra one sweep by the 1-site update to
     #  (1) Remove unnecessary pivots added by global pivots
@@ -1003,7 +1019,7 @@ Perform 2site sweeps on a TCI2.
 function sweep2site!(
     tci::TensorCI2{ValueType}, f, niter::Int;
     iter1::Int=1,
-    abstol::Float64=1e-8, # Why here is 1e-8 and in update pivot is 0...
+    abstol::Float64=1e-8,
     maxbonddim::Int=typemax(Int),
     sweepstrategy::Symbol=:backandforth,
     pivotsearch::Symbol=:full,
