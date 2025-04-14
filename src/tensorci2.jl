@@ -633,6 +633,7 @@ function updatepivots!(
             t2 = time_ns()
         end
         updatemaxsample!(tci, Pi)
+        #println(size(Pi))
         luci = MatrixLUCI(
             Pi,
             reltol=reltol,
@@ -672,6 +673,7 @@ function updatepivots!(
             MPI.Barrier(subcomm)
         else # Serial
             Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
+            #println("($(length(Icombined)), $(length(Jcombined)))")
             res = MatrixLUCI(
                 ValueType,
                 Pif,

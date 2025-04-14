@@ -93,7 +93,7 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true, q::Int=0,
+    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true, q::Int=0, p::Int=16
 )::Union{Tuple{Matrix{V},Matrix{V},Int},Tuple{Matrix{V},Matrix{V},Matrix{V},Int}} where {V}
     reltol = 1e-14
     abstol = 0.0
