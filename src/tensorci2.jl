@@ -54,7 +54,7 @@ function TensorCI2{ValueType}(
 end
 
 """
-    Inherit Iset/Jset from the previous evaluation.
+    Initialize with local pivots list(Iset/Jset).
 """
 function TensorCI2{ValueType}(
     func::F,
