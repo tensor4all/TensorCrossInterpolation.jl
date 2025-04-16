@@ -54,7 +54,7 @@ function TensorCI2{ValueType}(
 end
 
 """
-    Initialize with local pivots list(Iset/Jset).
+    Initialize a TCI2 object with local pivot lists.
 """
 function TensorCI2{ValueType}(
     func::F,
