@@ -53,6 +53,25 @@ function TensorCI2{ValueType}(
     return tci
 end
 
+"""
+    Inherit Iset/Jset from the previous evaluation.
+"""
+function TensorCI2{ValueType}(
+    func::F,
+    localdims::Union{Vector{Int},NTuple{N,Int}},
+    Iset::Vector{Vector{MultiIndex}},
+    Jset::Vector{Vector{MultiIndex}}
+) where {F,ValueType,N}
+    tci = TensorCI2{ValueType}(localdims)
+    tci.Iset = Iset
+    tci.Jset = Jset
+    pivots = reconstractglobalpivotsfromijset(localdims, tci.Iset, tci.Jset)
+    tci.maxsamplevalue = maximum(abs, (func(bit) for bit in pivots))
+    abs(tci.maxsamplevalue) > 0.0 || error("maxsamplevalue is zero!")
+    invalidatesitetensors!(tci)
+    return tci
+end
+
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
 
@@ -150,6 +169,24 @@ function updateerrors!(
     nothing
 end
 
+function reconstractglobalpivotsfromijset(
+    localdims::Union{Vector{Int},NTuple{N,Int}},
+    Isets::Vector{Vector{MultiIndex}}, 
+    Jsets::Vector{Vector{MultiIndex}}
+) where {N}
+    pivots = []
+    l = length(Isets)
+    for i in 1:l
+        for Iset in Isets[i]
+            for Jset in Jsets[i]
+                for j in 1:localdims[i]
+                    pushunique!(pivots, vcat(Iset, [j], Jset))
+                end
+            end
+        end
+    end
+    return pivots
+end
 
 """
 Add global pivots to index sets

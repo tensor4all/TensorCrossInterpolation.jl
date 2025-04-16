@@ -393,6 +393,20 @@ import QuanticsGrids as QD
     end
 
 
+    @testset "inherit_local_pivots" begin
+        Random.seed!(1234)
+
+        N = 10
+        M = rand(Float64, N, N)
+        f(v) = M[v[1], v[2]] # 2D function
+        localdims = fill(N, 2)
+        mbd = 5
+
+        tci, ranks, errors = TCI.crossinterpolate2(Float64, f, localdims; maxbonddim=mbd)
+        tci2 = TCI.TensorCI2{Float64}(f, localdims, tci.Iset, tci.Jset)
+        @test tci2.maxsamplevalue == tci.maxsamplevalue
+    end
+
     @testset "crossinterpolate2_ttcache" begin
         ValueType = Float64
 
