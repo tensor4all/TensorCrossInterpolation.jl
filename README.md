@@ -5,13 +5,13 @@
 
 The [TensorCrossInterpolation module](https://github.com/tensor4all/TensorCrossInterpolation.jl) implements the *tensor cross interpolation* algorithm for efficient interpolation of multi-index tensors and multivariate functions.
 
-This algorithm is used in the *quantics tensor cross interpolation* (QTCI) method for exponentially efficient interpolation of functions with scale separation. QTCI is implemented in the [QuanticsTCI.jl](https://github.com/tensor4all/quanticstci.jl) module.
+This algorithm is used in the *quantics tensor cross interpolation* (QTCI) method for exponentially efficient interpolation of functions with scale separation. QTCI is implemented in the [QuanticsTCI.jl](https://github.com/tensor4all/QuanticsTCI.jl) module.
 
 ## Installation
 
 This module has been registered in the General registry. It can be installed by typing the following in a Julia REPL:
 ```julia
-using Pkg; Pkg.add("TensorCrossInterpolation.jl")
+using Pkg; Pkg.add("TensorCrossInterpolation")
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ Note:
 - The return type of `f` (`Float64` in this case) must be stated explicitly in the call to `crossinterpolate2`.
 
 The resulting `TensorCI2` object can be further manipulated, see [user manual](https://tensor4all.github.io/TensorCrossInterpolation.jl/dev).
-To evaluate the TCI interpolation, simply call your `TensorCI1` object like you would call the original function:
+To evaluate the TCI interpolation, simply call your `TensorCI2` object like you would call the original function:
 ```julia
 originalvalue = f([1, 2, 3, 4, 5, 6, 7, 8])
 interpolatedvalue = tci([1, 2, 3, 4, 5, 6, 7, 8])
