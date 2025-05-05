@@ -465,19 +465,84 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
-function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int, responsibilities::Bool)
-    if responsibilities
-        bondsresp = ones(Int, max(1, nbonds - 2 * Int(floor(log(localdim, estimatedbond-1)))))
-        nresp = length(bondsresp)
-        if nresp == 1
-            bondsresp[1] = nbonds
-        else
-            bondsresp[1] += Int(floor(log(localdim, estimatedbond-1)))
-            bondsresp[end] += Int(floor(log(localdim, estimatedbond-1)))
-        end
+function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int, interbond::Bool; estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Vector{UnitRange{Int}}
+    if !interbond
+        return [1:nbonds for _ in 1:nprocs]
+    end
+    if estimatedbonds === nothing
+        estimatedbonds = [estimatedbond for _ in 1:nbonds-1]
+        i = 1
+        while localdim^i < estimatedbond && i <= nbonds/2
+            estimatedbonds[i] = localdim^i
+            estimatedbonds[end-i+1] = localdim^i
+            i = i + 1
+        end 
+    end
+
+    if algorithm == :tci
+        # ~ chi^3
+        costs = [(i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i]) * min((i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i])) for i in 1:nbonds]
     else
-        nresp = 1
-        bondsresp = nbonds * ones(Int, 1)
+        # ~ chi^4
+        costs = [(i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i]) * estimatedbond * min((i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i])) for i in 1:nbonds]
+    end
+    total_cost = sum(costs)
+    target_cost = total_cost / nprocs
+
+    assignments = []
+
+    i = 1  # bond index
+    node = 1
+    current_cost = 0
+    range_start = 1
+
+    while i <= nbonds && node < nprocs
+        bond_cost = costs[i]
+
+        if current_cost + bond_cost <= target_cost * 1.5
+            # Add the current bond to the node's range
+            current_cost += bond_cost
+            i += 1
+        else
+            # Current node is full, move to the next node
+            push!(assignments, range_start:i-1)
+            node += 1
+            current_cost = bond_cost
+            range_start = i
+            i += 1
+        end
+    end
+    push!(assignments, range_start:nbonds)
+    leftover = nprocs-node
+    if leftover > 0 
+        for k in 1:Int(ceil(leftover/node))
+            for j in 1:(k == Int(ceil(leftover/node)) ? rem(leftover, node) : node)
+                if j%2 == 1
+                    indx = Int(j + (j-1)/2 * (k-1))
+                    insert!(assignments, indx, assignments[indx])
+                else
+                    indx = Int(length(assignments)+2-j - (j/2)*(k-1))
+                    insert!(assignments, indx, assignments[indx])
+                end
+            end
+        end
+    end
+    works = [sum(costs[i]) for i in assignments]
+    efficiency = total_cost / maximum(works)
+    if efficiencycheck 
+        return assignments, efficiency
+    else
+        return assignments
+    end
+
+    #=
+    bondsresp = ones(Int, max(1, nbonds - 2 * Int(floor(log(localdim, estimatedbond-1)))))
+    nresp = length(bondsresp)
+    if nresp == 1
+        bondsresp[1] = nbonds
+    else
+        bondsresp[1] += Int(floor(log(localdim, estimatedbond-1)))
+        bondsresp[end] += Int(floor(log(localdim, estimatedbond-1)))
     end
     noderanges = Vector{UnitRange{Int}}(undef, nprocs)
 
@@ -512,6 +577,7 @@ function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int
     end
 
     return noderanges
+    =#
 end
 
 function _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}})
@@ -571,7 +637,7 @@ function updatepivots!(
     extraIset::Vector{MultiIndex}=MultiIndex[],
     extraJset::Vector{MultiIndex}=MultiIndex[],
     estimatedbond::Int=100,
-    responsibilities::Bool=true,
+    interbond::Bool=true,
     subcomm=nothing
 ) where {F,ValueType}
     invalidatesitetensors!(tci)
@@ -582,7 +648,7 @@ function updatepivots!(
         mpirank = MPI.Comm_rank(comm)
         juliarank = mpirank + 1
         nprocs = MPI.Comm_size(comm)
-        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, responsibilities)
+        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, interbond)
         leaders, leaderslist = _leaders(nprocs, noderanges)
         teamrank = MPI.Comm_rank(subcomm)
         teamjuliarank = teamrank + 1
@@ -652,6 +718,10 @@ function updatepivots!(
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))::Vector{Int}
         J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))::Vector{Int}
         t2 = time_ns()
+        if verbosity > 2
+            x, y = length(Icombined), length(Jcombined)
+            print("    Computing Pi ($x x $y) at bond $b: ")
+        end
         if sweepdirection == :parallel && MPI.Initialized()
             I0 = MPI.bcast([I0], subcomm)[1]
             J0 = MPI.bcast([J0], subcomm)[1]
@@ -688,7 +758,6 @@ function updatepivots!(
         end
         updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
 
-
         t3 = time_ns()
 
         # Fall back to full search if rook search fails
@@ -710,9 +779,13 @@ function updatepivots!(
         end
 
         t4 = time_ns()
+        #if verbosity > 2
+        #    x, y = length(Icombined), length(Jcombined)
+        #    println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+        #end
         if verbosity > 2
             x, y = length(Icombined), length(Jcombined)
-            println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+            println("$(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
         end
         res
     else
@@ -837,7 +910,7 @@ function optimize!(
     strictlynested::Bool=false,
     checkbatchevaluatable::Bool=false,
     estimatedbond::Int=100,
-    responsibilities::Bool=true
+    interbond::Bool=true
 ) where {ValueType}
     errors = Float64[]
     ranks = Int[]
@@ -886,7 +959,7 @@ function optimize!(
         mpirank = MPI.Comm_rank(comm)
         juliarank = mpirank + 1
 	    nprocs = MPI.Comm_size(comm)
-        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, responsibilities)
+        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, interbond)
         leaders, leaderslist = _leaders(nprocs, noderanges)
     end
 
@@ -911,7 +984,7 @@ function optimize!(
             sweepstrategy=sweepstrategy,
             fillsitetensors=true,
             estimatedbond=estimatedbond,
-            responsibilities=responsibilities
+            interbond=interbond
             )
         if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
             abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
@@ -1043,7 +1116,7 @@ function sweep2site!(
     strictlynested::Bool=false,
     fillsitetensors::Bool=true,
     estimatedbond::Int=100,
-    responsibilities::Bool=true
+    interbond::Bool=true
 ) where {ValueType}
     invalidatesitetensors!(tci)
 
@@ -1069,7 +1142,7 @@ function sweep2site!(
 
         flushpivoterror!(tci)
         if sweepstrategy == :parallel && MPI.Initialized()
-            noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, responsibilities)
+            noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, interbond)
             leaders, leaderslist = _leaders(nprocs, noderanges)
             colors = zeros(Int,nprocs)
             count = -1
@@ -1092,7 +1165,7 @@ function sweep2site!(
                     extraIset=extraIset[bondindex+1],
                     extraJset=extraJset[bondindex],
                     estimatedbond=estimatedbond,
-                    responsibilities=responsibilities,
+                    interbond=interbond,
                     subcomm = subcomm
                 )
             end

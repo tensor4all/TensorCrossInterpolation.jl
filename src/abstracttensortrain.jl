@@ -362,7 +362,7 @@ function rightcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType
 
         # Update the previous MPO tensor by absorbing R
         tmpMPO = reshape(MPO[i-1], :, size(R, 1))  # Reshape previous tensor
-        tmpMPO .= tmpMPO * Diagonal(R)
+        tmpMPO .= tmpMPO * Matrix(R)
         MPO[i-1] = reshape(tmpMPO, size(MPO[i-1], 1), d1, d2, size(MPO[i-1], 4))  # Reshape back
     end
 end
@@ -379,7 +379,7 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) wh
         MPO[i] = reshape(Q, size(MPO[i])[1:end-1]..., size(Q, 2))  # New bond dimension after Q
 
         tmpMPO = reshape(MPO[i+1], size(R, 2), :)  # Reshape next tensor
-        tmpMPO .= Matrix(R) * tmpMPO
+        tmpMPO = Matrix(R) * tmpMPO
         MPO[i+1] = reshape(tmpMPO, size(MPO[i+1])...)  # Reshape back
     end
     # RIGHT
@@ -387,17 +387,49 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) wh
         W = MPO[i]
         χl, d1, d2, χr = size(W)
         W_mat = reshape(W, χl, d1*d2*χr)
-        F = lq(reverse(W_mat, dims=1))
-        R, Q = reverse(F.L), reverse(Matrix(F.Q), dims=1) # https://discourse.julialang.org/t/rq-decomposition/112795/13
 
+        #println(size(W_mat))
+        L, Q = lq(W_mat)
+        #println(size(Matrix(L)), size(Matrix(Q)))
+        Q = Matrix(Q)
         # Reshape Q back into the MPO tensor
         MPO[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
 
-        # Update the previous MPO tensor by absorbing R
-        tmpMPO = reshape(MPO[i-1], :, size(R, 1))  # Reshape previous tensor
-        tmpMPO .= tmpMPO * Diagonal(R)
-        MPO[i-1] = reshape(tmpMPO, size(MPO[i-1], 1), d1, d2, size(MPO[i-1], 4))  # Reshape back
+        # Update the previous MPO tensor by absorbing L
+        tmpMPO = reshape(MPO[i-1], :, size(L, 1))  # Reshape previous tensor
+        tmpMPO = tmpMPO * Matrix(L)
+        MPO[i-1] = reshape(tmpMPO, size(MPO[i-1], 1), d1, d2, size(tmpMPO, 2))  # Reshape back
     end
+end
+
+function move_center_right!(tt, i)
+    MPO = tt.sitetensors
+    A = MPO[i]
+    d = size(A)
+    A_mat = reshape(A, prod(d[1:end-1]), d[end])
+    Q, R = qr(A_mat)
+    Q = Matrix(Q)
+    MPO[i] = reshape(Q, d[1:end-1]..., size(Q, 2))
+
+    B = MPO[i+1]
+    B_mat = reshape(B, size(R, 2), :)
+    B_mat .= Matrix(R) * B_mat
+    MPO[i+1] = reshape(B_mat, size(B)...)
+end
+
+function move_center_left!(tt, i)
+    MPO = tt.sitetensors
+    A = MPO[i]
+    d = size(A)
+    A_mat = reshape(A, d[1], prod(d[2:end]))
+    L, Q = lq(A_mat)
+    Q = Matrix(Q)
+    MPO[i] = reshape(Q, size(Q,1), d[2:end]...)
+
+    B = MPO[i-1]
+    B_mat = reshape(B, :, size(L,1))
+    B_mat .= B_mat * Matrix(L)
+    MPO[i-1] = reshape(B_mat, size(B)[1:3]..., size(L,1))
 end
 
 
