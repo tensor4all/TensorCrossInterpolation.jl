@@ -2,6 +2,7 @@ module TensorCrossInterpolation
 
 using LinearAlgebra
 using EllipsisNotation
+using BitIntegers
 import QuadGK
 
 # To add a method for rank(tci)
