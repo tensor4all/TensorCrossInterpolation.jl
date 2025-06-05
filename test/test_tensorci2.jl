@@ -2,6 +2,7 @@ using Test
 import TensorCrossInterpolation as TCI
 import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain, optimize!
 import Random
+import Random: AbstractRNG
 import QuanticsGrids as QD
 
 @testset "TensorCI2" begin
@@ -106,13 +107,14 @@ import QuanticsGrids as QD
     end
 
     function (finder::CustomGlobalPivotFinder)(
-        tci::TensorCI2{ValueType},
+        input::TCI.GlobalPivotSearchInput{ValueType},
         f,
         abstol::Float64;
-        verbosity::Int=0
+        verbosity::Int=0,
+        rng::AbstractRNG=Random.default_rng()
     )::Vector{MultiIndex} where {ValueType}
-        L = length(tci.localdims)
-        return [[rand(1:tci.localdims[p]) for p in 1:L] for _ in 1:finder.npivots]
+        L = length(input.localdims)
+        return [[rand(rng, 1:input.localdims[p]) for p in 1:L] for _ in 1:finder.npivots]
     end
     
     @testset "custom global pivot finder" begin

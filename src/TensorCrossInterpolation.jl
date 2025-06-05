@@ -13,6 +13,7 @@ import Base: ==, +
 # To define iterators and element access for MCI, TCI and TT objects
 import Base: isempty, iterate, getindex, lastindex, broadcastable
 import Base: length, size, sum
+import Random
 
 export crossinterpolate1, crossinterpolate2, optfirstpivot
 export tensortrain, TensorTrain, sitedims, evaluate
@@ -31,10 +32,10 @@ include("abstracttensortrain.jl")
 include("cachedtensortrain.jl")
 include("batcheval.jl")
 include("cachedfunction.jl")
-include("tensorci1.jl")
-include("tensorci2.jl")
-include("globalpivotfinder.jl")
 include("tensortrain.jl")
+include("tensorci1.jl")
+include("globalpivotfinder.jl")
+include("tensorci2.jl")
 include("conversion.jl")
 include("integration.jl")
 include("contraction.jl")

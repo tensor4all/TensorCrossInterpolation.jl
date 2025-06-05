@@ -1,9 +1,4 @@
 """
-Abstract type for global pivot finders in TCI2 algorithm.
-"""
-abstract type AbstractGlobalPivotFinder end
-
-"""
     mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
 
 Type that represents tensor cross interpolations created using the TCI2 algorithm. Users may want to create these using [`crossinterpolate2`](@ref) rather than calling a constructor directly.
@@ -617,7 +612,8 @@ function convergencecriterion(
     nglobalpivots::AbstractVector{Int},
     tolerance::Float64,
     maxbonddim::Int,
-    ncheckhistory::Int,
+    ncheckhistory::Int;
+    checkconvglobalpivot::Bool=true
 )::Bool
     if length(errors) < ncheckhistory
         return false
@@ -626,11 +622,26 @@ function convergencecriterion(
     lastngpivots = last(nglobalpivots, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
-        all(lastngpivots .== 0) &&
+        (checkconvglobalpivot ? all(lastngpivots .== 0) : true) &&
         minimum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
 end
 
+
+"""
+    GlobalPivotSearchInput(tci::TensorCI2{ValueType}) where {ValueType}
+
+Construct a GlobalPivotSearchInput from a TensorCI2 object.
+"""
+function GlobalPivotSearchInput(tci::TensorCI2{ValueType}) where {ValueType}
+    return GlobalPivotSearchInput{ValueType}(
+        tci.localdims,
+        TensorTrain(tci),
+        tci.maxsamplevalue,
+        tci.Iset,
+        tci.Jset
+    )
+end
 
 
 """
@@ -670,10 +681,14 @@ Arguments:
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 - `globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}` is a global pivot finder to use for searching global pivots. Default: `nothing`. If `nothing`, a default global pivot finder is used.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`. This parameter is used for the default global pivot finder. Deprecated.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`. This parameter is used for the default global pivot finder. Deprecated.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
+- `checkconvglobalpivot::Bool` Check if the global pivot finder is converged. Default: `true`. In the future, this will be set to `false` by default.
+
+Arguments (deprecated):
+- `pivottolerance::Float64` is the tolerance for the pivot search. Deprecated.
+- `nsearchglobalpivot::Int` is the number of search points for the global pivot finder. Deprecated.
+- `tolmarginglobalsearch::Float64` is the tolerance for the global pivot finder. Deprecated.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -700,7 +715,8 @@ function optimize!(
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
-    checkbatchevaluatable::Bool=false
+    checkbatchevaluatable::Bool=false,
+    checkconvglobalpivot::Bool=true
 ) where {ValueType}
     errors = Float64[]
     ranks = Int[]
@@ -785,9 +801,11 @@ function optimize!(
         end
 
         # Find global pivots where the error is too large
+        input = GlobalPivotSearchInput(tci)
         globalpivots = finder(
-            tci, f, abstol,
-            verbosity=verbosity
+            input, f, abstol;
+            verbosity=verbosity,
+            rng=Random.default_rng()
         )
         addglobalpivots!(tci, globalpivots)
         push!(nglobalpivots, length(globalpivots))
@@ -803,7 +821,10 @@ function optimize!(
             flush(stdout)
         end
         if convergencecriterion(
-            ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory
+            ranks, errors,
+            nglobalpivots,
+            abstol, maxbonddim, ncheckhistory;
+            checkconvglobalpivot=checkconvglobalpivot
         )
             break
         end
