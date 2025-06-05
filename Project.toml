@@ -14,7 +14,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 BitIntegers = "0.3.5"
 EllipsisNotation = "1"
 QuadGK = "2.9"
-Random = "1.11.0"
+Random = "1.10.0"
 julia = "1.6"
 
 [extras]
