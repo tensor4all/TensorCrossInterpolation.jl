@@ -1,3 +1,7 @@
+"""
+Abstract type for global pivot finders in TCI2 algorithm.
+"""
+abstract type AbstractGlobalPivotFinder end
 
 """
     mutable struct TensorCI2{ValueType} <: AbstractTensorTrain{ValueType}
@@ -664,9 +668,10 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
+- `globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}` is a global pivot finder to use for searching global pivots. Default: `nothing`. If `nothing`, a default global pivot finder is used.
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration.
+- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`. This parameter is used for the default global pivot finder. Deprecated.
+- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`. This parameter is used for the default global pivot finder. Deprecated.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 
@@ -690,6 +695,7 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
+    globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}=nothing,
     maxnglobalpivot::Int=5,
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
@@ -705,9 +711,6 @@ function optimize!(
         error("Function `f` is not batch evaluatable")
     end
 
-    #if maxnglobalpivot > 0 && nsearchglobalpivot > 0
-        #!strictlynested || error("nglobalpivots > 0 requires strictlynested=false!")
-    #end
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
     end
@@ -732,6 +735,17 @@ function optimize!(
         throw(ArgumentError(
             "Specify either tolerance > 0 or some maxbonddim; otherwise, the convergence criterion is not reachable!"
         ))
+    end
+
+    # Create the global pivot finder
+    finder = if isnothing(globalpivotfinder)
+        DefaultGlobalPivotFinder(
+            nsearch=nsearchglobalpivot,
+            maxnglobalpivot=maxnglobalpivot,
+            tolmarginglobalsearch=tolmarginglobalsearch
+        )
+    else
+        globalpivotfinder
     end
 
     globalpivots = MultiIndex[]
@@ -771,12 +785,9 @@ function optimize!(
         end
 
         # Find global pivots where the error is too large
-        # Such gloval pivots are added to the TCI, invalidating site tensors.
-        globalpivots = searchglobalpivots(
-            tci, f, tolmarginglobalsearch * abstol,
-            verbosity=verbosity,
-            maxnglobalpivot=maxnglobalpivot,
-            nsearch=nsearchglobalpivot
+        globalpivots = finder(
+            tci, f, abstol,
+            verbosity=verbosity
         )
         addglobalpivots!(tci, globalpivots)
         push!(nglobalpivots, length(globalpivots))
@@ -889,20 +900,7 @@ end
         f,
         localdims::Union{Vector{Int},NTuple{N,Int}},
         initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
-        tolerance::Float64=1e-8,
-        pivottolerance::Float64=tolerance,
-        maxbonddim::Int=typemax(Int),
-        maxiter::Int=200,
-        sweepstrategy::Symbol=:backandforth,
-        pivotsearch::Symbol=:full,
-        verbosity::Int=0,
-        loginterval::Int=10,
-        normalizeerror::Bool=true,
-        ncheckhistory=3,
-        maxnglobalpivot::Int=5,
-        nsearchglobalpivot::Int=5,
-        tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=false
+        kwargs...
     ) where {ValueType,N}
 
 Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
@@ -912,26 +910,12 @@ Arguments:
 - `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
 - `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
 - `initialpivots::Vector{MultiIndex}` is a vector of pivots to be used for initialization. Default: `[1, 1, ...]`.
-- `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
-- `pivottolerance::Float64` is a float that specifies the tolerance for adding new pivots, i.e. the truncation of tensor train bonds. It should be <= tolerance, otherwise convergence may be impossible. Default: `tolerance`.
-- `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
-- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
-- `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
-- `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
-- `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
-- `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
-- `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `strictlynested::Bool=false` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
-- `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
+
+Refer to [`optimize!`](@ref) for other keyword arguments such as `tolerance`, `maxbonddim`, `maxiter`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
-
 
 See also: [`optimize!`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate1`](@ref)
 """
@@ -946,7 +930,6 @@ function crossinterpolate2(
     ranks, errors = optimize!(tci, f; kwargs...)
     return tci, ranks, errors
 end
-
 
 """
 Search global pivots where the interpolation error exceeds `abstol`.
