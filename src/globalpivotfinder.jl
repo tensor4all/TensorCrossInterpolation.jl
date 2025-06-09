@@ -9,8 +9,8 @@ Input data structure for global pivot search algorithms.
 - `localdims::Vector{Int}`: Dimensions of each tensor index
 - `current_tt::TensorTrain{ValueType,3}`: Current tensor train approximation
 - `maxsamplevalue::ValueType`: Maximum absolute value of the function
-- `Iset::Vector{Vector{Vector{Int}}}`: Set of left indices
-- `Jset::Vector{Vector{Vector{Int}}}`: Set of right indices
+- `Iset::Vector{Vector{MultiIndex}}`: Set of left indices
+- `Jset::Vector{Vector{MultiIndex}}`: Set of right indices
 """
 struct GlobalPivotSearchInput{ValueType}
     localdims::Vector{Int}
