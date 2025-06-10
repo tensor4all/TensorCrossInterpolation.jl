@@ -242,7 +242,7 @@ end
 
 `CachedFunction{T}`  can wrap a function inheriting from `BatchEvaluator{T}`. In such cases, `CachedFunction{T}`  caches the results of batch evaluation.
 
-# Batch evaluation + parallelization
+## Batch evaluation + parallelization
 The batch evalution can be combined with parallelization using threads, MPI, etc.
 The following sample code use `Threads` to parallelize function evaluations.
 Note that the function evaluation for a single index set must be thread-safe.
@@ -350,3 +350,64 @@ end
 ```
 
 You can simply pass the wrapped function `parf` to `crossinterpolate2`.
+
+## Global pivot finder 
+A each TCI2 sweep, we can find the index sets with high interpolation error and add them to the TCI2 object.
+By default, we use a greedy search algorithm to find the index sets with high interpolation error.
+However, this may not be effective in some cases.
+In such cases, you can use a custom global pivot finder, which must inherit from `TCI.AbstractGlobalPivotFinder`.
+
+Here's an example of a custom global pivot finder that randomly selects pivots:
+
+```julia
+import TensorCrossInterpolation as TCI
+
+struct CustomGlobalPivotFinder <: TCI.AbstractGlobalPivotFinder
+    npivots::Int
+end
+
+function (finder::CustomGlobalPivotFinder)(
+    tci::TensorCI2{ValueType},
+    f,
+    abstol::Float64;
+    verbosity::Int=0
+)::Vector{MultiIndex} where {ValueType}
+    L = length(tci.localdims)
+    return [[rand(1:tci.localdims[p]) for p in 1:L] for _ in 1:finder.npivots]
+end
+```
+
+You can use this custom finder by passing it to the `optimize!` function:
+
+```julia
+tci, ranks, errors = crossinterpolate2(
+    Float64,
+    f,
+    localdims,
+    firstpivots;
+    globalpivotfinder=CustomGlobalPivotFinder(10)  # Use custom finder that adds 10 random pivots
+)
+```
+
+The default global pivot finder (`DefaultGlobalPivotFinder`) uses a greedy search algorithm to find index sets with high interpolation error. It has the following parameters:
+
+- `nsearch`: Number of initial points to search from (default: 5)
+- `maxnglobalpivot`: Maximum number of pivots to add in each iteration (default: 5)
+- `tolmarginglobalsearch`: Search for pivots where the interpolation error is larger than the tolerance multiplied by this factor (default: 10.0)
+
+You can customize these parameters by creating a `DefaultGlobalPivotFinder` instance:
+
+```julia
+finder = TCI.DefaultGlobalPivotFinder(
+    nsearch=10,           # Search from 10 initial points
+    maxnglobalpivot=3,    # Add at most 3 pivots per iteration
+    tolmarginglobalsearch=5.0  # Search for errors > 5 * tolerance
+)
+tci, ranks, errors = crossinterpolate2(
+    Float64,
+    f,
+    localdims,
+    firstpivots;
+    globalpivotfinder=finder
+)
+```
