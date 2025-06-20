@@ -93,8 +93,8 @@ function tensortrain(tci)
 end
 
 function _factorize(
-    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, normalizeerror=true, q::Int=0, p::Int=16
-)::Union{Tuple{Matrix{V},Matrix{V},Int},Tuple{Matrix{V},Matrix{V},Matrix{V},Int}} where {V}
+    A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, diamond::Bool=false, normalizeerror=true, q::Int=0, p::Int=16
+)::Union{Tuple{Matrix{V},Matrix{V},Int},Tuple{Matrix{V},Vector{V},Matrix{V},Int}} where {V}
     reltol = 1e-14
     abstol = 0.0
     if normalizeerror
@@ -117,18 +117,27 @@ function _factorize(
             replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
             maxbonddim
         )
-        if leftorthogonal
+        if diamond
             return (
-                factorization.U[:, 1:trunci],
-                Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
-                trunci
-            )
+                    Matrix(factorization.U[:, 1:trunci]),
+                    factorization.S[1:trunci],
+                    Matrix(factorization.Vt[1:trunci, :]),
+                    trunci
+                )
         else
-            return (
-                factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci]),
-                factorization.Vt[1:trunci, :],
-                trunci
-            )
+            if leftorthogonal
+                return (
+                    Matrix(factorization.U[:, 1:trunci]),
+                    Matrix(Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :]),
+                    trunci
+                )
+            else
+                return (
+                    Matrix(factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci])),
+                    Matrix(factorization.Vt[1:trunci, :]),
+                    trunci
+                )
+            end
         end
     elseif method === :RSVD
         invert = false
@@ -157,33 +166,51 @@ function _factorize(
             replacenothing(findlast(>(tolerance), Array(factorization.S)), 1),
             maxbonddim
         )
-        if leftorthogonal
+        if diamond
             if invert
                 return (
-                factorization.Vt[1:trunci, :]',
-                Diagonal(factorization.S[1:trunci]) * factorization.U[:, 1:trunci]',
-                trunci
-            )
+                    Matrix(factorization.Vt[1:trunci, :]'),
+                    factorization.S[1:trunci],
+                    Matrix(factorization.U[:, 1:trunci]'),
+                    trunci
+                )
             else
                 return (
-                    factorization.U[:, 1:trunci],
-                    Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :],
+                    Matrix(factorization.U[:, 1:trunci]),
+                    factorization.S[1:trunci],
+                    Matrix(factorization.Vt[1:trunci, :]),
                     trunci
                 )
             end
         else
-            if invert
-                return (
-                factorization.Vt[1:trunci, :]' * Diagonal(factorization.S[1:trunci]),
-                factorization.U[:, 1:trunci]',
-                trunci
-            )
+            if leftorthogonal
+                if invert
+                    return (
+                        Matrix(factorization.Vt[1:trunci, :]' * Diagonal(factorization.S[1:trunci])),
+                        Matrix(factorization.U[:, 1:trunci]'),
+                        trunci
+                    )
+                else
+                    return (
+                        Matrix(factorization.U[:, 1:trunci]),
+                        Matrix(Diagonal(factorization.S[1:trunci]) * factorization.Vt[1:trunci, :]),
+                        trunci
+                    )
+                end
             else
-                return (
-                    factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci]),
-                    factorization.Vt[1:trunci, :],
-                    trunci
-                )
+                if invert
+                    return (
+                        Matrix(factorization.Vt[1:trunci, :]' * Diagonal(factorization.S[1:trunci])),
+                        Matrix(factorization.U[:, 1:trunci]'),
+                        trunci
+                    )
+                else
+                    return (
+                        Matrix(factorization.U[:, 1:trunci] * Diagonal(factorization.S[1:trunci])),
+                        Matrix(factorization.Vt[1:trunci, :]),
+                        trunci
+                    )
+                end
             end
         end
     else

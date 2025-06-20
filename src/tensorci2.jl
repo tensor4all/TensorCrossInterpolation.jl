@@ -213,7 +213,8 @@ function addglobalpivots2sitesweep!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     ntry::Int=10,
-    strictlynested::Bool=false
+    strictlynested::Bool=false,
+    multithread_eval::Bool=false
 )::Int where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
@@ -233,7 +234,8 @@ function addglobalpivots2sitesweep!(
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
             strictlynested=strictlynested,
-            verbosity=verbosity)
+            verbosity=verbosity,
+            multithread_eval=multithread_eval)
 
         newpivots = [p for p in pivots if abs(evaluate(tci, p) - f(p)) > abstol]
 
@@ -465,7 +467,7 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
-function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int, interbond::Bool; estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Vector{UnitRange{Int}}
+function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int; interbond::Bool=true, estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Vector{UnitRange{Int}}
     if !interbond
         return [1:nbonds for _ in 1:nprocs]
     end
@@ -499,7 +501,7 @@ function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int
     while i <= nbonds && node < nprocs
         bond_cost = costs[i]
 
-        if current_cost + bond_cost <= target_cost * 1.5
+        if current_cost + bond_cost <= target_cost * 1.3
             # Add the current bond to the node's range
             current_cost += bond_cost
             i += 1
@@ -638,6 +640,7 @@ function updatepivots!(
     extraJset::Vector{MultiIndex}=MultiIndex[],
     estimatedbond::Int=100,
     interbond::Bool=true,
+    multithread_eval::Bool=false,
     subcomm=nothing
 ) where {F,ValueType}
     invalidatesitetensors!(tci)
@@ -662,7 +665,15 @@ function updatepivots!(
         if sweepdirection == :parallel && MPI.Initialized()
             if teamsize == 1
                 t1 = time_ns()
-                Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+                if multithread_eval
+                    Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+                else
+                    Pi = reshape(
+                        filltensor(ValueType, f, tci.localdims,
+                        Icombined, Jcombined, Val(0)),
+                        length(Icombined), length(Jcombined)
+                    )
+                end
                 t2 = time_ns()
                 # For compilation purpouse
                 Icombined_copy = Icombined
@@ -680,7 +691,15 @@ function updatepivots!(
                 Jcombined_copy_local = Jcombined_copy[ranges[teamjuliarank]]
                 if !isempty(Jcombined_copy_local)
                     tlocalPi = time_ns()
-                    localPi = multithreadPi(ValueType, f, tci.localdims, Icombined_copy, Jcombined_copy_local)
+                    if multithread_eval
+                        localPi = multithreadPi(ValueType, f, tci.localdims, Icombined_copy, Jcombined_copy_local)
+                    else
+                        localPi = reshape(
+                            filltensor(ValueType, f, tci.localdims,
+                            Icombined_copy, Jcombined_copy_local, Val(0)),
+                            length(Icombined_copy), length(Jcombined_copy_local)
+                        )
+                    end
                     tlocalPi = (time_ns() - tlocalPi) * 1e-9
                 else
                     localPi = zeros(length(Icombined_copy), length(Jcombined_copy_local))
@@ -695,7 +714,15 @@ function updatepivots!(
             end
         else # Serial
             t1 = time_ns()
-            Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+            if multithread_eval
+                Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+            else
+                Pi = reshape(
+                    filltensor(ValueType, f, tci.localdims,
+                    Icombined, Jcombined, Val(0)),
+                    length(Icombined), length(Jcombined)
+                )
+            end
             t2 = time_ns()
         end
         updatemaxsample!(tci, Pi)
@@ -909,6 +936,7 @@ function optimize!(
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
     checkbatchevaluatable::Bool=false,
+    multithread_eval::Bool=false,
     estimatedbond::Int=100,
     interbond::Bool=true
 ) where {ValueType}
@@ -984,7 +1012,8 @@ function optimize!(
             sweepstrategy=sweepstrategy,
             fillsitetensors=true,
             estimatedbond=estimatedbond,
-            interbond=interbond
+            interbond=interbond,
+            multithread_eval=multithread_eval
             )
         if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
             abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
@@ -1116,7 +1145,8 @@ function sweep2site!(
     strictlynested::Bool=false,
     fillsitetensors::Bool=true,
     estimatedbond::Int=100,
-    interbond::Bool=true
+    interbond::Bool=true,
+    multithread_eval::Bool=false
 ) where {ValueType}
     invalidatesitetensors!(tci)
 
@@ -1166,6 +1196,7 @@ function sweep2site!(
                     extraJset=extraJset[bondindex],
                     estimatedbond=estimatedbond,
                     interbond=interbond,
+                    multithread_eval=multithread_eval
                     subcomm = subcomm
                 )
             end
@@ -1192,6 +1223,7 @@ function sweep2site!(
                     verbosity=verbosity,
                     extraIset=extraIset[bondindex+1],
                     extraJset=extraJset[bondindex],
+                    multithread_eval=multithread_eval
                 )
             end
         else # backward sweep
@@ -1205,6 +1237,7 @@ function sweep2site!(
                     verbosity=verbosity,
                     extraIset=extraIset[bondindex+1],
                     extraJset=extraJset[bondindex],
+                    multithread_eval=multithread_eval
                 )
             end
         end

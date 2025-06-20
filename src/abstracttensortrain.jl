@@ -368,11 +368,23 @@ function rightcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType
 end
 
 
-function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) where {ValueType}
+function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int; old_center::Int=0) where {ValueType}
+    orthogonality = checkorthogonality(tt)
     MPO = tt.sitetensors
     N = length(MPO)  # Number of sites
+    
+    if count(==( :N ), orthogonality) == 1
+        old_center_ = findfirst(==( :N ), orthogonality)
+        if old_center != 0 && old_center != old_center_
+            println("Warning! In centercanonicalize!() old_center has been sset as $old_center, but the real old center is $old_center_")
+        end
+    elseif old_center == 0
+        old_center_ = 1
+    else
+        old_center_ = old_center
+    end
     # LEFT
-    for i in 1:center-1
+    for i in old_center_:center-1
         Q, R = qr(reshape(MPO[i], prod(size(MPO[i])[1:end-1]), size(MPO[i])[end]))
         Q = Matrix(Q)
 
@@ -383,14 +395,22 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int) wh
         MPO[i+1] = reshape(tmpMPO, size(MPO[i+1])...)  # Reshape back
     end
     # RIGHT
-    for i in N:-1:center+1
+    if count(==( :N ), orthogonality) == 1
+        old_center_ = findfirst(==( :N ), orthogonality)
+        if old_center != 0 && old_center != old_center_
+            println("Warning! In centercanonicalize!() old_center has been sset as $old_center, but the real old center is $old_center_")
+        end
+    elseif old_center == 0
+        old_center_ = N
+    else
+        old_center_ = old_center
+    end
+    for i in old_center_:-1:center+1
         W = MPO[i]
         χl, d1, d2, χr = size(W)
         W_mat = reshape(W, χl, d1*d2*χr)
 
-        #println(size(W_mat))
         L, Q = lq(W_mat)
-        #println(size(Matrix(L)), size(Matrix(Q)))
         Q = Matrix(Q)
         # Reshape Q back into the MPO tensor
         MPO[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
@@ -447,9 +467,9 @@ function rightcanonicalize(tt::AbstractTensorTrain{ValueType}) where {ValueType}
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function centercanonicalize(tt::AbstractTensorTrain{ValueType}, center::Int) where {ValueType}
+function centercanonicalize(tt::AbstractTensorTrain{ValueType}, center::Int; old_center::Int=0) where {ValueType}
     tt_ = deepcopy(tt)
-    centercanonicalize!(tt_, center)
+    centercanonicalize!(tt_, center; old_center)
     return tt_
 end
 
@@ -459,8 +479,8 @@ function checkorthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueType
         W = tt.sitetensors[i]
         left_check = _contract(permutedims(W, (4,2,3,1,)), W, (2,3,4,),(2,3,1))
         right_check = _contract(W, permutedims(W, (4,2,3,1,)), (2,3,4,),(2,3,1))
-        is_left = isapprox(left_check, I, atol=1e-10)
-        is_right = isapprox(right_check, I, atol=1e-10)
+        is_left = isapprox(left_check, I, atol=1e-7)
+        is_right = isapprox(right_check, I, atol=1e-7)
         ort[i] = if is_left && is_right
             :O # Orthogonal
         elseif is_left
