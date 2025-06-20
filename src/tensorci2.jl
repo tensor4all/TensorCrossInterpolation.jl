@@ -467,7 +467,7 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
-function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int; interbond::Bool=true, estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Vector{UnitRange{Int}}
+function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int; interbond::Bool=true, estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Union{Vector{UnitRange{Int}},Tuple{Vector{UnitRange{Int}},Float64}}
     if !interbond
         return [1:nbonds for _ in 1:nprocs]
     end
@@ -491,7 +491,7 @@ function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int
     total_cost = sum(costs)
     target_cost = total_cost / nprocs
 
-    assignments = []
+    assignments = Vector{UnitRange{Int}}()
 
     i = 1  # bond index
     node = 1
@@ -651,7 +651,7 @@ function updatepivots!(
         mpirank = MPI.Comm_rank(comm)
         juliarank = mpirank + 1
         nprocs = MPI.Comm_size(comm)
-        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, interbond)
+        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
         leaders, leaderslist = _leaders(nprocs, noderanges)
         teamrank = MPI.Comm_rank(subcomm)
         teamjuliarank = teamrank + 1
@@ -823,13 +823,28 @@ function updatepivots!(
         sreq = MPI.Request[]
         if leaders[juliarank] != -1
             if length(noderanges[juliarank]) == 1 && b == noderanges[juliarank][1] && juliarank != leaderslist[1] && juliarank != leaderslist[end] # If processor has only 1 bond then communicates both left and right
-                push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=leaderslist[findfirst(isequal(juliarank), leaderslist) - 1] - 1, tag=(2*b+1)))
-                push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=leaderslist[findfirst(isequal(juliarank), leaderslist) + 1] - 1, tag=2*(b+1)))
+                currentleader = findfirst(isequal(juliarank), leaderslist)
+                if currentleader != nothing
+                    push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=leaderslist[currentleader - 1] - 1, tag=(2*b+1)))
+                    push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=leaderslist[currentleader + 1] - 1, tag=2*(b+1)))
+                else
+                    println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                end
             elseif b == noderanges[juliarank][1] && juliarank != leaderslist[1] # processor communicates left
-                push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=leaderslist[findfirst(isequal(juliarank), leaderslist) - 1] - 1, tag=(2*b+1)))
+                currentleader = findfirst(isequal(juliarank), leaderslist)
+                if currentleader != nothing
+                    push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=leaderslist[currentleader - 1] - 1, tag=(2*b+1)))
+                else
+                    println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                end
                 tci.Iset[b+1] = Icombined[rowindices(luci)]
             elseif b == noderanges[juliarank][end] && juliarank != leaderslist[end] # processor communicates right
-                push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=leaderslist[findfirst(isequal(juliarank), leaderslist) + 1] - 1, tag=2*(b+1)))
+                currentleader = findfirst(isequal(juliarank), leaderslist)
+                if currentleader != nothing
+                    push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=leaderslist[currentleader + 1] - 1, tag=2*(b+1)))
+                else
+                    println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                end
                 tci.Jset[b] = Jcombined[colindices(luci)]
             else # normal updates without MPI communications
                 tci.Iset[b+1] = Icombined[rowindices(luci)]
@@ -987,7 +1002,7 @@ function optimize!(
         mpirank = MPI.Comm_rank(comm)
         juliarank = mpirank + 1
 	    nprocs = MPI.Comm_size(comm)
-        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, interbond)
+        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
         leaders, leaderslist = _leaders(nprocs, noderanges)
     end
 
@@ -1074,13 +1089,10 @@ function optimize!(
         if juliarank == 1 # If we are the first processor, we take all the information from the other processes
             for leader in leaderslist[2:end]
                 for b in noderanges[leader]
-                    serialized_info = MPI.recv(comm; source=leader - 1, tag=2*(b))
-                    tci.Iset[b] = serialized_info[1]
-                    serialized_info = MPI.recv(comm; source=leader - 1, tag=2*(b+1)+1)
-                    tci.Jset[b+1] = serialized_info[1]
+                    tci.Iset[b] = MPI.recv(comm; source=leader - 1, tag=2*(b))[1]
+                    tci.Jset[b+1] = MPI.recv(comm; source=leader - 1, tag=2*(b+1)+1)[1]
                     if leader == leaderslist[end]
-                        serialized_info = MPI.recv(comm; source=leader - 1, tag=2*(length(tci)+1)+1)
-                        tci.Iset[length(tci)] = serialized_info[1]
+                        tci.Iset[length(tci)] = MPI.recv(comm; source=leader - 1, tag=2*(length(tci)+1)+1)[1]
                     end
                 end
             end
@@ -1172,7 +1184,7 @@ function sweep2site!(
 
         flushpivoterror!(tci)
         if sweepstrategy == :parallel && MPI.Initialized()
-            noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond, interbond)
+            noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
             leaders, leaderslist = _leaders(nprocs, noderanges)
             colors = zeros(Int,nprocs)
             count = -1
@@ -1196,19 +1208,27 @@ function sweep2site!(
                     extraJset=extraJset[bondindex],
                     estimatedbond=estimatedbond,
                     interbond=interbond,
-                    multithread_eval=multithread_eval
+                    multithread_eval=multithread_eval,
                     subcomm = subcomm
                 )
             end
             for b in noderanges[juliarank]
                 if leaders[juliarank] != -1
                     if b == noderanges[juliarank][1] && juliarank != leaderslist[1]
-                        serialized_info = MPI.recv(comm; source=leaderslist[findfirst(isequal(juliarank), leaderslist) - 1] - 1, tag=2*b)
-                        tci.Iset[b] = serialized_info[1]
+                        currentleader = findfirst(isequal(juliarank), leaderslist)
+                        if currentleader != nothing
+                            tci.Iset[b] = MPI.recv(comm; source=leaderslist[currentleader - 1] - 1, tag=2*b)[1]
+                        else
+                            println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                        end
                     end
                     if b == noderanges[juliarank][end] && juliarank != leaderslist[end]
-                        serialized_info = MPI.recv(comm; source=leaderslist[findfirst(isequal(juliarank), leaderslist) + 1] - 1, tag=2*(b + 1) + 1)
-                        tci.Jset[b + 1] = serialized_info[1]
+                        currentleader = findfirst(isequal(juliarank), leaderslist)
+                        if currentleader != nothing
+                            tci.Jset[b + 1] = MPI.recv(comm; source=leaderslist[currentleader + 1] - 1, tag=2*(b + 1) + 1)[1]
+                        else
+                            println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                        end
                     end
                 end
             end

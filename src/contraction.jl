@@ -114,10 +114,9 @@ function leftenvironment(
     B::TensorTrain{T,4},
     X::TensorTrain{T,4},
     i::Int;
-    L = ones(T, 1, 1, 1),
-    L_i = 1
 )::Array{T, 3} where {T}
-    for ell in L_i:i
+    L = ones(T, 1, 1, 1)
+    for ell in 1:i
         L = _contract(_contract(_contract(L, A[ell], (1,), (1,)), B[ell], (1,4,), (1,2,)), X[ell], (1,2,4,), (1,2,3,))
     end
     return L
@@ -129,10 +128,9 @@ function rightenvironment(
     B::TensorTrain{T,4},
     X::TensorTrain{T,4},
     i::Int;
-    R = ones(T, 1, 1, 1),
-    R_i = length(A)
-)::Array{T, 3} where {T}
-    for ell in R_i:-1:i
+    )::Array{T, 3} where {T}
+    R = ones(T, 1, 1, 1)
+    for ell in length(A):-1:i
         R = permutedims(_contract(X[ell], _contract(B[ell], _contract(A[ell], R, (4,), (1,)), (2,4,), (3,4,)), (2,3,4,), (4,2,5,)), (3,2,1,))
     end
     return R
@@ -714,11 +712,10 @@ function contract_distr_zipup(
     return TensorTrain{ValueType,4}(finalsitetensors)
 end
 
-function updatecore!(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4}, X::TensorTrain{ValueType,4}, i::Int; 
-    L::Array{ValueType,3}=ones(ValueType,1,1,1), R::Array{ValueType,3}=ones(ValueType,1,1,1), L_i::Int=1, R_i::Int=length(A),
+function updatecore!(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4}, X::TensorTrain{ValueType,4}, i::Int;
     method::Symbol=:SVD, tolerance::Float64=1e-8, maxbonddim::Int=typemax(Int), direction::Symbol=:forward) where {ValueType}
-    L = leftenvironment(A, B, X, i-1; L, L_i)
-    R = rightenvironment(A, B, X, i+2; R, R_i)
+    L = leftenvironment(A, B, X, i-1)
+    R = rightenvironment(A, B, X, i+2)
 
     Le = _contract(_contract(L, A[i], (1,), (1,)), B[i], (1, 4), (1, 2))
     Re = _contract(B[i+1], _contract(A[i+1], R, (4,), (1,)), (2, 4), (3, 4))
@@ -764,7 +761,7 @@ function contract_fit(
                     centercanonicalize!(A, i)
                     centercanonicalize!(B, i)
                     centercanonicalize!(X, i)
-                    updatecore!(A, B, X, i; method=method, tolerance=tolerance, maxbonddim=maxbonddim, direction=direction)
+                    updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction)
                 end
                 direction = :backward
             elseif direction == :backward
@@ -772,7 +769,7 @@ function contract_fit(
                     centercanonicalize!(A, i)
                     centercanonicalize!(B, i)
                     centercanonicalize!(X, i)
-                    updatecore!(A, B, X, i; method=method, tolerance=tolerance, maxbonddim=maxbonddim, direction=direction)
+                    updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction)
                 end
                 direction = :forward
             end
@@ -810,14 +807,14 @@ function contract_fit(
                     centercanonicalize!(A_distr, j)
                     centercanonicalize!(B_distr, j)
                     centercanonicalize!(X, j)
-                    updatecore!(A_distr, B_distr, X, j; method=method, tolerance=tolerance, maxbonddim=maxbonddim, direction=:forward)
+                    updatecore!(A_distr, B_distr, X, j; method, tolerance, maxbonddim, direction=:forward)
                 end
             else
                 for j in noderanges[juliarank][end-1]:-1:noderanges[juliarank][1]
                     centercanonicalize!(A_distr, j)
                     centercanonicalize!(B_distr, j)
                     centercanonicalize!(X, j)
-                    updatecore!(A_distr, B_distr, X, j; method=method, tolerance=tolerance, maxbonddim=maxbonddim, direction=:backward)
+                    updatecore!(A_distr, B_distr, X, j; method, tolerance, maxbonddim, direction=:backward)
                 end
             end
 
@@ -830,7 +827,7 @@ function contract_fit(
                         centercanonicalize!(B_distr, noderanges[juliarank][end])
                         centercanonicalize!(X, noderanges[juliarank][end])
                         X.sitetensors[noderanges[juliarank+1][1]:end] = MPI.recv(comm; source=mpirank+1, tag=juliarank+1)
-                        updatecore!(A_distr, B_distr, X, noderanges[juliarank][end]; method=method, tolerance=tolerance, maxbonddim=maxbonddim, direction=:backward)
+                        updatecore!(A_distr, B_distr, X, noderanges[juliarank][end]; method, tolerance, maxbonddim, direction=:backward)
                     end
                 else
                     if juliarank != 1
