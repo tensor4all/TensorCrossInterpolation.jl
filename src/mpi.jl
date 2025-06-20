@@ -33,7 +33,7 @@ function finalizempi()
     end
 end
 
-function synchronize_tt!(tt::TensorTrain{ValueType,N}; subcomm = nothing, juliasource::Int = 1) where {ValueType, N}
+function synchronize_tt!(tt::Union{TensorTrain{ValueType,N},TensorCI2{ValueType}}; subcomm = nothing, juliasource::Int = 1) where {ValueType, N}
     if !MPI.Initialized()
         println("Warning! synchronize_tt has been called, but MPI is not initialized, please use TCI.initializempi() before contract() and use TCI.finalizempi() afterwards")
     else
