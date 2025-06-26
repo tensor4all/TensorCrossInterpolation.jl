@@ -5,7 +5,7 @@ function using the usual function call syntax.
 The type `K` denotes the type of the keys used to cache function values, which could be an integer type. This defaults to `UInt128`. A safer but slower alternative is `BigInt`, which is better suited for functions with a large number of arguments.
 `CachedFunction` does not support batch evaluation of function values.
 """
-struct CachedFunction{ValueType,K<:Union{UInt32,UInt64,UInt128,BigInt}} <: BatchEvaluator{ValueType}
+struct CachedFunction{ValueType,K<:Union{UInt32,UInt64,UInt128,BigInt,BitIntegers.AbstractBitUnsigned}} <: BatchEvaluator{ValueType}
     f::Function
     localdims::Vector{Int}
     cache::Dict{K,ValueType}
@@ -15,8 +15,11 @@ struct CachedFunction{ValueType,K<:Union{UInt32,UInt64,UInt128,BigInt}} <: Batch
         for n in 2:length(localdims)
             coeffs[n] = localdims[n-1] * coeffs[n-1]
         end
+        if K == BigInt
+            @warn "Using BigInt for keys. This is SUPER slower and uses more memory. The use of BigInt is kept only for compatibility with older code. Use BitIntegers.UInt256 or bigger integer types with fixed size instead."
+        end
         if K != BigInt
-            sum(coeffs .* (localdims .- 1)) < typemax(K) || error("Too many dimensions. Use BigInt instead of UInt128.")
+            sum(coeffs .* (localdims .- 1)) < typemax(K) || error("Overflow in CachedFunction. Use ValueType = a bigger type with fixed size, e.g., BitIntegers.UInt256")
         end
         new(f, localdims, cache, coeffs)
     end

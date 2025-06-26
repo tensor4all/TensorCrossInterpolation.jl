@@ -41,7 +41,7 @@ Pages = ["tensorci1.jl", "indexset.jl", "sweepstrategies.jl"]
 ### Tensor cross interpolation 2 (TCI2)
 ```@autodocs
 Modules = [TensorCrossInterpolation]
-Pages = ["tensorci2.jl"]
+Pages = ["tensorci2.jl", "globalpivotfinder.jl"]
 ```
 
 ### Integration

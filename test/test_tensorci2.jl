@@ -2,6 +2,7 @@ using Test
 import TensorCrossInterpolation as TCI
 import TensorCrossInterpolation: rank, linkdims, TensorCI2, updatepivots!, addglobalpivots1sitesweep!, MultiIndex, evaluate, crossinterpolate2, pivoterror, tensortrain, optimize!
 import Random
+import Random: AbstractRNG
 import QuanticsGrids as QD
 
 TCI.initializempi(false)
@@ -106,8 +107,72 @@ TCI.initializempi(false)
 
 
     end
+    
 
-    @testset "trivial MPS(exp), small maxbonddim" for sweepstrategy in [:backandforth, :parallel]
+    struct CustomGlobalPivotFinder <: TCI.AbstractGlobalPivotFinder
+        npivots::Int
+    end
+
+    function (finder::CustomGlobalPivotFinder)(
+        input::TCI.GlobalPivotSearchInput{ValueType},
+        f,
+        abstol::Float64;
+        verbosity::Int=0,
+        rng::AbstractRNG=Random.default_rng()
+    )::Vector{MultiIndex} where {ValueType}
+        L = length(input.localdims)
+        return [[rand(rng, 1:input.localdims[p]) for p in 1:L] for _ in 1:finder.npivots]
+    end
+    
+    @testset "custom global pivot finder" begin
+        pivotsearch = :full
+        strictlynested = false
+        nsearchglobalpivot = 10
+
+        # f(x) = exp(-x)
+        Random.seed!(1240)
+        R = 8
+        abstol = 1e-4
+
+        grid = QD.DiscretizedGrid{1}(R, (0.0,), (1.0,))
+
+        #index_to_x(i) = (i - 1) / 2^R # x ∈ [0, 1)
+        fx(x) = exp(-x)
+        f(bitlist::MultiIndex) = fx(QD.quantics_to_origcoord(grid, bitlist)[1])
+
+        localdims = fill(2, R)
+        firstpivots = [ones(Int, R), vcat(1, fill(2, R - 1))]
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims,
+            firstpivots;
+            tolerance=abstol,
+            maxbonddim=1,
+            maxiter=2,
+            loginterval=1,
+            verbosity=0,
+            normalizeerror=false,
+            globalpivotfinder=CustomGlobalPivotFinder(10),
+            pivotsearch=pivotsearch,
+            strictlynested=strictlynested
+        )
+
+        @test all(TCI.linkdims(tci) .== 1)
+
+        # Conversion to TT
+        tt = TCI.TensorTrain(tci)
+
+        for x in [0.1, 0.3, 0.6, 0.9]
+            indexset = QD.origcoord_to_quantics(
+                grid, (x,)
+            )
+            @test abs(TCI.evaluate(tci, indexset) - f(indexset)) < abstol
+            @test abs(TCI.evaluate(tt, indexset) - f(indexset)) < abstol
+        end
+    end
+
+    @testset "trivial MPS(exp), small maxbonddim" begin
         pivotsearch = :full
         strictlynested = false
         nsearchglobalpivot = 10
@@ -401,12 +466,28 @@ TCI.initializempi(false)
             maxiter=100,
             nsearchglobalpivot=10,
             strictlynested=false,
-            sweepstrategy=:parallel
+            sweepstrategy=:sweepstrategy
         )
 
         @test errors[end] < 1e-10
     end
 
+
+    @testset "initialize_with_local_pivots_list" begin
+        Random.seed!(1234)
+
+        N = 10
+        M = rand(Float64, N, N)
+        f(v) = M[v[1], v[2]] # 2D function
+        localdims = fill(N, 2)
+        mbd = 5
+
+        tci, ranks, errors = TCI.crossinterpolate2(Float64, f, localdims; maxbonddim=mbd)
+        tci2 = TCI.TensorCI2{Float64}(f, localdims, tci.Iset, tci.Jset)
+        @test tci2.maxsamplevalue == tci.maxsamplevalue
+        @test tci2.Iset == tci.Iset
+        @test tci2.Jset == tci.Jset
+    end
 
     @testset "crossinterpolate2_ttcache" for sweepstrategy in [:backandforth, :parallel]
         ValueType = Float64

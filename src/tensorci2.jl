@@ -52,6 +52,25 @@ function TensorCI2{ValueType}(
     return tci
 end
 
+"""
+    Initialize a TCI2 object with local pivot lists.
+"""
+function TensorCI2{ValueType}(
+    func::F,
+    localdims::Union{Vector{Int},NTuple{N,Int}},
+    Iset::Vector{Vector{MultiIndex}},
+    Jset::Vector{Vector{MultiIndex}}
+) where {F,ValueType,N}
+    tci = TensorCI2{ValueType}(localdims)
+    tci.Iset = Iset
+    tci.Jset = Jset
+    pivots = reconstractglobalpivotsfromijset(localdims, tci.Iset, tci.Jset)
+    tci.maxsamplevalue = maximum(abs, (func(bit) for bit in pivots))
+    abs(tci.maxsamplevalue) > 0.0 || error("maxsamplevalue is zero!")
+    invalidatesitetensors!(tci)
+    return tci
+end
+
 @doc raw"""
     function printnestinginfo(tci::TensorCI2{T}) where {T}
 
@@ -149,6 +168,24 @@ function updateerrors!(
     nothing
 end
 
+function reconstractglobalpivotsfromijset(
+    localdims::Union{Vector{Int},NTuple{N,Int}},
+    Isets::Vector{Vector{MultiIndex}}, 
+    Jsets::Vector{Vector{MultiIndex}}
+) where {N}
+    pivots = []
+    l = length(Isets)
+    for i in 1:l
+        for Iset in Isets[i]
+            for Jset in Jsets[i]
+                for j in 1:localdims[i]
+                    pushunique!(pivots, vcat(Iset, [j], Jset))
+                end
+            end
+        end
+    end
+    return pivots
+end
 
 """
 Add global pivots to index sets
@@ -882,7 +919,8 @@ function convergencecriterion(
     nglobalpivots::AbstractVector{Int},
     tolerance::Float64,
     maxbonddim::Int,
-    ncheckhistory::Int,
+    ncheckhistory::Int;
+    checkconvglobalpivot::Bool=true
 )::Bool
     if length(errors) < ncheckhistory
         return false
@@ -891,11 +929,26 @@ function convergencecriterion(
     lastngpivots = last(nglobalpivots, ncheckhistory)
     return (
         all(last(errors, ncheckhistory) .< tolerance) &&
-        all(lastngpivots .== 0) &&
+        (checkconvglobalpivot ? all(lastngpivots .== 0) : true) &&
         minimum(lastranks) == lastranks[end]
     ) || all(lastranks .>= maxbonddim)
 end
 
+
+"""
+    GlobalPivotSearchInput(tci::TensorCI2{ValueType}) where {ValueType}
+
+Construct a GlobalPivotSearchInput from a TensorCI2 object.
+"""
+function GlobalPivotSearchInput(tci::TensorCI2{ValueType}) where {ValueType}
+    return GlobalPivotSearchInput{ValueType}(
+        tci.localdims,
+        TensorTrain(tci),
+        tci.maxsamplevalue,
+        tci.Iset,
+        tci.Jset
+    )
+end
 
 
 """
@@ -937,14 +990,19 @@ Arguments:
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
+- `globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}` is a global pivot finder to use for searching global pivots. Default: `nothing`. If `nothing`, a default global pivot finder is used.
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 - `multithread_eval::Bool` determines whether to use multithreading for function evaluation. Default: `false`.
 - `estimatedbond::Int` is the estimated bond dimension after compression, set by the user to help balance the workload. Default: `100`.
 - `interbond::Bool` determines whether to distribute the workload across bonds or not. Default: `true`.
+- `checkconvglobalpivot::Bool` Check if the global pivot finder is converged. Default: `true`. In the future, this will be set to `false` by default.
+
+Arguments (deprecated):
+- `pivottolerance::Float64` is the tolerance for the pivot search. Deprecated.
+- `nsearchglobalpivot::Int` is the number of search points for the global pivot finder. Deprecated.
+- `tolmarginglobalsearch::Float64` is the tolerance for the global pivot finder. Deprecated.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -966,6 +1024,7 @@ function optimize!(
     loginterval::Int=10,
     normalizeerror::Bool=true,
     ncheckhistory::Int=3,
+    globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}=nothing,
     maxnglobalpivot::Int=5,
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
@@ -973,7 +1032,8 @@ function optimize!(
     checkbatchevaluatable::Bool=false,
     multithread_eval::Bool=false,
     estimatedbond::Int=100,
-    interbond::Bool=true
+    interbond::Bool=true,
+    checkconvglobalpivot::Bool=true
 ) where {ValueType}
     errors = Float64[]
     ranks = Int[]
@@ -984,9 +1044,6 @@ function optimize!(
         error("Function `f` is not batch evaluatable")
     end
 
-    #if maxnglobalpivot > 0 && nsearchglobalpivot > 0
-        #!strictlynested || error("nglobalpivots > 0 requires strictlynested=false!")
-    #end
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
     end
@@ -1024,6 +1081,16 @@ function optimize!(
 	    nprocs = MPI.Comm_size(comm)
         noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
         leaders, leaderslist = _leaders(nprocs, noderanges)
+    end
+    # Create the global pivot finder
+    finder = if isnothing(globalpivotfinder)
+        DefaultGlobalPivotFinder(
+            nsearch=nsearchglobalpivot,
+            maxnglobalpivot=maxnglobalpivot,
+            tolmarginglobalsearch=tolmarginglobalsearch
+        )
+    else
+        globalpivotfinder
     end
 
     globalpivots = MultiIndex[]
@@ -1066,13 +1133,12 @@ function optimize!(
         end
 
         # Find global pivots where the error is too large
-        # Such gloval pivots are added to the TCI, invalidating site tensors.
         if sweepstrategy != :parallel
-            globalpivots = searchglobalpivots(
-                tci, f, tolmarginglobalsearch * abstol,
+            input = GlobalPivotSearchInput(tci)
+            globalpivots = finder(
+                input, f, abstol;
                 verbosity=verbosity,
-                maxnglobalpivot=maxnglobalpivot,
-                nsearch=nsearchglobalpivot
+                rng=Random.default_rng()
             )
             addglobalpivots!(tci, globalpivots)
             push!(nglobalpivots, length(globalpivots))
@@ -1090,14 +1156,14 @@ function optimize!(
         end
         # Checks if every processor has converged with its own subtrain
         if sweepstrategy == :parallel && MPI.Initialized()
-            converged = leaders[juliarank] == -1 || convergencecriterion(ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory)
+            converged = leaders[juliarank] == -1 || convergencecriterion(ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory; checkconvglobalpivot=checkconvglobalpivot)
             MPI.Barrier(comm)
             global_converged = MPI.Allreduce(converged, MPI.LAND, comm)
             if global_converged # If all the processors have converged
                 break
             end
         elseif convergencecriterion(
-            ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory
+            ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory; checkconvglobalpivot=checkconvglobalpivot
         )
             break
         end
@@ -1283,24 +1349,7 @@ end
         f,
         localdims::Union{Vector{Int},NTuple{N,Int}},
         initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
-        tolerance::Float64=1e-8,
-        pivottolerance::Float64=tolerance,
-        maxbonddim::Int=typemax(Int),
-        maxiter::Int=200,
-        sweepstrategy::Symbol=:backandforth,
-        pivotsearch::Symbol=:full,
-        verbosity::Int=0,
-        loginterval::Int=10,
-        normalizeerror::Bool=true,
-        ncheckhistory=3,
-        maxnglobalpivot::Int=5,
-        nsearchglobalpivot::Int=5,
-        tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=false,
-        checkbatchevaluatable::Bool=false,
-        multithread_eval::Bool=false,
-        estimatedbond::Int=100,
-        interbond::Bool=true
+        kwargs...
     ) where {ValueType,N}
 
 Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
@@ -1310,29 +1359,12 @@ Arguments:
 - `f` is the function to be interpolated. `f` should have a single parameter, which is a vector of the same length as `localdims`. The return type should be `ValueType`.
 - `localdims::Union{Vector{Int},NTuple{N,Int}}` is a `Vector` (or `Tuple`) that contains the local dimension of each index of `f`.
 - `initialpivots::Vector{MultiIndex}` is a vector of pivots to be used for initialization. Default: `[1, 1, ...]`.
-- `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
-- `pivottolerance::Float64` is a float that specifies the tolerance for adding new pivots, i.e. the truncation of tensor train bonds. It should be <= tolerance, otherwise convergence may be impossible. Default: `tolerance`.
-- `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
-- `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) or in parallel (:parallel) during optimization. Default: `:backandforth`.
-- `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
-- `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
-- `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
-- `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
-- `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `nsearchglobalpivot::Int` can be set to `>= 0`. Default: `5`.
-- `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
-- `strictlynested::Bool=false` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
-- `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
-- `estimatedbond::Int` Used by parallel scheme to optimize bond distribution. Default: `100`.
-- `multithread_eval::Bool` determines whether to use multithreading for function evaluation. Default: `false`.
-- `interbond::Bool` determines whether to distribute the workload across bonds or not. Default: `true`.
+
+Refer to [`optimize!`](@ref) for other keyword arguments such as `tolerance`, `maxbonddim`, `maxiter`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
 - By default, no caching takes place. Use the [`CachedFunction`](@ref) wrapper if your function is expensive to evaluate.
-
 
 See also: [`optimize!`](@ref), [`optfirstpivot`](@ref), [`CachedFunction`](@ref), [`crossinterpolate1`](@ref)
 """
@@ -1347,7 +1379,6 @@ function crossinterpolate2(
     ranks, errors = optimize!(tci, f; kwargs...)
     return tci, ranks, errors
 end
-
 
 """
 Search global pivots where the interpolation error exceeds `abstol`.
