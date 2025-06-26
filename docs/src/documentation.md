@@ -56,3 +56,8 @@ Modules = [TensorCrossInterpolation]
 Pages = ["cachedfunction.jl", "batcheval.jl", "util.jl", "globalsearch.jl"]
 ```
 
+## Parallel utility
+```@autodocs
+Modules = [TensorCrossInterpolation]
+Pages = ["mpi.jl"]
+```
