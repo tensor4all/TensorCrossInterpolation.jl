@@ -131,6 +131,14 @@ function evaluate(
     return only(prod(T[:, i, :] for (T, i) in zip(tt, indexset)))
 end
 
+"""
+    function evaluate(
+        tt::TensorTrain{V},
+        indexset::Union{AbstractVector{LocalIndex}, NTuple{N, LocalIndex}}
+    )::V where {N, V}
+
+Evaluates the tensor train `tt` at indices given by `indexset` and `jndexset`. This is ment to be used for MPOs.
+"""
 function evaluate(
     tt::AbstractTensorTrain{V},
     indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}},
@@ -142,20 +150,6 @@ function evaluate(
     return only(prod(T[:, i, j, :] for (T, i, j) in zip(tt, indexset, jndexset)))
 end
 
-
-
-# Evaluate for left canonical, TODO: create type LCTensorTrain
-function evaluate(
-    tt::AbstractTensorTrain{V},
-    Rs::Vector{Matrix{V}},
-    indexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}},
-    jndexset::Union{AbstractVector{LocalIndex},NTuple{N,LocalIndex}}
-)::V where {N,V}
-    if length(indexset) != length(tt) || length(jndexset) != length(tt) 
-        throw(ArgumentError("To evaluate a tt of length $(length(tt)), you have to provide $(length(tt)) indices, but there were $(length(indexset)), $(length(jndexset))."))
-    end
-    return only(prod(T[:, i, j, :]*Rs[idx] for (idx, (T, i, j)) in enumerate(zip(tt, indexset, jndexset))))
-end
 
 """
     function evaluate(tt::TensorTrain{V}, indexset::CartesianIndex) where {V}
@@ -376,7 +370,7 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int; ol
     if count(==( :N ), orthogonality) == 1
         old_center_ = findfirst(==( :N ), orthogonality)
         if old_center != 0 && old_center != old_center_
-            println("Warning! In centercanonicalize!() old_center has been sset as $old_center, but the real old center is $old_center_")
+            println("Warning! In centercanonicalize!() old_center has been set as $old_center, but the real old center is $old_center_")
         end
     elseif old_center == 0
         old_center_ = 1
@@ -398,7 +392,7 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int; ol
     if count(==( :N ), orthogonality) == 1
         old_center_ = findfirst(==( :N ), orthogonality)
         if old_center != 0 && old_center != old_center_
-            println("Warning! In centercanonicalize!() old_center has been sset as $old_center, but the real old center is $old_center_")
+            println("Warning! In centercanonicalize!() old_center has been set as $old_center, but the real old center is $old_center_")
         end
     elseif old_center == 0
         old_center_ = N
@@ -500,7 +494,6 @@ end
     )
 
 The function will reshape the tensors in to make it diagonal with respect to the specified index.
-Warning: This function is not yet tested and may not work as expected.
 
 Arguments:
 - `tt`: Tensor train.
@@ -509,7 +502,6 @@ Arguments:
 - `local_index`: Which local index index with respect to make the tensor diagonal.
 
 """
-# Warning: This function is not yet tested and may not work as expected.
 function makesitediagonal!(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_index::Int; local_index::Int=1) where {V}
     prod(theory_dims) != prod(size(sitetensor(tt, 1))[2:(end-1)]) && error("Local dims dimension mismatch") # Assume d equal in all sites
 
@@ -538,7 +530,6 @@ end
     )
 
 The function will reshape the tensors to extract the diagonal with respect to the specified indices.
-Warning: This function is not yet tested and may not work as expected.
 
 Arguments:
 - `tt`: Tensor train.
@@ -547,7 +538,6 @@ Arguments:
 - `local_index`: Which local index index with respect to make the tensor diagonal.
 
 """
-# Warning: This function is not yet tested and may not work as expected.
 function extractdiagonal!(tt::AbstractTensorTrain, theory_dims::Vector{Int}, theory_indexes::Union{Vector{Int},Tuple{Int}}; local_index::Int=1)
     prod(theory_dims) != prod(size(sitetensor(tt, 1))[2:(end-1)]) && error("Local dims dimension mismatch") # Assume d equal in all sites
 
@@ -579,13 +569,11 @@ end
 
 Converts a Matrix Product Operator (MPO) to a Matrix Product State (MPS) by unifying the physical indices.
 
-Warning: This function is not yet tested and may not work as expected.
 
 Arguments:
 - `tt`: Tensor train.
 
 """
-# Warning: This function is not yet tested and may not work as expected.
 function mpo2mps(tt::AbstractTensorTrain{V}) where V
     tensors = Vector{Array{V, 3}}(undef, length(tt))
     for b in 1:length(tt)
@@ -600,9 +588,8 @@ end
         tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}
     )
 
-Swaps the physical indices of a tensor train.
+Swaps the physical indices of a tensor train. Works only on MPOs with 4 indices (left, physical, right, physical).
     
-Warning: This function is not yet tested and may not work as expected.
 
 Arguments:
 - `tt`: Tensor train.
@@ -610,7 +597,6 @@ Arguments:
 - `permute`: Permutation of the indices.
 - `output_dims`: The dimensions of the output tensor train indices.
 """
-# For now it assumes N=4
 function mposwapindex(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}) where V
     tensors = Vector{Array{V, 4}}(undef, length(tt))
     for b in 1:length(tt)
