@@ -1,6 +1,8 @@
 import TensorCrossInterpolation as TCI
 using TensorCrossInterpolation
 using Random
+# TODO remove
+using Test
 
 function _tomat(tto::TensorTrain{T,4}) where {T}
     sitedims = TCI.sitedims(tto)
@@ -34,7 +36,7 @@ function _gen_testdata_TTO_TTO()
     bonddims_b = [1, 2, 3, 2, 1]
     localdims1 = [2, 2, 2, 2]
     localdims2 = [3, 3, 3, 3]
-    localdims3 = [2, 2, 2, 2]
+    localdims3 = [5, 5, 5, 5]
 
     a = TensorTrain{ComplexF64,4}([
         rand(ComplexF64, bonddims_a[n], localdims1[n], localdims2[n], bonddims_a[n+1])
@@ -181,15 +183,23 @@ end
     end
 end
 
-
-@testset "MPO-MPO contraction (zipup)" for method in [:SVD, :LU]
+@testset "MPO-MPO contraction" for algorithm in [:zipup, :distrzipup, :fit, :distrfit], method in [:SVD, :LU, :RSVD], maxbonddim in [typemax(Int), 10]
+    Random.seed!(42) # For reproducibility
     N, a, b, localdims1, localdims2, localdims3 = _gen_testdata_TTO_TTO()
-    ab = contract(a, b; algorithm=:zipup, method=method)
+    #println([size(a[i]) for i in 1:length(a)])
+    #println([size(b[i]) for i in 1:length(b)])
+    #println("$maxbonddim with $method")
+    ab = contract(a, b; algorithm=algorithm, method=method, maxbonddim=maxbonddim, nsweeps=10)
+    #println([size(a[i]) for i in 1:length(a)])
+    #println([size(b[i]) for i in 1:length(b)])
+    #println([size(ab[i]) for i in 1:length(ab)])
+
     @test _tomat(ab) ≈ _tomat(a) * _tomat(b)
 end
 
-@testset "MPO-MPS contraction (zipup)" for method in [:SVD, :LU]
+@testset "MPO-MPS contraction" for algorithm in [:zipup, :distrzipup, :fit, :distrfit], method in [:SVD, :LU, :RSVD], maxbonddim in [typemax(Int), 10]
+    Random.seed!(42) # For reproducibility
     N, a, b, localdims1, localdims2 = _gen_testdata_TTO_TTS()
-    ab = contract(a, b; algorithm=:zipup, method=method)
+    ab = contract(a, b; algorithm=algorithm, method=method, maxbonddim=maxbonddim, nsweeps=10)
     @test _tovec(ab) ≈ _tomat(a) * _tovec(b)
 end

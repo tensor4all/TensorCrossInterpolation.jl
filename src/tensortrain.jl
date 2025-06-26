@@ -145,7 +145,7 @@ function _factorize(
             A = A'
             invert = true
         end
-        if maxbonddim + p > size(A)[1] || maxbonddim + p > size(A)[2]
+        if maxbonddim == typemax(Int) || maxbonddim + p > size(A)[1] || maxbonddim + p > size(A)[2]
             factorization = LinearAlgebra.svd(A)
         else
             m, n = size(A)

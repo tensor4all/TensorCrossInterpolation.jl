@@ -4,6 +4,7 @@ using LinearAlgebra
 
 include("test_with_aqua.jl")
 include("test_with_jet.jl")
+include("test_mpi.jl")
 include("test_util.jl")
 include("test_sweepstrategies.jl")
 include("test_indexset.jl")

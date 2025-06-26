@@ -436,6 +436,38 @@ TCI.initializempi(false)
         @test vals_reconst ≈ vals_ref
     end
 
+    @testset "multithreadPi" begin
+        f = (x -> sum(x))
+
+        localdims = [2,2,2,2,2,2]
+
+        Icombined = [[1,1,1,1], [1,2,1,1], [1,1,2,1]]
+        Jcombined = [[2,2], [1,2], [2,1], [1,1]]
+
+        mPi = TCI.multithreadPi(Float64, f, localdims, Icombined, Jcombined)
+
+        Pi = reshape(
+            TCI.filltensor(Float64, f, localdims,
+            Icombined, Jcombined, Val(0)),
+            length(Icombined), length(Jcombined)
+        )
+
+        @test size(Pi) == (3, 4)
+
+        @test mPi == Pi
+    end
+
+    @testset "noderanges" begin
+        @test TCI._noderanges(8, 24, 2, 100) == [1:8, 9:9, 10:10, 11:11, 12:12, 13:13, 14:14, 15:24]
+        @test TCI._noderanges(8, 24, 2, 500) == [1:9, 10:10, 11:11, 12:12, 13:13, 14:14, 15:15, 16:24]
+        @test TCI._noderanges(8, 24, 2, 100; interbond=false) == [1:24 for _ in 1:8]
+        @test TCI._noderanges(8, 24, 2, 500; interbond=false) == [1:24 for _ in 1:8]
+        @test TCI._noderanges(8, 24, 2, 100) == TCI._noderanges(8, 24, 2, 100; estimatedbonds=[2,4,8,16,32,64,100,100,100,100,100,100,100,100,100,100,100,64,32,16,8,4,2])
+
+        ranges, eff = TCI._noderanges(4, 8, 8, 64, efficiencycheck=true)
+        @test eff > 3.9
+    end
+
     @testset "convergencecriterion" begin
         let
             ranks = [1, 2]
@@ -489,4 +521,3 @@ TCI.initializempi(false)
     end
 end
 
-TCI.finalizempi()

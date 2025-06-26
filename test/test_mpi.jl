@@ -55,11 +55,4 @@ import TensorCrossInterpolation as TCI
         end
         @test maxerr < 1e-8
     end
-
-    @testset "MPI finalize" begin
-        if MPI.Initialized() && !MPI.Finalized()
-            MPI.Finalize()
-            @test MPI.Finalized()
-        end
-    end
 end

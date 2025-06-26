@@ -467,6 +467,30 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
+"""
+    Noderanges(nprocs, nbonds, localdim, estimatedbond; interbond=false, estimatedbonds=nothing, algorithm=:tci, efficiencycheck=false)
+
+Distributes the computational workload efficiently across multiple nodes for tensor train algorithms.
+
+# Arguments
+- `nprocs::Int`: Number of processes (nodes) to distribute the workload across.
+- `nbonds::Int`: Number of bonds in the tensor train.
+- `localdim::Int`: Local dimension of the tensor train.
+- `estimatedbond::Int`: Estimated bond dimension after compression, set by the user to help balance the workload.
+- `interbond::Bool=false`: If `true`, distributes workload across bonds; if `false`, only function evaluation is distributed, equivalent to serial TCI.
+- `estimatedbonds::Union{Nothing, Vector{Int}}=nothing`: Optional vector of estimated bond dimensions for each bond. If not provided, it is computed from `estimatedbond`.
+- `algorithm::Symbol=:tci`: Algorithm being parallelized (e.g., `:tci`, `:mpompo`). Different algorithms may have different workload characteristics.
+- `efficiencycheck::Bool=false`: If `true`, the function also returns the efficiency of the distribution.
+
+# Returns
+A tuple containing the ranges of work assigned to each node. If `efficiencycheck` is `true`, also returns the efficiency of the distribution.
+
+# Notes
+- The function is designed to optimize workload distribution for tensor train computations, taking into account the estimated bond dimensions and the chosen algorithm.
+- Proper setting of `estimatedbond` or `estimatedbonds` can improve parallel efficiency.
+"""
+
+
 function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int; interbond::Bool=true, estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Union{Vector{UnitRange{Int}},Tuple{Vector{UnitRange{Int}},Float64}}
     if !interbond
         return [1:nbonds for _ in 1:nprocs]
@@ -536,52 +560,26 @@ function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int
     else
         return assignments
     end
-
-    #=
-    bondsresp = ones(Int, max(1, nbonds - 2 * Int(floor(log(localdim, estimatedbond-1)))))
-    nresp = length(bondsresp)
-    if nresp == 1
-        bondsresp[1] = nbonds
-    else
-        bondsresp[1] += Int(floor(log(localdim, estimatedbond-1)))
-        bondsresp[end] += Int(floor(log(localdim, estimatedbond-1)))
-    end
-    noderanges = Vector{UnitRange{Int}}(undef, nprocs)
-
-    if nprocs <= nresp
-        division, remainder = divrem(nresp, nprocs)
-        noderesp = [division + (i <= remainder ? 1 : 0) for i in 1:nprocs]
-        left_indices = 1:2:nprocs
-        right_indices = (nprocs-rem(nprocs,2)):-2:1
-        noderesp = noderesp[vcat(left_indices,right_indices)]
-    else
-        division, remainder = divrem(nprocs, nresp)
-        addproc = [division + (i <= remainder ? 1 : 0) for i in 1:nresp]
-        left_indices = 1:2:nresp
-        right_indices = (nresp-rem(nresp,2)):-2:1
-        addproc = addproc[vcat(left_indices,right_indices)]
-        noderesp = zeros(Int, nprocs)
-        for i in 1:nresp
-            noderesp[vcat([0], cumsum(addproc))[i] + 1] = 1
-        end
-    end
-
-    for i in 1:nprocs
-        if i == 1
-            noderanges[1] = 1:cumsum(bondsresp)[noderesp[1]]
-        else
-            if noderesp[i] == 0
-                noderanges[i] = noderanges[i-1]
-            else
-                noderanges[i] = (noderanges[i-1][end] + 1):cumsum(bondsresp)[cumsum(noderesp)[i]]
-            end
-        end
-    end
-
-    return noderanges
-    =#
 end
 
+"""
+    _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}}) -> (leaders::Vector{Int}, leaderslist::Vector{Int})
+
+Determine the leader processes among `nprocs` processes based on their assigned node ranges.
+
+A process is considered a leader (`+1`) if its node range is equal to the next process's node range, and not a leader (`-1`) if its node range is equal to the previous process's node range. All other processes are marked as `0`. Only leaders are responsible for communication.
+
+# Arguments
+- `nprocs::Int`: The total number of processes.
+- `noderanges::Vector{UnitRange{Int}}`: A vector specifying the node range assigned to each process.
+
+# Returns
+- `leaders::Vector{Int}`: An array where each entry is `1` for a leader, `-1` for a worker, and `0` otherwise.
+- `leaderslist::Vector{Int}`: A list of process indices that are leaders and participate in communication.
+
+# Notes
+- Communication is performed only between leaders.
+"""
 function _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}})
     leaders = zeros(Int, nprocs)
     for i in 1:nprocs
@@ -605,7 +603,11 @@ function _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}})
     return leaders, leaderslist
 end
 
-function multithreadPi(ValueType, f, localdims, Icombined, Jcombined)
+"""
+multithreadPi(ValueType, f, localdims, Icombined, Jcombined)
+Evaluate the function `f` on a grid defined by `Icombined` and `Jcombined` using multiple threads.
+"""
+function multithreadPi(::Type{ValueType}, f, localdims::Union{Vector{Int},NTuple{N,Int}}, Icombined::Vector{MultiIndex}, Jcombined::Vector{MultiIndex}) where {N,ValueType}
     Pi = zeros(ValueType, length(Icombined), length(Jcombined))
     nthreads = Threads.nthreads()
     chunk_size, remainder = divrem(length(Jcombined), nthreads)
@@ -621,6 +623,58 @@ function multithreadPi(ValueType, f, localdims, Icombined, Jcombined)
     return Pi
 end
 
+function parallelfullsearch(::type{ValueType}, f, tci, Icombined, Jcombined, teamsize, multithread_eval, juliarank, subcomm) where {ValueType}
+    if teamsize == 1
+        t1 = time_ns()
+        if multithread_eval
+            Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+        else
+            Pi = reshape(
+                filltensor(ValueType, f, tci.localdims,
+                Icombined, Jcombined, Val(0)),
+                length(Icombined), length(Jcombined)
+            )
+        end
+        t2 = time_ns()
+        # For compilation purpouse with MPI
+        Icombined_copy = Icombined
+        Jcombined_copy = Jcombined
+    else # Teamwork
+        # Coordinate
+        t1 = time_ns()
+        Icombined_copy = MPI.bcast([Icombined], subcomm)[1]
+        Jcombined_copy = MPI.bcast([Jcombined], subcomm)[1]
+        # Subdivide
+        chunksize, remainder = divrem(length(Jcombined_copy), teamsize)
+        col_chunks = [chunksize + (i <= remainder ? 1 : 0) for i in 1:teamsize]
+        row_chunks = [length(Icombined_copy) for _ in 1:teamsize]
+        ranges = [(vcat([0],cumsum(col_chunks))[i] + 1):(cumsum(col_chunks)[i]) for i in 1:teamsize]
+        Jcombined_copy_local = Jcombined_copy[ranges[teamjuliarank]]
+        if !isempty(Jcombined_copy_local)
+            tlocalPi = time_ns()
+            if multithread_eval
+                localPi = multithreadPi(ValueType, f, tci.localdims, Icombined_copy, Jcombined_copy_local)
+            else
+                localPi = reshape(
+                    filltensor(ValueType, f, tci.localdims,
+                    Icombined_copy, Jcombined_copy_local, Val(0)),
+                    length(Icombined_copy), length(Jcombined_copy_local)
+                )
+            end
+            tlocalPi = (time_ns() - tlocalPi) * 1e-9
+        else
+            localPi = zeros(length(Icombined_copy), length(Jcombined_copy_local))
+        end
+        # Unite
+        Pi = zeros(length(Icombined_copy), length(Jcombined_copy))
+        sizes = vcat(row_chunks', col_chunks')
+        counts = vec(prod(sizes, dims=1))
+        Pi_vbuf = VBuffer(Pi, counts)
+        MPI.Allgatherv!(localPi, Pi_vbuf, subcomm)
+        t2 = time_ns()
+    end
+    return Pi, t1, t2
+end
 """
 Update pivots at bond `b` of `tci` using the TCI2 algorithm.
 Site tensors will be invalidated.
@@ -663,55 +717,7 @@ function updatepivots!(
 
     luci = if pivotsearch === :full
         if sweepdirection == :parallel && MPI.Initialized()
-            if teamsize == 1
-                t1 = time_ns()
-                if multithread_eval
-                    Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
-                else
-                    Pi = reshape(
-                        filltensor(ValueType, f, tci.localdims,
-                        Icombined, Jcombined, Val(0)),
-                        length(Icombined), length(Jcombined)
-                    )
-                end
-                t2 = time_ns()
-                # For compilation purpouse
-                Icombined_copy = Icombined
-                Jcombined_copy = Jcombined
-            else # Teamwork
-                # Coordinate
-                t1 = time_ns()
-                Icombined_copy = MPI.bcast([Icombined], subcomm)[1]
-                Jcombined_copy = MPI.bcast([Jcombined], subcomm)[1]
-                # Subdivide
-                chunksize, remainder = divrem(length(Jcombined_copy), teamsize)
-                col_chunks = [chunksize + (i <= remainder ? 1 : 0) for i in 1:teamsize]
-                row_chunks = [length(Icombined_copy) for _ in 1:teamsize]
-                ranges = [(vcat([0],cumsum(col_chunks))[i] + 1):(cumsum(col_chunks)[i]) for i in 1:teamsize]
-                Jcombined_copy_local = Jcombined_copy[ranges[teamjuliarank]]
-                if !isempty(Jcombined_copy_local)
-                    tlocalPi = time_ns()
-                    if multithread_eval
-                        localPi = multithreadPi(ValueType, f, tci.localdims, Icombined_copy, Jcombined_copy_local)
-                    else
-                        localPi = reshape(
-                            filltensor(ValueType, f, tci.localdims,
-                            Icombined_copy, Jcombined_copy_local, Val(0)),
-                            length(Icombined_copy), length(Jcombined_copy_local)
-                        )
-                    end
-                    tlocalPi = (time_ns() - tlocalPi) * 1e-9
-                else
-                    localPi = zeros(length(Icombined_copy), length(Jcombined_copy_local))
-                end
-                # Unite
-                Pi = zeros(length(Icombined_copy), length(Jcombined_copy))
-                sizes = vcat(row_chunks', col_chunks')
-                counts = vec(prod(sizes, dims=1))
-                Pi_vbuf = VBuffer(Pi, counts)
-                MPI.Allgatherv!(localPi, Pi_vbuf, subcomm)
-                t2 = time_ns()
-            end
+            Pi, t1, t2 = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, juliarank, subcomm)
         else # Serial
             t1 = time_ns()
             if multithread_eval
@@ -726,7 +732,6 @@ function updatepivots!(
             t2 = time_ns()
         end
         updatemaxsample!(tci, Pi)
-        #println(size(Pi))
         luci = MatrixLUCI(
             Pi,
             reltol=reltol,
@@ -770,7 +775,6 @@ function updatepivots!(
             MPI.Barrier(subcomm)
         else # Serial
             Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
-            #println("($(length(Icombined)), $(length(Jcombined)))")
             res = MatrixLUCI(
                 ValueType,
                 Pif,
@@ -788,13 +792,22 @@ function updatepivots!(
         t3 = time_ns()
 
         # Fall back to full search if rook search fails
-        # TODO parallelize also this
         if npivots(res) == 0
-            Pi = reshape(
-                filltensor(ValueType, f, tci.localdims,
-                Icombined, Jcombined, Val(0)),
-                length(Icombined), length(Jcombined)
-            )
+            if sweepdirection == :parallel && MPI.Initialized()
+                Pi, _, _ = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, juliarank, subcomm)
+            else # Serial
+                t1 = time_ns()
+                if multithread_eval
+                    Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+                else
+                    Pi = reshape(
+                        filltensor(ValueType, f, tci.localdims,
+                        Icombined, Jcombined, Val(0)),
+                        length(Icombined), length(Jcombined)
+                    )
+                end
+                t2 = time_ns()
+            end
             updatemaxsample!(tci, Pi)
             res = MatrixLUCI(
                 Pi,
@@ -901,7 +914,11 @@ end
         maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=false
+        strictlynested::Bool=false,
+        checkbatchevaluatable::Bool=false,
+        multithread_eval::Bool=false,
+        estimatedbond::Int=100,
+        interbond::Bool=true
     ) where {ValueType}
 
 Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
@@ -925,6 +942,9 @@ Arguments:
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
+- `multithread_eval::Bool` determines whether to use multithreading for function evaluation. Default: `false`.
+- `estimatedbond::Int` is the estimated bond dimension after compression, set by the user to help balance the workload. Default: `100`.
+- `interbond::Bool` determines whether to distribute the workload across bonds or not. Default: `true`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
@@ -1112,18 +1132,6 @@ function optimize!(
         tci.Jset = MPI.bcast(tci.Jset, comm)
     end
 
-    #if sweepstrategy == :parallel && MPI.Initialized()
-    #    if leaders[juliarank] != -1
-    #        local_iset = tci.Iset[noderanges[juliarank]]
-    #        local_jset = tci.Jset[noderanges[juliarank].+1]
-    #        counts = [isleader == -1 ? 0 : length(noderanges[proc]) for (proc, isleader) in enumerate(leaders)]
-    #        Ivbuf = VBuffer(tci.Iset, counts)
-    #        Jvbuf = VBuffer(tci.Jset, counts)
-    #        MPI.Allgatherv!(local_iset, Ivbuf, comm)
-    #        MPI.Allgatherv!(local_jset, Jvbuf, comm)
-    #    end
-    #end
-
     # Extra one sweep by the 1-site update to
     #  (1) Remove unnecessary pivots added by global pivots
     #      Note: a pivot matrix can be non-square after adding global pivots,
@@ -1288,7 +1296,11 @@ end
         maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=false
+        strictlynested::Bool=false,
+        checkbatchevaluatable::Bool=false,
+        multithread_eval::Bool=false,
+        estimatedbond::Int=100,
+        interbond::Bool=true
     ) where {ValueType,N}
 
 Cross interpolate a function ``f(\mathbf{u})`` using the TCI2 algorithm. Here, the domain of ``f`` is ``\mathbf{u} \in [1, \ldots, d_1] \times [1, \ldots, d_2] \times \ldots \times [1, \ldots, d_{\mathscr{L}}]`` and ``d_1 \ldots d_{\mathscr{L}}`` are the local dimensions.
@@ -1313,7 +1325,9 @@ Arguments:
 - `tolmarginglobalsearch` can be set to `>= 1.0`. Seach global pivots where the interpolation error is larger than the tolerance by `tolmarginglobalsearch`.  Default: `10.0`.
 - `strictlynested::Bool=false` determines whether to preserve partial nesting in the TCI algorithm. Default: `true`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
-- `estimatedbond::Int` Used by parallel scheme to optimize bond distribution. Default: `100`
+- `estimatedbond::Int` Used by parallel scheme to optimize bond distribution. Default: `100`.
+- `multithread_eval::Bool` determines whether to use multithreading for function evaluation. Default: `false`.
+- `interbond::Bool` determines whether to distribute the workload across bonds or not. Default: `true`.
 
 Notes:
 - Set `tolerance` to be > 0 or `maxbonddim` to some reasonable value. Otherwise, convergence is not reachable.
