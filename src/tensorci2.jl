@@ -623,7 +623,7 @@ function multithreadPi(::Type{ValueType}, f, localdims::Union{Vector{Int},NTuple
     return Pi
 end
 
-function parallelfullsearch(::type{ValueType}, f, tci, Icombined, Jcombined, teamsize, multithread_eval, juliarank, subcomm) where {ValueType}
+function parallelfullsearch(::Type{ValueType}, f, tci, Icombined, Jcombined, teamsize, multithread_eval, teamjuliarank, subcomm) where {ValueType}
     if teamsize == 1
         t1 = time_ns()
         if multithread_eval
@@ -717,7 +717,7 @@ function updatepivots!(
 
     luci = if pivotsearch === :full
         if sweepdirection == :parallel && MPI.Initialized()
-            Pi, t1, t2 = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, juliarank, subcomm)
+            Pi, t1, t2 = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, teamjuliarank, subcomm)
         else # Serial
             t1 = time_ns()
             if multithread_eval
@@ -794,7 +794,7 @@ function updatepivots!(
         # Fall back to full search if rook search fails
         if npivots(res) == 0
             if sweepdirection == :parallel && MPI.Initialized()
-                Pi, _, _ = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, juliarank, subcomm)
+                Pi, _, _ = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, teamjuliarank, subcomm)
             else # Serial
                 t1 = time_ns()
                 if multithread_eval
