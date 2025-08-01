@@ -110,13 +110,14 @@ end
 
 # Compute full left environment
 function leftenvironment(
-    A::TensorTrain{T,4},
-    B::TensorTrain{T,4},
-    X::TensorTrain{T,4},
+    A::Vector{Array{T,4}},
+    B::Vector{Array{T,4}},
+    X::Vector{Array{T,4}},
     i::Int;
+    L::Array{T, 3} = ones(T, 1, 1, 1),
+    Li::Int = 1
 )::Array{T, 3} where {T}
-    L = ones(T, 1, 1, 1)
-    for ell in 1:i
+    for ell in Li:i
         L = _contract(_contract(_contract(L, A[ell], (1,), (1,)), B[ell], (1,4,), (1,2,)), conj(X[ell]), (1,2,4,), (1,2,3,))
     end
     return L
@@ -124,13 +125,14 @@ end
 
 # Compute full right environment
 function rightenvironment(
-    A::TensorTrain{T,4},
-    B::TensorTrain{T,4},
-    X::TensorTrain{T,4},
+    A::Vector{Array{T,4}},
+    B::Vector{Array{T,4}},
+    X::Vector{Array{T,4}},
     i::Int;
+    R::Array{T, 3} = ones(T, 1, 1, 1),
+    Ri::Int = length(A),
     )::Array{T, 3} where {T}
-    R = ones(T, 1, 1, 1)
-    for ell in length(A):-1:i
+    for ell in Ri:-1:i
         R = permutedims(_contract(conj(X[ell]), _contract(B[ell], _contract(A[ell], R, (4,), (1,)), (2,4,), (3,4,)), (2,3,4,), (4,2,5,)), (3,2,1,))
     end
     return R
@@ -599,7 +601,6 @@ function contract_distr_zipup(
 
             Us[i] = U
             Vts[i] = reshape(factorization.Vt[1:newbonddimr, :], newbonddimr, size(to_svd)[end-1], size(to_svd)[end])
-            #Debug purpouse: println(_contract(_contract(Us[i], finalsitetensors[n], (3,), (1,)), Vts[i], (5,), (1,)) ≈ permutedims(_contract(A[n], B[n], (3,), (2,)), (1, 4, 2, 5, 3, 6)))
         end
     elseif method == :CI || method == :LU
         for (i, n) in enumerate(noderanges[juliarank])
@@ -642,7 +643,6 @@ function contract_distr_zipup(
             Us[i] = reshape(L, dimsA[1], dimsB[1], newbonddiml)
             finalsitetensors[n] = reshape(U, newbonddiml, dimsA[2], dimsB[3], newbonddimr)
             Vts[i] = reshape(Vt, newbonddimr, dimsA[4], dimsB[4])
-            # Debug purpouse: println(_contract(_contract(Us[n], finalsitetensors[n], (3,), (1,)), Vts[n], (5,), (1,)) ≈ permutedims(_contract(A[n], B[n], (3,), (2,)), (1, 4, 2, 5, 3, 6)))
         end
     end
     
@@ -713,68 +713,111 @@ function contract_distr_zipup(
     return TensorTrain{ValueType,4}(finalsitetensors)
 end
 
-function updatecore!(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4}, X::TensorTrain{ValueType,4}, i::Int;
-    method::Symbol=:SVD, tolerance::Float64=1e-8, maxbonddim::Int=typemax(Int), direction::Symbol=:forward) where {ValueType}
-    L = leftenvironment(A, B, X, i-1)
-    R = rightenvironment(A, B, X, i+2)
+# If Ri = i, then R is the right environment until site i+1, which has size (size(A[i])[end], size(B[i])[end], size(X[i]])[end])
+# If Li = i, then L is the left environment until site i-1, which has size (size(A[i])[1], size(B[i])[1], size(X[i]])[1])
+function updatecore!(A::Vector{Array{ValueType,4}}, B::Vector{Array{ValueType,4}}, X::Vector{Array{ValueType,4}}, i::Int;
+    method::Symbol=:SVD, tolerance::Float64=1e-8, maxbonddim::Int=typemax(Int), direction::Symbol=:forward,
+    R::Array{ValueType,3}=ones(ValueType, 1, 1, 1), Ri::Int=length(A), L::Array{ValueType,3}=ones(ValueType, 1, 1, 1), Li::Int=1
+    ) where {ValueType}
+    L = leftenvironment(A, B, X, i-1; L, Li)
+    R = rightenvironment(A, B, X, i+2; R, Ri)
 
     Le = _contract(_contract(L, A[i], (1,), (1,)), B[i], (1, 4), (1, 2))
     Re = _contract(B[i+1], _contract(A[i+1], R, (4,), (1,)), (2, 4), (3, 4))
     Ce = _contract(Le, Re, (3, 5), (3, 1))
     Ce = permutedims(Ce, (1, 2, 3, 5, 4, 6))
-    # TODO change contraction order to avoid permutation
 
     left, right, newbonddim = _factorize(
         reshape(Ce, prod(size(Ce)[1:3]), prod(size(Ce)[4:6])),
         method; tolerance, maxbonddim, leftorthogonal=(direction == :forward ? true : false)
     )
 
-    X_i = reshape(left, size(X[i])[1:3]..., newbonddim)
-    X_i1 = reshape(right, newbonddim, size(X[i+1])[2:4]...)
-    if size(X.sitetensors[i])[4] != newbonddim ||
-       size(X.sitetensors[i+1])[1] != newbonddim
+    X_i = reshape(left, :, size(X[i])[2:3]..., newbonddim)
+    X_i1 = reshape(right, newbonddim, size(X[i+1])[2:3]..., :)
+
+    if size(X[i]) != size(X_i) || size(X[i+1]) != size(X_i1)
        diff = Inf
     else
-        diff = maximum(abs, X.sitetensors[i] .- X_i)
-        diff = max(diff, maximum(abs, X.sitetensors[i+1] .- X_i1))
+        diff = maximum(abs, X[i] .- X_i)
+        diff = max(diff, maximum(abs, X[i+1] .- X_i1))
     end
-    X.sitetensors[i] = X_i
-    X.sitetensors[i+1] = X_i1
-    return diff
+    X[i] = X_i
+    X[i+1] = X_i1
+    return diff, L, R
 end
 
+"""
+    function contract_fit(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4})
+
+Conctractos tensor trains A and B using the fit algorithm.
+
+# Keyword Arguments
+
+- `nsweep::Int`: Number of sweeps to perform during the algorithm.
+- `initial_guess`: Initial guess of the solution A*B.
+- `tolerance::Float64`: Convergence tolerance for the iterative algorithm.
+- `method::Symbol`: Algorithm or method to use for the computation :SVD, :RSVD, :LU, :CI.
+- `maxbonddim::Int`: Maximum bond dimension allowed during the decomposition.
+"""
+#- `initial_guess` is an optional initial guess for the tensor train. If not provided, a tensor train of rank one is used. This must have coherent bond dimension (i.e. start and finish with less than [d,d^2,d^3,...,d^3,d^2,d]).
 function contract_fit(
-    A::TensorTrain{ValueType,4},
-    B::TensorTrain{ValueType,4};
+    mpoA::TensorTrain{ValueType,4},
+    mpoB::TensorTrain{ValueType,4};
     nsweeps::Int=2,
     initial_guess::Union{Nothing,TensorTrain{ValueType,4}}=nothing,
-    sweepstrategy::Symbol=:backandforth,
     tolerance::Float64=1e-12,
     method::Symbol=:SVD, # :SVD, :RSVD, :LU, :CI
     maxbonddim::Int=typemax(Int),
     kwargs...
 ) where {ValueType}
-    if length(A) != length(B)
+    if length(mpoA) != length(mpoB)
         throw(ArgumentError("Cannot contract tensor trains with different length."))
     end
 
+    A = [deepcopy(a) for a in mpoA.sitetensors]
+    B = [deepcopy(b) for b in mpoB.sitetensors]
+
     n = length(A)
+    Rs = Vector{Array{ValueType, 3}}(undef, n)
+    Ls = Vector{Array{ValueType, 3}}(undef, n)
 
     if !isnothing(initial_guess)
-        X = deepcopy(initial_guess)
+        X = [deepcopy(a) for a in initial_guess.sitetensors]
     else
-        X = TensorTrain([ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1) for i in 1:n])
+        X = [ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1) for i in 1:n]
     end
     
+    centercanonicalize!(A, 1)
+    centercanonicalize!(B, 1)
+    centercanonicalize!(X, 1)
+    # Precompute right environments
+    for i in n:-1:3
+        if i == n
+            Rs[i] = rightenvironment(A, B, X, i)
+        else
+            Rs[i] = rightenvironment(A, B, X, i; R=Rs[i+1], Ri=i)
+        end
+    end
+    
+    # It doesn't matter if we repeat update in 1 or n-1, those are negligible
     direction = :forward
     for sweep in 1:nsweeps
         max_diff = 0.0
+        # Update cores and store Left or Right environment
         if direction == :forward
             for i in 1:n-1
                 centercanonicalize!(A, i)
                 centercanonicalize!(B, i)
                 centercanonicalize!(X, i)
-                diff = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction)
+                if i == 1
+                    diff, _, _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, R=Rs[i+2], Ri=i+1)
+                elseif i == 2
+                    diff, Ls[i-1], _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, R=Rs[i+2], Ri=i+1)
+                elseif i < n-1
+                    diff, Ls[i-1], _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, L=Ls[i-2], Li=i-1, R=Rs[i+2], Ri=i+1)
+                else # i == n-1
+                    diff, Ls[i-1], _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, L=Ls[i-2], Li=i-1)
+                end
                 max_diff = max(max_diff, diff)
             end
             direction = :backward
@@ -783,7 +826,15 @@ function contract_fit(
                 centercanonicalize!(A, i)
                 centercanonicalize!(B, i)
                 centercanonicalize!(X, i)
-                diff = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction)
+                if i == n-1
+                    diff, _, _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, L=Ls[i-1], Li=i)
+                elseif i == n-2
+                    diff, _, Rs[i+2] = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, L=Ls[i-1], Li=i)
+                elseif i > 1
+                    diff, _, Rs[i+2] = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, L=Ls[i-1], Li=i, R=Rs[i+3], Ri=i+2)
+                else # i == 1
+                    diff, _, Rs[i+2] = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction, R=Rs[i+3], Ri=i+2)
+                end
                 max_diff = max(max_diff, diff)
             end
             direction = :forward
@@ -792,23 +843,49 @@ function contract_fit(
             break
         end
     end
-    return X
+    return TensorTrain{ValueType,4}(X)
 end
 
+"""
+    function contract_fit(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4})
+
+Conctractos tensor trains A and B using the fit algorithm.
+
+# Keyword Arguments
+
+- `nsweep::Int`: Number of sweeps to perform during the algorithm.
+- `initial_guess`: Initial guess of the solution A*B.
+- `subcomm::Union{Nothing, MPI.Comm}`: Subcommunicator to use for the distributed computation. If nothing, the global communicator is used.
+- `tolerance::Float64`: Convergence tolerance for the iterative algorithm.
+- `method::Symbol`: Algorithm or method to use for the computation :SVD, :RSVD, :LU, :CI.
+- `maxbonddim::Int`: Maximum bond dimension allowed during the decomposition.
+- `synchedmpo::Bool`: Tells whether the input MPOs are synchronized. Use "true" if you know that the input MPOs are exactly the same across different nodes.
+"""
 function contract_distr_fit(
-    A::TensorTrain{ValueType,4},
-    B::TensorTrain{ValueType,4};
+    mpoA::TensorTrain{ValueType,4},
+    mpoB::TensorTrain{ValueType,4};
     nsweeps::Int=2,
     initial_guess::Union{Nothing,TensorTrain{ValueType,4}}=nothing,
     subcomm::Union{Nothing, MPI.Comm}=nothing,
-    sweepstrategy::Symbol=:backandforth,
+    noderanges::Union{Nothing,Vector{UnitRange{Int}}}=nothing,
     tolerance::Float64=1e-12,
     method::Symbol=:SVD, # :SVD, :RSVD, :LU, :CI
     maxbonddim::Int=typemax(Int),
+    synchedmpo::Bool=false,
     kwargs...
 ) where {ValueType}
-    A_distr = deepcopy(A)
-    B_distr = deepcopy(B)
+    if length(mpoA) != length(mpoB)
+        throw(ArgumentError("Cannot contract tensor trains with different length."))
+    end
+
+    if !synchedmpo
+        synchronize_tt!(mpoA)
+        synchronize_tt!(mpoB)
+        synchronize_tt!(initial_guess)
+    end
+
+    A = deepcopy(mpoA.sitetensors)
+    B = deepcopy(mpoB.sitetensors)
 
     n = length(A)
 
@@ -821,95 +898,247 @@ function contract_distr_fit(
         mpirank = MPI.Comm_rank(comm)
         juliarank = mpirank + 1
         nprocs = MPI.Comm_size(comm)
-        if nprocs > div(n, 2)
-            println("Warning! Number of processes is larger than half of the number of sites, this will lead to nodes not being used")
-            noderanges = [i:i+1 for i in 1:2:n]
-            noderanges[end] = (n % 2 == 0) ? (n-1:n) : (n-2:n)
-            for _ in div(n, 2)+1:nprocs
-                push!(noderanges, 1:-1)
+        if noderanges == nothing
+            if n < 4
+                println("Warning! The TT is too small to be parallelized.")
+                return contract_fit(A, B; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
             end
-            nprocs = div(n, 2)
-        else
-            noderanges = [div((i - 1) * n, nprocs) + 1:min(div(i * n, nprocs), n) for i in 1:nprocs]
+            if n < 6
+                if nprocs > 2
+                    println("Warning! The TT is too small to be parallelized with more than 2 nodes. Some nodes will not be used.")
+                end
+                nprocs = 2
+                noderanges = [1:2,3:n]
+            elseif n == 6
+                if nprocs == 2
+                    noderanges = [1:3,4:6]
+                elseif nprocs == 3
+                    noderanges = [1:2,3:4,5:6]
+                else
+                    println("Warning! The TT is too small to be parallelized with more than 3 nodes. Some nodes will not be used.")
+                    nprocs = 3
+                    noderanges = [1:2,3:4,5:6]
+                end
+            else 
+                extra1 = 3 # "Hyperparameter"
+                extraend = 3
+                if nprocs >= div(n - extra1 - extraend, 2) # It's just one update per node.
+                    println("Warning! A TT of lenght L can use be parallelized with up to (L-$(extra1 + extraend))/2 nodes. Some nodes will not be used.")
+                    # Each node has 2 cores. Except first and last who have 2+extra1 and 2+extraend+n%2
+                    if n % 2 == 0
+                        noderanges = vcat([1:extra1+1],[extra1+i+1:extra1+i+2 for i in 1:2:n-extra1-extraend-2],[n-extraend:n])
+                    else
+                        noderanges = vcat([1:extra1+1],[extra1+i+1:extra1+i+2 for i in 1:2:n-extra1-extraend-3],[n-1-extraend:n])
+                    end
+                    for _ in div(n - extra1 - extraend, 2)+1:nprocs
+                        push!(noderanges, 1:-1)
+                    end
+                    noderanges[1] += extra1
+                    noderanges[end] += extraend
+                    nprocs = div(n - extra1 - extraend, 2)
+                else
+                    number_of_sites, rem = divrem(n-extra1-extraend, nprocs)
+                    sites = [number_of_sites for i in 1:nprocs]
+                    sites[1] += extra1
+                    sites[end] += extraend
+                    # Distribute the remainder as evenly as possible
+                    for i in 1:rem
+                        if i % 2 == 1
+                            sites[div(i,2)+2] += 1
+                        else
+                            sites[end-div(i,2)] += 1
+                        end
+                    end
+                    noderanges = [sum(sites[1:i-1])+1:sum(sites[1:i]) for i in 1:nprocs]
+                end
+            end
         end
     else
         println("Warning! Distributed strategy has been chosen, but MPI is not initialized, please use TCI.initializempi() before contract() and use TCI.finalizempi() afterwards")
-        return contract_fit(A, B; nsweeps, initial_guess, sweepstrategy, tolerance, method, maxbonddim, kwargs...)
+        return contract_fit(A, B; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
     end
 
     if nprocs == 1
         println("Warning! Distributed strategy has been chosen, but only one process is running")
-        return contract_fit(A, B; nsweeps, initial_guess, sweepstrategy, tolerance, method, maxbonddim, kwargs...)
+        return contract_fit(A, B; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
     end
 
     if !isnothing(initial_guess)
-        X = deepcopy(initial_guess)
+        X = deepcopy(initial_guess.sitetensors)
     else
-        X = TensorTrain([ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1) for i in 1:n])
+        X = [ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1) for i in 1:n]
+    end
+
+    Ls = Vector{Array{ValueType, 3}}(undef, n)
+    Rs = Vector{Array{ValueType, 3}}(undef, n)
+
+    first = noderanges[juliarank][1]
+    last = noderanges[juliarank][end]
+
+    #Ls are left enviroments and Rs are right environments
+    if first != 1
+        Ls[first-1] = ones(ValueType, size(A[first])[1], size(B[first])[1], size(X[first])[1])
+    end
+    if last != n
+        Rs[last+1] = ones(ValueType, size(A[last])[end], size(B[last])[end], size(X[last])[end])
+    end
+
+    
+    if juliarank % 2 == 1 # Precompute right environment if going forward
+        centercanonicalize!(A, first)
+        centercanonicalize!(B, first)
+        centercanonicalize!(X, first)
+        for i in last:-1:first+2
+            if i == n
+                Rs[i] = rightenvironment(A, B, X, i)
+            else
+                Rs[i] = rightenvironment(A, B, X, i; R=Rs[i+1], Ri=i)
+            end
+        end
+    else # Precompute left environment if going backward
+        centercanonicalize!(A, last-1)
+        centercanonicalize!(B, last-1)
+        centercanonicalize!(X, last-1)
+        for i in first:last-2
+            if i == 1
+                Ls[i] = leftenvironment(A, B, X, i)
+            else
+                Ls[i] = leftenvironment(A, B, X, i; L=Ls[i-1], Li=i)
+            end
+        end
     end
 
     for sweep in 1:nsweeps
         max_diff = 0.0
-        if sweep % 2 == 1
-            for j in noderanges[juliarank][1]:noderanges[juliarank][end-1]
-                centercanonicalize!(A_distr, j)
-                centercanonicalize!(B_distr, j)
-                centercanonicalize!(X, j)
-                diff = updatecore!(A_distr, B_distr, X, j; method, tolerance, maxbonddim, direction=:forward)
+        if sweep % 2 == juliarank % 2
+            for i in first:last-1
+                centercanonicalize!(A, i)
+                centercanonicalize!(B, i)
+                if i == 1
+                    diff, _, _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:forward, R=Rs[i+2], Ri=i+1)
+                elseif i == 2
+                    diff, Ls[i-1], _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:forward, R=Rs[i+2], Ri=i+1)
+                elseif i == first
+                    diff, _, _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:forward, L=Ls[i-1], Li=i, R=Rs[i+2], Ri=i+1)
+                elseif i < n-1
+                    diff, Ls[i-1], _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:forward, L=Ls[i-2], Li=i-1, R=Rs[i+2], Ri=i+1)
+                else
+                    diff, Ls[i-1], _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:forward, L=Ls[i-2], Li=i-1)
+                end
                 max_diff = max(max_diff, diff)
             end
         else
-            for j in noderanges[juliarank][end-1]:-1:noderanges[juliarank][1]
-                centercanonicalize!(A_distr, j)
-                centercanonicalize!(B_distr, j)
-                centercanonicalize!(X, j)
-                diff = updatecore!(A_distr, B_distr, X, j; method, tolerance, maxbonddim, direction=:backward)
+            for i in last-1:-1:first
+                centercanonicalize!(A, i)
+                centercanonicalize!(B, i)
+                if i == n-1
+                    diff, _, _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:backward, L=Ls[i-1], Li=i)
+                elseif i == n-2
+                    diff, _, Rs[i+2] = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:backward, L=Ls[i-1], Li=i)
+                elseif i == last-1
+                    diff, _, _ = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:backward, L=Ls[i-1], Li=i, R=Rs[i+2], Ri=i+1)
+                elseif i > 1
+                    diff, _, Rs[i+2] = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:backward, L=Ls[i-1], Li=i, R=Rs[i+3], Ri=i+2)
+                else
+                    diff, _, Rs[i+2] = updatecore!(A, B, X, i; method, tolerance, maxbonddim, direction=:backward, R=Rs[i+3], Ri=i+2)
+                end
                 max_diff = max(max_diff, diff)
             end
         end
 
-        # RIGHT TO LEFT
         if MPI.Initialized()
-            reqs = MPI.Request[]
-            if juliarank % 2 == sweep % 2
+            if juliarank % 2 == sweep % 2 # Left
                 if juliarank != nprocs
-                    centercanonicalize!(A_distr, noderanges[juliarank][end])
-                    centercanonicalize!(B_distr, noderanges[juliarank][end])
-                    centercanonicalize!(X, noderanges[juliarank][end])
-                    X.sitetensors[noderanges[juliarank+1][1]:end] = MPI.recv(comm; source=mpirank+1, tag=juliarank+1)
-                    updatecore!(A_distr, B_distr, X, noderanges[juliarank][end]; method, tolerance, maxbonddim, direction=:backward)
+                    centercanonicalize!(A, last)
+                    centercanonicalize!(B, last)
+
+                    Ls[last-1] = leftenvironment(A, B, X, last-1; L=Ls[last-2], Li=last-1)
+
+                    sizes = Vector{Int}(undef, 3)
+                    reqs = MPI.Isend(collect(size(Ls[last-1])), comm; dest=mpirank+1, tag=juliarank)
+                    reqr = MPI.Irecv!(sizes, comm; source=mpirank+1, tag=juliarank+1)
+
+                    MPI.Waitall([reqs, reqr])
+
+                    Rs[last+2] = ones(ValueType, sizes[1], sizes[2], sizes[3])
+                    
+                    reqs = MPI.Isend(Ls[last-1], comm; dest=mpirank+1, tag=juliarank)
+                    reqr = MPI.Irecv!(Rs[last+2], comm; source=mpirank+1, tag=juliarank+1)
+
+                    MPI.Waitall([reqs, reqr])
+                    
+                    diff, _, _ = updatecore!(A, B, X, last; method, tolerance, maxbonddim, direction=:backward, L=Ls[last-1], Li=last, R=Rs[last+2], Ri=last+1)
+                    
+                    Rs[last+1] = rightenvironment(A, B, X, last+1; R=Rs[last+2], Ri=last+1)
                 end
-            else
+            else # Right
                 if juliarank != 1
-                    centercanonicalize!(X, noderanges[juliarank][1]) # Sends with center at start of own
-                    push!(reqs, MPI.isend(X.sitetensors[noderanges[juliarank][1]:end], comm; dest=mpirank-1, tag=juliarank))
+                    centercanonicalize!(A, first)
+                    centercanonicalize!(B, first)
+
+                    Rs[first+1] = rightenvironment(A, B, X, first+1; R=Rs[first+2], Ri=first+1)
+
+                    sizes = Vector{Int}(undef, 3)
+                    reqs = MPI.Isend(collect(size(Rs[first+1])), comm; dest=mpirank-1, tag=juliarank)
+                    reqr = MPI.Irecv!(sizes, comm; source=mpirank-1, tag=juliarank-1)
+                    
+                    MPI.Waitall([reqs, reqr])
+
+                    Ls[first-2] = ones(ValueType, sizes[1], sizes[2], sizes[3])
+                    reqs = MPI.Isend(Rs[first+1], comm; dest=mpirank-1, tag=juliarank)
+                    reqr = MPI.Irecv!(Ls[first-2], comm; source=mpirank-1, tag=juliarank-1)
+                    
+                    MPI.Waitall([reqs, reqr])
+                    
+                    diff, _, _ = updatecore!(A, B, X, first-1; method, tolerance, maxbonddim, direction=:forward, L=Ls[first-2], Li=first-1, R=Rs[first+1], Ri=first) #center on first
+                    
+                    Ls[first-1] = leftenvironment(A, B, X, first-1; L=Ls[first-2], Li=first-1)
                 end
             end
-            MPI.Waitall(reqs)
         end
 
-        # LEFT TO RIGHT
-        if MPI.Initialized()
-            reqs = MPI.Request[]
-            if juliarank % 2 == sweep % 2
-                if juliarank != nprocs
-                    push!(reqs, MPI.isend(X.sitetensors[1:noderanges[juliarank+1][1]], comm; dest=mpirank+1, tag=juliarank))
-                end
-            else
-                if juliarank != 1
-                    X.sitetensors[1:noderanges[juliarank][1]] = MPI.recv(comm; source=mpirank-1, tag=juliarank-1)
-                end
-            end
-            MPI.Waitall(reqs)
-        end
-
+        max_diff = max(max_diff, diff) # Check last update on edge
         converged = max_diff < tolerance
         global_converged = MPI.Allreduce(converged, MPI.LAND, comm)
         if global_converged
             break
         end
     end
-    return X
+
+    # Merge togheter all the sub tensor trains
+    if juliarank == 1
+        for j in 2:nprocs
+            centercanonicalize!(A, noderanges[j-1][end])
+            centercanonicalize!(B, noderanges[j-1][end])
+            centercanonicalize!(X, noderanges[j-1][end])
+            X[noderanges[j]] = MPI.recv(comm; source=j-1, tag=2*j)
+            if j != nprocs
+                R = MPI.recv(comm; source=j-1, tag=2*j+1)
+            else
+                R = ones(ValueType, 1, 1, 1)
+            end
+            diff, _, _ = updatecore!(A, B, X, noderanges[j-1][end]; method, tolerance, maxbonddim, direction=:forward, R, Ri=noderanges[j][end])
+        end
+    else
+        centercanonicalize!(X, first)
+        MPI.send(X[noderanges[juliarank]], comm; dest=0, tag=2*juliarank)
+        if juliarank != nprocs
+            MPI.send(Rs[noderanges[juliarank][end]+1], comm; dest=0, tag=2*juliarank+1)
+        end
+    end
+
+    nprocs = MPI.Comm_size(comm) # In case not all processes where used to compute
+    
+    # Redistribute the tensor train among the processes.
+    if juliarank == 1
+        for j in 2:nprocs
+            MPI.send(X, comm; dest=j-1, tag=1)
+        end
+    else
+        X = MPI.recv(comm; source=0, tag=1)
+    end
+
+    return TensorTrain{ValueType,4}(X)
 end
 
 """
@@ -943,7 +1172,7 @@ Arguments:
 - `f` is a function to be applied elementwise to the result. This option is only available with `algorithm=:TCI`.
 - `method` chooses the method used for the factorization in the `algorithm=:zipup` case (`:SVD` or `:LU`).
 - `subcomm` is an optional MPI communicator for distributed algorithms. If not provided, the default communicator is used.
-- `kwargs...` are forwarded to [`crossinterpolate2`](@ref) if `algorithm=:TCI`.
+- `kwargs...` are forwarded to [`crossinterpolate2`](@ref) if `algorithm=:TCI` or to [`contract_fit`](@ref) if `algorithm=:fit` or `algorithm=:distrfit`.
 """
 function contract(
     A::TensorTrain{V1,4},

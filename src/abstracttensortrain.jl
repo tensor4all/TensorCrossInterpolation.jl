@@ -267,7 +267,7 @@ See also: [`+`](@ref)
 function add(
     lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
     factorlhs=one(V), factorrhs=one(V),
-    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int), normalizeerror::Bool=true
 ) where {V}
     if length(lhs) != length(rhs)
         throw(DimensionMismatch("Two tensor trains with different length ($(length(lhs)) and $(length(rhs))) cannot be added elementwise."))
@@ -285,7 +285,7 @@ function add(
             for ell in 1:L
         ]
     )
-    compress!(tt, :SVD; tolerance, maxbonddim)
+    compress!(tt, :SVD; tolerance, maxbonddim, normalizeerror)
     return tt
 end
 
@@ -299,9 +299,9 @@ Subtract two tensor trains `lhs` and `rhs`. See [`add`](@ref).
 """
 function subtract(
     lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V};
-    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int)
+    tolerance::Float64=0.0, maxbonddim::Int=typemax(Int), normalizeerror::Bool=true
 ) where {V}
-    return add(lhs, rhs; factorrhs=-1 * one(V), tolerance, maxbonddim)
+    return add(lhs, rhs; factorrhs=-1 * one(V), tolerance, maxbonddim, normalizeerror)
 end
 
 @doc raw"""
@@ -322,53 +322,51 @@ function Base.:-(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where
     return subtract(lhs, rhs)
 end
 
-function leftcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
-    MPO = tt.sitetensors
-    N = length(MPO)  # Number of sites
-    for i in 1:N-1
-        Q, R = qr(reshape(MPO[i], prod(size(MPO[i])[1:end-1]), size(MPO[i])[end]))
+function leftcanonicalize!(tt::Vector{Array{ValueType, N}}) where {ValueType, N}
+    n = length(tt)  # Number of sites
+    for i in 1:n-1
+        Q, R = qr(reshape(tt[i], prod(size(tt[i])[1:end-1]), size(tt[i])[end]))
         Q = Matrix(Q)
 
-        MPO[i] = reshape(Q, size(MPO[i])[1:end-1]..., size(Q, 2))  # New bond dimension after Q
+        tt[i] = reshape(Q, size(tt[i])[1:end-1]..., size(Q, 2))  # New bond dimension after Q
 
-        tmpMPO = reshape(MPO[i+1], size(R, 2), :)  # Reshape next tensor
-        tmpMPO .= Matrix(R) * tmpMPO
-        MPO[i+1] = reshape(tmpMPO, size(MPO[i+1])...)  # Reshape back
+        tmptt = reshape(tt[i+1], size(R, 2), :)  # Reshape next tensor
+        tmptt .= Matrix(R) * tmptt
+        tt[i+1] = reshape(tmptt, size(tt[i+1])...)  # Reshape back
     end
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function rightcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
-    MPO = tt.sitetensors
-    N = length(MPO)  # Number of sites
-    for i in N:-1:2
+function rightcanonicalize!(tt::Vector{Array{ValueType, N}}) where {ValueType, N}
+    n = length(tt)  # Number of sites
+    for i in n:-1:2
         # Reshape W_i into a matrix (merging right bond and physical indices)
-        W = MPO[i]
+        W = tt[i]
         χl, d1, d2, χr = size(W)
         W_mat = reshape(W, χl, d1*d2*χr)
 
-        # Perform RQ decomposition: W_mat = R * Q
+        # Perform RQ decottsition: W_mat = R * Q
         F = lq(reverse(W_mat, dims=1))
         R, Q = reverse(F.L), reverse(Matrix(F.Q), dims=1) # https://discourse.julialang.org/t/rq-decomposition/112795/13
 
         # Reshape Q back into the MPO tensor
-        MPO[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
+        tt[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
 
-        # Update the previous MPO tensor by absorbing R
-        tmpMPO = reshape(MPO[i-1], :, size(R, 1))  # Reshape previous tensor
-        tmpMPO .= tmpMPO * Matrix(R)
-        MPO[i-1] = reshape(tmpMPO, size(MPO[i-1], 1), d1, d2, size(MPO[i-1], 4))  # Reshape back
+        # Update the previous tt tensor by absorbing R
+        tmptt = reshape(tt[i-1], :, size(R, 1))  # Reshape previous tensor
+        tmptt .= tmptt * Matrix(R)
+        tt[i-1] = reshape(tmptt, size(tt[i-1], 1), d1, d2, size(tt[i-1], 4))  # Reshape back
     end
 end
 
 
-function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int; old_center::Int=0) where {ValueType}
+function centercanonicalize!(tt::Vector{Array{ValueType, N}}, center::Int; old_center::Int=0) where {ValueType, N}
     orthogonality = checkorthogonality(tt)
-    MPO = tt.sitetensors
-    N = length(MPO)  # Number of sites
+    n = length(tt)  # Number of sites
     
     if count(==( :N ), orthogonality) == 1
         old_center_ = findfirst(==( :N ), orthogonality)
+        # println("Sto canonicalizzando centrando in $center. ho trovato il centro in $old_center_. Quindi flipperò: $(center < old_center_ ? [size(tt[i]) for i in center:old_center_] : [size(tt[i]) for i in old_center_:center])")
         if old_center != 0 && old_center != old_center_
             println("Warning! In centercanonicalize!() old_center has been set as $old_center, but the real old center is $old_center_")
         end
@@ -379,14 +377,14 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int; ol
     end
     # LEFT
     for i in old_center_:center-1
-        Q, R = qr(reshape(MPO[i], prod(size(MPO[i])[1:end-1]), size(MPO[i])[end]))
+        Q, R = qr(reshape(tt[i], prod(size(tt[i])[1:end-1]), size(tt[i])[end]))
         Q = Matrix(Q)
 
-        MPO[i] = reshape(Q, size(MPO[i])[1:end-1]..., size(Q, 2))  # New bond dimension after Q
+        tt[i] = reshape(Q, size(tt[i])[1:end-1]..., size(Q, 2))  # New bond dimension after Q
 
-        tmpMPO = reshape(MPO[i+1], size(R, 2), :)  # Reshape next tensor
-        tmpMPO = Matrix(R) * tmpMPO
-        MPO[i+1] = reshape(tmpMPO, size(MPO[i+1])...)  # Reshape back
+        tmptt = reshape(tt[i+1], size(R, 2), :)  # Reshape next tensor
+        tmptt = Matrix(R) * tmptt
+        tt[i+1] = reshape(tmptt, size(tt[i+1])...)  # Reshape back
     end
     # RIGHT
     if count(==( :N ), orthogonality) == 1
@@ -395,55 +393,53 @@ function centercanonicalize!(tt::AbstractTensorTrain{ValueType}, center::Int; ol
             println("Warning! In centercanonicalize!() old_center has been set as $old_center, but the real old center is $old_center_")
         end
     elseif old_center == 0
-        old_center_ = N
+        old_center_ = n
     else
         old_center_ = old_center
     end
     for i in old_center_:-1:center+1
-        W = MPO[i]
+        W = tt[i]
         χl, d1, d2, χr = size(W)
         W_mat = reshape(W, χl, d1*d2*χr)
 
         L, Q = lq(W_mat)
         Q = Matrix(Q)
-        # Reshape Q back into the MPO tensor
-        MPO[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
+        # Reshape Q back into the tt tensor
+        tt[i] = reshape(Q, size(Q, 1), d1, d2, χr)  # New bond dimension after Q
 
-        # Update the previous MPO tensor by absorbing L
-        tmpMPO = reshape(MPO[i-1], :, size(L, 1))  # Reshape previous tensor
-        tmpMPO = tmpMPO * Matrix(L)
-        MPO[i-1] = reshape(tmpMPO, size(MPO[i-1], 1), d1, d2, size(tmpMPO, 2))  # Reshape back
+        # Update the previous tt tensor by absorbing L
+        tmptt = reshape(tt[i-1], :, size(L, 1))  # Reshape previous tensor
+        tmptt = tmptt * Matrix(L)
+        tt[i-1] = reshape(tmptt, size(tt[i-1], 1), d1, d2, size(tmptt, 2))  # Reshape back
     end
 end
 
 function move_center_right!(tt, i)
-    MPO = tt.sitetensors
-    A = MPO[i]
+    A = tt[i]
     d = size(A)
     A_mat = reshape(A, prod(d[1:end-1]), d[end])
     Q, R = qr(A_mat)
     Q = Matrix(Q)
-    MPO[i] = reshape(Q, d[1:end-1]..., size(Q, 2))
+    tt[i] = reshape(Q, d[1:end-1]..., size(Q, 2))
 
-    B = MPO[i+1]
+    B = tt[i+1]
     B_mat = reshape(B, size(R, 2), :)
     B_mat .= Matrix(R) * B_mat
-    MPO[i+1] = reshape(B_mat, size(B)...)
+    tt[i+1] = reshape(B_mat, size(B)...)
 end
 
 function move_center_left!(tt, i)
-    MPO = tt.sitetensors
-    A = MPO[i]
+    A = tt[i]
     d = size(A)
     A_mat = reshape(A, d[1], prod(d[2:end]))
     L, Q = lq(A_mat)
     Q = Matrix(Q)
-    MPO[i] = reshape(Q, size(Q,1), d[2:end]...)
+    tt[i] = reshape(Q, size(Q,1), d[2:end]...)
 
-    B = MPO[i-1]
+    B = tt[i-1]
     B_mat = reshape(B, :, size(L,1))
     B_mat .= B_mat * Matrix(L)
-    MPO[i-1] = reshape(B_mat, size(B)[1:3]..., size(L,1))
+    tt[i-1] = reshape(B_mat, size(B)[1:3]..., size(L,1))
 end
 
 
@@ -461,16 +457,16 @@ function rightcanonicalize(tt::AbstractTensorTrain{ValueType}) where {ValueType}
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function centercanonicalize(tt::AbstractTensorTrain{ValueType}, center::Int; old_center::Int=0) where {ValueType}
+function centercanonicalize(tt::Vector{Array{ValueType, N}}, center::Int; old_center::Int=0) where {ValueType, N}
     tt_ = deepcopy(tt)
     centercanonicalize!(tt_, center; old_center)
     return tt_
 end
 
-function checkorthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueType}
+function checkorthogonality(tt::Vector{Array{ValueType, N}}) where {ValueType, N}
     ort = Vector{Symbol}(undef, length(tt))
     for i in 1:length(tt)
-        W = tt.sitetensors[i]
+        W = tt[i]
         left_check = _contract(permutedims(W, (4,2,3,1,)), W, (2,3,4,),(2,3,1))
         right_check = _contract(W, permutedims(W, (4,2,3,1,)), (2,3,4,),(2,3,1))
         is_left = isapprox(left_check, I, atol=1e-7)
@@ -488,125 +484,6 @@ function checkorthogonality(tt::AbstractTensorTrain{ValueType}) where {ValueType
     return ort
 end
 
-@doc raw"""
-    function makesitediagonal(
-        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_index::Int; local_index::Int
-    )
-
-The function will reshape the tensors in to make it diagonal with respect to the specified index.
-
-Arguments:
-- `tt`: Tensor train.
-- `theory_dims`: Theoretical division of the local index.
-- `theory_index`: Which theoretical index with respect to make the tensor diagonal.
-- `local_index`: Which local index index with respect to make the tensor diagonal.
-
-"""
-function makesitediagonal!(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_index::Int; local_index::Int=1) where {V}
-    prod(theory_dims) != prod(size(sitetensor(tt, 1))[2:(end-1)]) && error("Local dims dimension mismatch") # Assume d equal in all sites
-
-    for b in 1:length(tt)
-        size_separated = (size(sitetensor(tt, b))[1], theory_dims..., size(sitetensor(tt, b))[end])
-        lenA = length(size_separated)
-        A = reshape(sitetensor(tt, b), size_separated)
-        perm = vcat(1:theory_index-1, theory_index+1:lenA, theory_index)
-        A = permutedims(A, perm) # index to duplicate at the end
-        size_separated_perm = size_separated[perm]
-        new_size_separated_perm = (size_separated_perm..., theory_dims[theory_index])
-        B = zeros(eltype(A), new_size_separated_perm...)
-        for i in 1:theory_dims[theory_index]
-            B[.., i, i] = A[.., i]
-        end
-        B = permutedims(B, vcat(1:theory_index-1, lenA, lenA+1, theory_index:lenA-1))
-        B = reshape(B, (size(sitetensor(tt, b))[1:local_index]..., theory_dims[theory_index]*size(sitetensor(tt, b))[local_index+1] ,size(sitetensor(tt, b))[local_index+2:end]...))
-        tt.sitetensors[b] = B
-    end
-    return
-end
-
-@doc raw"""
-    function extractdiagonal!(
-        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, theory_indexes::Union{Vector{Int},Tuple{Int}}, local_index::Int
-    )
-
-The function will reshape the tensors to extract the diagonal with respect to the specified indices.
-
-Arguments:
-- `tt`: Tensor train.
-- `theory_dims`: Theoretical division of the local index.
-- `theory_index`: Which theoretical index with respect to make the tensor diagonal.
-- `local_index`: Which local index index with respect to make the tensor diagonal.
-
-"""
-function extractdiagonal!(tt::AbstractTensorTrain, theory_dims::Vector{Int}, theory_indexes::Union{Vector{Int},Tuple{Int}}; local_index::Int=1)
-    prod(theory_dims) != prod(size(sitetensor(tt, 1))[2:(end-1)]) && error("Local dims dimension mismatch") # Assume d equal in all sites
-
-    theory_indexes = sort(collect(theory_indexes)) # Vector
-    for b in 1:length(tt)
-        size_separated = (size(sitetensor(tt, b))[1], theory_dims..., size(sitetensor(tt, b))[end])
-        lenA = length(size_separated)
-        A = reshape(sitetensor(tt, b), size_separated)
-        perm = vcat(1:theory_indexes[1]-1, theory_indexes[1]+1:theory_indexes[2]-1, theory_indexes[2]+1:lenA, theory_indexes[1], theory_indexes[2])
-        A = permutedims(A, perm) # indexes to merge at the end
-        size_separated_perm = size_separated[perm]
-        new_size_separated_perm = tuple(size_separated_perm[1:end-1]...)
-        B = zeros(eltype(A), new_size_separated_perm...)
-        for i in 1:theory_dims[theory_indexes[1]]
-            B[.., i] = A[.., i, i]
-        end
-        B = permutedims(B, vcat(1:theory_indexes[1]-1, lenA-1, theory_indexes[1]:lenA-2))
-        B = reshape(B, (size(sitetensor(tt, b))[1:local_index]..., Int(size(sitetensor(tt, b))[local_index+1]/theory_dims[theory_indexes[1]]) ,size(sitetensor(tt, b))[local_index+2:end]...))
-        tt.sitetensors[b] = B
-    end
-
-    return
-end
-
-@doc raw"""
-    function mpo2mps(
-        tt::AbstractTensorTrain{V}
-    )
-
-Converts a Matrix Product Operator (MPO) to a Matrix Product State (MPS) by unifying the physical indices.
-
-
-Arguments:
-- `tt`: Tensor train.
-
-"""
-function mpo2mps(tt::AbstractTensorTrain{V}) where V
-    tensors = Vector{Array{V, 3}}(undef, length(tt))
-    for b in 1:length(tt)
-        site = reshape(tt.sitetensors[b], (size(tt.sitetensors[b])[1], prod(size(tt.sitetensors[b])[2:end-1]), size(tt.sitetensors[b])[end]))
-        tensors[b] = site
-    end
-    return TensorTrain{V, 3}(tensors)
-end
-
-@doc raw"""
-    function mposwapindex(
-        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}
-    )
-
-Swaps the physical indices of a tensor train. Works only on MPOs with 4 indices (left, physical, right, physical).
-    
-
-Arguments:
-- `tt`: Tensor train.
-- `theory_dims`: Theoretical division of the local index.
-- `permute`: Permutation of the indices.
-- `output_dims`: The dimensions of the output tensor train indices.
-"""
-function mposwapindex(tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}) where V
-    tensors = Vector{Array{V, 4}}(undef, length(tt))
-    for b in 1:length(tt)
-        site = reshape(tt.sitetensors[b], (size(tt.sitetensors[b])[1], theory_dims..., size(tt.sitetensors[b])[end]))
-        site = permutedims(site, (1, (permute.+1)... ,length(permute)+2,))
-        sitedim = reshape(site, (size(tt.sitetensors[b])[1], output_dims..., size(tt.sitetensors[b])[end]))
-        tensors[b] = sitedim
-    end
-    wow = TensorTrain{V, 4}(tensors)
-end
 """
 Squared Frobenius norm of a tensor train.
 """
