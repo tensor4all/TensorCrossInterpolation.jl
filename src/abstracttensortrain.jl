@@ -322,7 +322,7 @@ function Base.:-(lhs::AbstractTensorTrain{V}, rhs::AbstractTensorTrain{V}) where
     return subtract(lhs, rhs)
 end
 
-function leftcanonicalize!(tt::Vector{Array{ValueType, N}}) where {ValueType, N}
+function leftcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     n = length(tt)  # Number of sites
     for i in 1:n-1
         Q, R = qr(reshape(tt[i], prod(size(tt[i])[1:end-1]), size(tt[i])[end]))
@@ -337,7 +337,7 @@ function leftcanonicalize!(tt::Vector{Array{ValueType, N}}) where {ValueType, N}
 end
 
 # This creates a TensorTrain which has every site right-canonical except the last
-function rightcanonicalize!(tt::Vector{Array{ValueType, N}}) where {ValueType, N}
+function rightcanonicalize!(tt::AbstractTensorTrain{ValueType}) where {ValueType}
     n = length(tt)  # Number of sites
     for i in n:-1:2
         # Reshape W_i into a matrix (merging right bond and physical indices)
@@ -366,6 +366,9 @@ function centercanonicalize!(tt::Vector{Array{ValueType, N}}, center::Int; old_c
     
     if count(==( :N ), orthogonality) == 1
         old_center_ = findfirst(==( :N ), orthogonality)
+        if old_center_ == nothing # Useless, but help JET compiling
+            old_center_ = old_center 
+        end
         # println("Sto canonicalizzando centrando in $center. ho trovato il centro in $old_center_. Quindi flipperò: $(center < old_center_ ? [size(tt[i]) for i in center:old_center_] : [size(tt[i]) for i in old_center_:center])")
         if old_center != 0 && old_center != old_center_
             println("Warning! In centercanonicalize!() old_center has been set as $old_center, but the real old center is $old_center_")
@@ -389,6 +392,9 @@ function centercanonicalize!(tt::Vector{Array{ValueType, N}}, center::Int; old_c
     # RIGHT
     if count(==( :N ), orthogonality) == 1
         old_center_ = findfirst(==( :N ), orthogonality)
+        if old_center_ == nothing # Useless, but help JET compiling
+            old_center_ = old_center 
+        end
         if old_center != 0 && old_center != old_center_
             println("Warning! In centercanonicalize!() old_center has been set as $old_center, but the real old center is $old_center_")
         end

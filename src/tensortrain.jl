@@ -286,24 +286,12 @@ function multiply(a, tt::TensorTrain{V,N})::TensorTrain{V,N} where {V,N}
     return tt2
 end
 
-function Base.:*(tt::TensorTrain{V,N}, a::V)::TensorTrain{V,N} where {V,N}
+function Base.:*(tt::TensorTrain{V,N}, a)::TensorTrain{V,N} where {V,N}
     return multiply(tt, a)
 end
 
-function Base.:*(a::V, tt::TensorTrain{V,N})::TensorTrain{V,N} where {V,N}
+function Base.:*(a, tt::TensorTrain{V,N})::TensorTrain{V,N} where {V,N}
     return multiply(a, tt)
-end
-
-function Base.:*(tta::TensorTrain{V,N1}, ttb::TensorTrain{V,N2})::TensorTrain{V,N2} where {V,N1,N2}
-    if N1 == 4 && N2 == 3
-        #tensortrain([])# TODO implement
-    elseif N1 != 4 || N2 != 4
-        error("Cannot use these dimensions of TT: $N1, $N2")
-    end
-    tolerance = 1e-9
-    ttc = contract(tta, ttb; algorithm=:naive, tolerance)
-    compress!(ttc, :SVD; tolerance)
-    return ttc
 end
 
 function divide!(tt::TensorTrain{V,N}, a) where {V,N}

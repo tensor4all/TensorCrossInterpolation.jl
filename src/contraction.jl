@@ -114,9 +114,11 @@ function leftenvironment(
     B::Vector{Array{T,4}},
     X::Vector{Array{T,4}},
     i::Int;
-    L::Array{T, 3} = ones(T, 1, 1, 1),
+    # L::Array{T, 3} = ones(T, 1, 1, 1),
+    L::Union{Nothing, Array{T, 3}} = nothing,
     Li::Int = 1
 )::Array{T, 3} where {T}
+    L === nothing && (L = ones(T, 1, 1, 1))
     for ell in Li:i
         L = _contract(_contract(_contract(L, A[ell], (1,), (1,)), B[ell], (1,4,), (1,2,)), conj(X[ell]), (1,2,4,), (1,2,3,))
     end
@@ -129,9 +131,11 @@ function rightenvironment(
     B::Vector{Array{T,4}},
     X::Vector{Array{T,4}},
     i::Int;
-    R::Array{T, 3} = ones(T, 1, 1, 1),
-    Ri::Int = length(A),
+    # R::Array{T, 3} = ones(T, 1, 1, 1),
+    R::Union{Nothing, Array{T, 3}} = nothing,
+    Ri::Int = length(A)
     )::Array{T, 3} where {T}
+    R === nothing && (R = ones(T, 1, 1, 1))
     for ell in Ri:-1:i
         R = permutedims(_contract(conj(X[ell]), _contract(B[ell], _contract(A[ell], R, (4,), (1,)), (2,4,), (3,4,)), (2,3,4,), (4,2,5,)), (3,2,1,))
     end
@@ -715,10 +719,11 @@ end
 
 # If Ri = i, then R is the right environment until site i+1, which has size (size(A[i])[end], size(B[i])[end], size(X[i]])[end])
 # If Li = i, then L is the left environment until site i-1, which has size (size(A[i])[1], size(B[i])[1], size(X[i]])[1])
-function updatecore!(A::Vector{Array{ValueType,4}}, B::Vector{Array{ValueType,4}}, X::Vector{Array{ValueType,4}}, i::Int;
+function updatecore!(A::Vector{Array{T,4}}, B::Vector{Array{T,4}}, X::Vector{Array{T,4}}, i::Int;
     method::Symbol=:SVD, tolerance::Float64=1e-8, maxbonddim::Int=typemax(Int), direction::Symbol=:forward,
-    R::Array{ValueType,3}=ones(ValueType, 1, 1, 1), Ri::Int=length(A), L::Array{ValueType,3}=ones(ValueType, 1, 1, 1), Li::Int=1
-    ) where {ValueType}
+    R::Union{Nothing, Array{T,3}}=nothing, Ri::Int=length(A),
+    L::Union{Nothing, Array{T,3}}=nothing, Li::Int=1
+    )::Tuple{Float64, Array{T,3}, Array{T,3}} where {T}
     L = leftenvironment(A, B, X, i-1; L, Li)
     R = rightenvironment(A, B, X, i+2; R, Ri)
 
@@ -774,18 +779,23 @@ function contract_fit(
         throw(ArgumentError("Cannot contract tensor trains with different length."))
     end
 
-    A = [deepcopy(a) for a in mpoA.sitetensors]
-    B = [deepcopy(b) for b in mpoB.sitetensors]
+    n = length(mpoA)
 
-    n = length(A)
+    A = Vector{Array{ValueType, 4}}(undef, n)
+    B = Vector{Array{ValueType, 4}}(undef, n)
+    X = Vector{Array{ValueType, 4}}(undef, n)
+    for i in 1:n
+        A[i] = deepcopy(mpoA.sitetensors[i])
+        B[i] = deepcopy(mpoB.sitetensors[i])
+        if !isnothing(initial_guess)
+            X[i] = deepcopy(initial_guess.sitetensors[i])
+        else
+            X[i] = ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1)
+        end
+    end
+    
     Rs = Vector{Array{ValueType, 3}}(undef, n)
     Ls = Vector{Array{ValueType, 3}}(undef, n)
-
-    if !isnothing(initial_guess)
-        X = [deepcopy(a) for a in initial_guess.sitetensors]
-    else
-        X = [ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1) for i in 1:n]
-    end
     
     centercanonicalize!(A, 1)
     centercanonicalize!(B, 1)
@@ -884,10 +894,20 @@ function contract_distr_fit(
         synchronize_tt!(initial_guess)
     end
 
-    A = deepcopy(mpoA.sitetensors)
-    B = deepcopy(mpoB.sitetensors)
+    n = length(mpoA)
 
-    n = length(A)
+    A = Vector{Array{ValueType, 4}}(undef, n)
+    B = Vector{Array{ValueType, 4}}(undef, n)
+    X = Vector{Array{ValueType, 4}}(undef, n)
+    for i in 1:n
+        A[i] = deepcopy(mpoA.sitetensors[i])
+        B[i] = deepcopy(mpoB.sitetensors[i])
+        if !isnothing(initial_guess)
+            X[i] = deepcopy(initial_guess.sitetensors[i])
+        else
+            X[i] = ones(ValueType, 1, size(A[i])[2], size(B[i])[3], 1)
+        end
+    end
 
     if MPI.Initialized()
         if subcomm != nothing
@@ -901,7 +921,7 @@ function contract_distr_fit(
         if noderanges == nothing
             if n < 4
                 println("Warning! The TT is too small to be parallelized.")
-                return contract_fit(A, B; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
+                return contract_fit(mpoA, mpoB; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
             end
             if n < 6
                 if nprocs > 2
@@ -933,8 +953,6 @@ function contract_distr_fit(
                     for _ in div(n - extra1 - extraend, 2)+1:nprocs
                         push!(noderanges, 1:-1)
                     end
-                    noderanges[1] += extra1
-                    noderanges[end] += extraend
                     nprocs = div(n - extra1 - extraend, 2)
                 else
                     number_of_sites, rem = divrem(n-extra1-extraend, nprocs)
@@ -955,12 +973,12 @@ function contract_distr_fit(
         end
     else
         println("Warning! Distributed strategy has been chosen, but MPI is not initialized, please use TCI.initializempi() before contract() and use TCI.finalizempi() afterwards")
-        return contract_fit(A, B; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
+        return contract_fit(mpoA, mpoB; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
     end
 
     if nprocs == 1
         println("Warning! Distributed strategy has been chosen, but only one process is running")
-        return contract_fit(A, B; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
+        return contract_fit(mpoA, mpoB; nsweeps, initial_guess, tolerance, method, maxbonddim, kwargs...)
     end
 
     if !isnothing(initial_guess)
@@ -1066,7 +1084,7 @@ function contract_distr_fit(
                     reqr = MPI.Irecv!(Rs[last+2], comm; source=mpirank+1, tag=juliarank+1)
 
                     MPI.Waitall([reqs, reqr])
-                    
+                    @assert typeof(Rs[last+2]) <: Array{ValueType,3} "Expected Array{ValueType,3}, got $(typeof(Rs[last+2]))"
                     diff, _, _ = updatecore!(A, B, X, last; method, tolerance, maxbonddim, direction=:backward, L=Ls[last-1], Li=last, R=Rs[last+2], Ri=last+1)
                     
                     Rs[last+1] = rightenvironment(A, B, X, last+1; R=Rs[last+2], Ri=last+1)
@@ -1089,7 +1107,7 @@ function contract_distr_fit(
                     reqr = MPI.Irecv!(Ls[first-2], comm; source=mpirank-1, tag=juliarank-1)
                     
                     MPI.Waitall([reqs, reqr])
-                    
+                    @assert typeof(Ls[first-2]) <: Array{ValueType,3} "Expected Array{ValueType,3}, got $(typeof(Ls[first-2]))"
                     diff, _, _ = updatecore!(A, B, X, first-1; method, tolerance, maxbonddim, direction=:forward, L=Ls[first-2], Li=first-1, R=Rs[first+1], Ri=first) #center on first
                     
                     Ls[first-1] = leftenvironment(A, B, X, first-1; L=Ls[first-2], Li=first-1)
@@ -1112,11 +1130,14 @@ function contract_distr_fit(
             centercanonicalize!(B, noderanges[j-1][end])
             centercanonicalize!(X, noderanges[j-1][end])
             X[noderanges[j]] = MPI.recv(comm; source=j-1, tag=2*j)
+            R = Array{ValueType, 3}(undef, 1, 1, 1)
             if j != nprocs
-                R = MPI.recv(comm; source=j-1, tag=2*j+1)
+                MPI.Recv!(R, comm; source=j-1, tag=2*j+1)
             else
                 R = ones(ValueType, 1, 1, 1)
             end
+            @assert typeof(R) <: Array{ValueType,3} "Expected Array{ValueType,3}, got $(typeof(R))"
+
             diff, _, _ = updatecore!(A, B, X, noderanges[j-1][end]; method, tolerance, maxbonddim, direction=:forward, R, Ri=noderanges[j][end])
         end
     else
@@ -1214,7 +1235,8 @@ function contract(
         if f !== nothing
             error("Fit contraction implementation cannot contract matrix product with a function. Use algorithm=:TCI instead.")
         end
-        return contract_distr_fit(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method, kwargs...)
+        # return contract_distr_fit(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method, kwargs...)
+        return contract_fit(A_, B_; tolerance=tolerance, maxbonddim=maxbonddim, method=method, kwargs...)
     else
         throw(ArgumentError("Unknown algorithm $algorithm."))
     end
