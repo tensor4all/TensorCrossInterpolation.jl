@@ -847,7 +847,7 @@ function contract_fit(
 end
 
 """
-    function contract_fit(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4})
+    function contract_distr_fit(A::TensorTrain{ValueType,4}, B::TensorTrain{ValueType,4})
 
 Conctractos tensor trains A and B using the fit algorithm.
 
@@ -1128,7 +1128,7 @@ function contract_distr_fit(
     end
 
     nprocs = MPI.Comm_size(comm) # In case not all processes where used to compute
-    
+
     # Redistribute the tensor train among the processes.
     if juliarank == 1
         for j in 2:nprocs
