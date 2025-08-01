@@ -356,26 +356,32 @@ A each TCI2 sweep, we can find the index sets with high interpolation error and 
 By default, we use a greedy search algorithm to find the index sets with high interpolation error.
 However, this may not be effective in some cases.
 In such cases, you can use a custom global pivot finder, which must inherit from `TCI.AbstractGlobalPivotFinder`.
+Then, you can implement a call method for the global pivot finder with this signature:
+
 
 Here's an example of a custom global pivot finder that randomly selects pivots:
 
 ```julia
 import TensorCrossInterpolation as TCI
+import TensorCrossInterpolation: GlobalPivotSearchInput, MultiIndex, crossinterpolate2
+import Random: AbstractRNG
 
 struct CustomGlobalPivotFinder <: TCI.AbstractGlobalPivotFinder
     npivots::Int
 end
 
 function (finder::CustomGlobalPivotFinder)(
-    tci::TensorCI2{ValueType},
+    input::GlobalPivotSearchInput{ValueType},
     f,
     abstol::Float64;
-    verbosity::Int=0
+    verbosity::Int=0,
+    rng::AbstractRNG=Random.default_rng()
 )::Vector{MultiIndex} where {ValueType}
-    L = length(tci.localdims)
-    return [[rand(1:tci.localdims[p]) for p in 1:L] for _ in 1:finder.npivots]
+    return [[rand(1:input.localdims[p]) for p in 1:L] for _ in 1:finder.npivots]
 end
 ```
+
+Note that the `GlobalPivotSearchInput` object contains the local dimensions of the TCI2 object, the function to be interpolated, and the tolerance, and the current pivots, etc. See [`GlobalPivotSearchInput`](@ref) for more details.
 
 You can use this custom finder by passing it to the `optimize!` function:
 
