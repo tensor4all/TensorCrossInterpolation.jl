@@ -759,12 +759,11 @@ Conctractos tensor trains A and B using the fit algorithm.
 # Keyword Arguments
 
 - `nsweep::Int`: Number of sweeps to perform during the algorithm.
-- `initial_guess`: Initial guess of the solution A*B.
+- `initial_guess`: Optional initial guess for the tensor train A*B. If not provided, a tensor train of rank one is used. This must have coherent bond dimension (i.e. start and finish with less than [d,d^2,d^3,...,d^3,d^2,d]).
 - `tolerance::Float64`: Convergence tolerance for the iterative algorithm.
 - `method::Symbol`: Algorithm or method to use for the computation :SVD, :RSVD, :LU, :CI.
 - `maxbonddim::Int`: Maximum bond dimension allowed during the decomposition.
 """
-#- `initial_guess` is an optional initial guess for the tensor train. If not provided, a tensor train of rank one is used. This must have coherent bond dimension (i.e. start and finish with less than [d,d^2,d^3,...,d^3,d^2,d]).
 function contract_fit(
     mpoA::TensorTrain{ValueType,4},
     mpoB::TensorTrain{ValueType,4};
