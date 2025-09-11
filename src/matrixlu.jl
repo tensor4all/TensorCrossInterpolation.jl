@@ -193,7 +193,7 @@ function _optimizerrlu!(
         newpivot = submatrixargmax(abs2, A, k)
         lu.error = abs(A[newpivot[1], newpivot[2]])
         # Add at least 1 pivot to get a well-defined L * U
-        if (abs(lu.error) < reltol * maxerror || abs(lu.error) < abstol) && lu.npivot > 0
+        if (abs(lu.error) <= reltol * maxerror || abs(lu.error) <= abstol) && lu.npivot > 0
             break
         end
         maxerror = max(maxerror, lu.error)

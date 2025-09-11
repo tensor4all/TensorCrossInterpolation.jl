@@ -375,3 +375,56 @@ end
 function IMPO(R::Int)
     return TensorTrain{Float64, 4}([reshape([1.,0.,0.,1.], 1,2,2,1) for _ in 1:R])
 end
+
+
+@doc raw"""
+    function mposwapindex(
+        tt::AbstractTensorTrain{V}, theory_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}
+    )
+
+Swaps the physical indices of a tensor train. Works only on MPOs with 4 indices (left, physical, right, physical).
+    
+
+Arguments:
+- `tt`: Tensor train.
+- `input_dims`: Physical indices of the input tensor train.
+- `permute`: Permutation of the indices.
+- `output_dims`: Physical indices of the output tensor train.
+"""
+function mposwapindex(tt::AbstractTensorTrain{V}, input_dims::Vector{Int}, permute::Vector{Int}, output_dims::Vector{Int}) where V
+    tensors = Vector{Array{V, 4}}(undef, length(tt))
+    for b in 1:length(tt)
+        site = reshape(tt.sitetensors[b], (size(tt.sitetensors[b])[1], input_dims..., size(tt.sitetensors[b])[end]))
+        site = permutedims(site, (1, (permute.+1)... ,length(permute)+2,))
+        sitedim = reshape(site, (size(tt.sitetensors[b])[1], output_dims..., size(tt.sitetensors[b])[end]))
+        tensors[b] = sitedim
+    end
+    wow = TensorTrain{V, 4}(tensors)
+end
+
+function diagonalizemps(tt::TensorTrain{V,3})::TensorTrain{V,4} where {V}
+    mpo = Vector{Array{V,4}}(undef, length(tt))
+    for i in 1:length(tt)
+        T = tt.sitetensors[i]
+        a, b, c = size(T)
+        mpo[i] = zeros(V, a, b, b, c)
+        for k in 1:b
+            mpo[i][:,k,k,:] .= T[:,k,:]
+        end
+    end
+    return TensorTrain{V,4}(mpo)
+end
+
+function extractdiagonal(tt::TensorTrain{V,4})::TensorTrain{V,3} where {V}
+    mps = Vector{Array{V,3}}(undef, length(mpo))
+    for i in 1:length(mpo)
+        T = mpo.sitetensors[i]
+        a, b1, b2, c = size(T)
+        @assert b1 == b2 "The MPO is not diagonal in the physical indices."
+        mps[i] = zeros(V, a, b1, c)
+        for k in 1:b1
+            mps[i][:,k,:] .= T[:,k,k,:]
+        end
+    end
+    return TensorTrain{V,3}(mps)
+end
