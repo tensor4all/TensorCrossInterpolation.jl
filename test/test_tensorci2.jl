@@ -5,6 +5,10 @@ import Random
 import Random: AbstractRNG
 import QuanticsGrids as QD
 
+TCI.initializempi(false)
+
+# TODO write test for parallel subfunctions
+
 @testset "TensorCI2" begin
     @testset "kronecker util function" begin
         multiset = [collect(1:5) for _ in 1:5]
@@ -24,7 +28,7 @@ import QuanticsGrids as QD
         end
     end
 
-    @testset "pivoterrors" begin
+    @testset "pivoterrors" for sweepstrategy in [:backandforth, :parallel]
         diags = [1.0, 1e-5, 0.0]
         f(x) = (x[1] == x[2] ? diags[x[1]] : 0.0)
         localdims = [3, 3]
@@ -34,11 +38,12 @@ import QuanticsGrids as QD
             localdims,
             [[1, 1]];
             tolerance=1e-8,
+            sweepstrategy=:sweepstrategy
         )
         @test tci.pivoterrors == diags
     end
 
-    @testset "checkbatchevaluatable" begin
+    @testset "checkbatchevaluatable" for sweepstrategy in [:backandforth, :parallel]
         f(x) = 1.0 # Constant function without batch evaluation
         L = 10
         localdims = fill(2, L)
@@ -48,11 +53,12 @@ import QuanticsGrids as QD
             f,
             localdims,
             firstpivots;
-            checkbatchevaluatable=true
+            checkbatchevaluatable=true,
+            sweepstrategy=:sweepstrategy
         )
     end
 
-    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10]
+    @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10], sweepstrategy in [:backandforth, :parallel]
         if nsearchglobalpivot > 0 && strictlynested
             continue
         end
@@ -82,7 +88,8 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
+            strictlynested=strictlynested,
+            sweepstrategy=:sweepstrategy
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -195,7 +202,8 @@ import QuanticsGrids as QD
             normalizeerror=false,
             nsearchglobalpivot=nsearchglobalpivot,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
+            strictlynested=strictlynested,
+            sweepstrategy=:sweepstrategy
         )
 
         @test all(TCI.linkdims(tci) .== 1)
@@ -244,7 +252,9 @@ import QuanticsGrids as QD
         @test_logs (:warn, "The option `pivottolerance` of `optimize!(tci::TensorCI2, f)` is deprecated. Please update your code to use `tolerance`, as `pivottolerance` will be removed in the future.") optimize!(tci, f; pivottolerance = 0.1)
     end
 
-    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook]
+    # This is a stochastic test
+    @testset "Lorentz MPS with ValueType=$(typeof(coeff)), pivotsearch=$pivotsearch" for seed in collect(1:20), coeff in [1.0, 0.5 - 1.0im], pivotsearch in [:full, :rook], sweepstrategy in [:backandforth, :parallel]
+        Random.seed!(seed)
         n = 5
         f(v) = coeff ./ (sum(v .^ 2) + 1)
 
@@ -285,7 +295,7 @@ import QuanticsGrids as QD
             [ones(Int, n)];
             tolerance=1e-8,
             maxiter=8,
-            sweepstrategy=:forward,
+            sweepstrategy=:sweepstrategy,
             pivotsearch=pivotsearch
         )
 
@@ -301,7 +311,8 @@ import QuanticsGrids as QD
             [ones(Int, n)];
             tolerance=1e-12,
             maxiter=200,
-            pivotsearch
+            pivotsearch,
+            sweepstrategy=:sweepstrategy
         )
 
         @test pivoterror(tci3) <= 2e-12
@@ -323,7 +334,8 @@ import QuanticsGrids as QD
             initialpivots;
             tolerance=1e-12,
             maxiter=200,
-            pivotsearch
+            pivotsearch,
+            sweepstrategy=:sweepstrategy
         )
 
         @test pivoterror(tci4) <= 2e-12
@@ -340,7 +352,7 @@ import QuanticsGrids as QD
     end
 
 
-    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], strictlynested in [false]
+    @testset "insert_global_pivots: pivotsearch=$pivotsearch, strictlynested=$strictlynested, seed=$seed" for seed in collect(1:20), pivotsearch in [:full, :rook], strictlynested in [false], sweepstrategy in [:backandforth, :parallel]
         Random.seed!(seed)
 
         R = 20
@@ -375,7 +387,8 @@ import QuanticsGrids as QD
             verbosity=0,
             normalizeerror=false,
             pivotsearch=pivotsearch,
-            strictlynested=strictlynested
+            strictlynested=strictlynested,
+            sweepstrategy=:sweepstrategy
         )
 
         TCI.addglobalpivots2sitesweep!(
@@ -392,7 +405,7 @@ import QuanticsGrids as QD
         @test sum(abs.([TCI.evaluate(tci, r) - f(r) for r in rindex]) .> abstol) == 0
     end
 
-    @testset "insert_global_pivots" begin
+    @testset "insert_global_pivots" for sweepstrategy in [:backandforth, :parallel]
         Random.seed!(1234)
 
         R = 20
@@ -413,7 +426,8 @@ import QuanticsGrids as QD
             loginterval=1,
             verbosity=0,
             normalizeerror=false,
-            strictlynested=false
+            strictlynested=false,
+            sweepstrategy=:sweepstrategy
         )
 
         r = fill(2, R)
@@ -430,7 +444,7 @@ import QuanticsGrids as QD
         @test TCI.evaluate(tci, r) ≈ f(r)
     end
 
-    @testset "globalsearch" begin
+    @testset "globalsearch" for sweepstrategy in [:backandforth, :parallel]
         Random.seed!(1234)
 
         n = 10
@@ -451,7 +465,8 @@ import QuanticsGrids as QD
             maxbonddim=100,
             maxiter=100,
             nsearchglobalpivot=10,
-            strictlynested=false
+            strictlynested=false,
+            sweepstrategy=:sweepstrategy
         )
 
         @test errors[end] < 1e-10
@@ -474,7 +489,7 @@ import QuanticsGrids as QD
         @test tci2.Jset == tci.Jset
     end
 
-    @testset "crossinterpolate2_ttcache" begin
+    @testset "crossinterpolate2_ttcache" for sweepstrategy in [:backandforth, :parallel]
         ValueType = Float64
 
         N = 4
@@ -490,7 +505,8 @@ import QuanticsGrids as QD
             ttc,
             localdims;
             tolerance=1e-10,
-            maxbonddim=10
+            maxbonddim=10,
+            sweepstrategy=:sweepstrategy
         )
 
         tt_reconst = TCI.TensorTrain(tci2)
@@ -499,6 +515,38 @@ import QuanticsGrids as QD
         vals_ref = [tt(collect(indices)) for indices in Iterators.product((1:d for d in localdims)...)]
 
         @test vals_reconst ≈ vals_ref
+    end
+
+    @testset "multithreadPi" begin
+        f = (x -> sum(x))
+
+        localdims = [2,2,2,2,2,2]
+
+        Icombined = [[1,1,1,1], [1,2,1,1], [1,1,2,1]]
+        Jcombined = [[2,2], [1,2], [2,1], [1,1]]
+
+        mPi = TCI.multithreadPi(Float64, f, localdims, Icombined, Jcombined)
+
+        Pi = reshape(
+            TCI.filltensor(Float64, f, localdims,
+            Icombined, Jcombined, Val(0)),
+            length(Icombined), length(Jcombined)
+        )
+
+        @test size(Pi) == (3, 4)
+
+        @test mPi == Pi
+    end
+
+    @testset "noderanges" begin
+        @test TCI._noderanges(8, 24, 2, 100) == [1:8, 9:9, 10:10, 11:11, 12:12, 13:13, 14:14, 15:24]
+        @test TCI._noderanges(8, 24, 2, 500) == [1:9, 10:10, 11:11, 12:12, 13:13, 14:14, 15:15, 16:24]
+        @test TCI._noderanges(8, 24, 2, 100; interbond=false) == [1:24 for _ in 1:8]
+        @test TCI._noderanges(8, 24, 2, 500; interbond=false) == [1:24 for _ in 1:8]
+        @test TCI._noderanges(8, 24, 2, 100) == TCI._noderanges(8, 24, 2, 100; estimatedbonds=[2,4,8,16,32,64,100,100,100,100,100,100,100,100,100,100,100,64,32,16,8,4,2])
+
+        ranges, eff = TCI._noderanges(4, 8, 8, 64, efficiencycheck=true)
+        @test eff > 3.9
     end
 
     @testset "convergencecriterion" begin
@@ -553,3 +601,4 @@ import QuanticsGrids as QD
         end
     end
 end
+

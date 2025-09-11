@@ -3,8 +3,10 @@ module TensorCrossInterpolation
 using LinearAlgebra
 using EllipsisNotation
 using BitIntegers
-import QuadGK
+using MPI
+using Base.Threads
 
+import QuadGK
 # To add a method for rank(tci)
 import LinearAlgebra: rank, diag
 import LinearAlgebra as LA
@@ -40,5 +42,6 @@ include("conversion.jl")
 include("integration.jl")
 include("contraction.jl")
 include("globalsearch.jl")
+include("mpi.jl")
 
 end

@@ -250,7 +250,8 @@ function addglobalpivots2sitesweep!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     ntry::Int=10,
-    strictlynested::Bool=false
+    strictlynested::Bool=false,
+    multithread_eval::Bool=false
 )::Int where {F,ValueType}
     if any(length(tci) .!= length.(pivots))
         throw(DimensionMismatch("Please specify a pivot as one index per leg of the MPS."))
@@ -270,7 +271,8 @@ function addglobalpivots2sitesweep!(
             maxbonddim=maxbonddim,
             pivotsearch=pivotsearch,
             strictlynested=strictlynested,
-            verbosity=verbosity)
+            verbosity=verbosity,
+            multithread_eval=multithread_eval)
 
         newpivots = [p for p in pivots if abs(evaluate(tci, p) - f(p)) > abstol]
 
@@ -502,7 +504,214 @@ function (obj::SubMatrix{T})(irows::Vector{Int}, icols::Vector{Int})::Matrix{T} 
     return res
 end
 
+"""
+    Noderanges(nprocs, nbonds, localdim, estimatedbond; interbond=false, estimatedbonds=nothing, algorithm=:tci, efficiencycheck=false)
 
+Distributes the computational workload efficiently across multiple nodes for tensor train algorithms.
+
+# Arguments
+- `nprocs::Int`: Number of processes (nodes) to distribute the workload across.
+- `nbonds::Int`: Number of bonds in the tensor train.
+- `localdim::Int`: Local dimension of the tensor train.
+- `estimatedbond::Int`: Estimated bond dimension after compression, set by the user to help balance the workload.
+- `interbond::Bool=false`: If `true`, distributes workload across bonds; if `false`, only function evaluation is distributed, equivalent to serial TCI.
+- `estimatedbonds::Union{Nothing, Vector{Int}}=nothing`: Optional vector of estimated bond dimensions for each bond. If not provided, it is computed from `estimatedbond`.
+- `algorithm::Symbol=:tci`: Algorithm being parallelized (e.g., `:tci`, `:mpompo`). Different algorithms may have different workload characteristics.
+- `efficiencycheck::Bool=false`: If `true`, the function also returns the efficiency of the distribution.
+
+# Returns
+A tuple containing the ranges of work assigned to each node. If `efficiencycheck` is `true`, also returns the efficiency of the distribution.
+
+# Notes
+- The function is designed to optimize workload distribution for tensor train computations, taking into account the estimated bond dimensions and the chosen algorithm.
+- Proper setting of `estimatedbond` or `estimatedbonds` can improve parallel efficiency.
+"""
+
+
+function _noderanges(nprocs::Int, nbonds::Int, localdim::Int, estimatedbond::Int; interbond::Bool=true, estimatedbonds::Union{Vector{Int},Nothing}=nothing, algorithm::Symbol=:tci, efficiencycheck::Bool=false)::Union{Vector{UnitRange{Int}},Tuple{Vector{UnitRange{Int}},Float64}}
+    if !interbond
+        return [1:nbonds for _ in 1:nprocs]
+    end
+    if estimatedbonds === nothing
+        estimatedbonds = [estimatedbond for _ in 1:nbonds-1]
+        i = 1
+        while localdim^i < estimatedbond && i <= nbonds/2
+            estimatedbonds[i] = localdim^i
+            estimatedbonds[end-i+1] = localdim^i
+            i = i + 1
+        end 
+    end
+
+    if algorithm == :tci
+        # ~ chi^3
+        costs = [(i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i]) * min((i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i])) for i in 1:nbonds]
+    else
+        # ~ chi^4
+        costs = [(i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i]) * estimatedbond * min((i == 1 ? 1 : estimatedbonds[i-1]) * (i == nbonds ? 1 : estimatedbonds[i])) for i in 1:nbonds]
+    end
+    total_cost = sum(costs)
+    target_cost = total_cost / nprocs
+
+    assignments = Vector{UnitRange{Int}}()
+
+    i = 1  # bond index
+    node = 1
+    current_cost = 0
+    range_start = 1
+
+    while i <= nbonds && node < nprocs
+        bond_cost = costs[i]
+
+        if current_cost + bond_cost <= target_cost * 1.3
+            # Add the current bond to the node's range
+            current_cost += bond_cost
+            i += 1
+        else
+            # Current node is full, move to the next node
+            push!(assignments, range_start:i-1)
+            node += 1
+            current_cost = bond_cost
+            range_start = i
+            i += 1
+        end
+    end
+    push!(assignments, range_start:nbonds)
+    leftover = nprocs-node
+    if leftover > 0 
+        for k in 1:Int(ceil(leftover/node))
+            for j in 1:(k == Int(ceil(leftover/node)) ? rem(leftover, node) : node)
+                if j%2 == 1
+                    indx = Int(j + (j-1)/2 * (k-1))
+                    insert!(assignments, indx, assignments[indx])
+                else
+                    indx = Int(length(assignments)+2-j - (j/2)*(k-1))
+                    insert!(assignments, indx, assignments[indx])
+                end
+            end
+        end
+    end
+    works = [sum(costs[i]) for i in assignments]
+    efficiency = total_cost / maximum(works)
+    if efficiencycheck 
+        return assignments, efficiency
+    else
+        return assignments
+    end
+end
+
+"""
+    _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}}) -> (leaders::Vector{Int}, leaderslist::Vector{Int})
+
+Determine the leader processes among `nprocs` processes based on their assigned node ranges.
+
+A process is considered a leader (`+1`) if its node range is equal to the next process's node range, and not a leader (`-1`) if its node range is equal to the previous process's node range. All other processes are marked as `0`. Only leaders are responsible for communication.
+
+# Arguments
+- `nprocs::Int`: The total number of processes.
+- `noderanges::Vector{UnitRange{Int}}`: A vector specifying the node range assigned to each process.
+
+# Returns
+- `leaders::Vector{Int}`: An array where each entry is `1` for a leader, `-1` for a worker, and `0` otherwise.
+- `leaderslist::Vector{Int}`: A list of process indices that are leaders and participate in communication.
+
+# Notes
+- Communication is performed only between leaders.
+"""
+function _leaders(nprocs::Int, noderanges::Vector{UnitRange{Int}})
+    leaders = zeros(Int, nprocs)
+    for i in 1:nprocs
+        if i < nprocs
+            if noderanges[i] == noderanges[i + 1]
+                leaders[i] = 1
+            end
+        end
+        if i > 1
+            if noderanges[i] == noderanges[i - 1]
+                leaders[i] = -1
+            end
+        end
+    end
+    leaderslist = []
+    for i in 1:nprocs
+        if leaders[i] != -1
+            push!(leaderslist, i)
+        end
+    end
+    return leaders, leaderslist
+end
+
+"""
+multithreadPi(ValueType, f, localdims, Icombined, Jcombined)
+Evaluate the function `f` on a grid defined by `Icombined` and `Jcombined` using multiple threads.
+"""
+function multithreadPi(::Type{ValueType}, f, localdims::Union{Vector{Int},NTuple{N,Int}}, Icombined::Vector{MultiIndex}, Jcombined::Vector{MultiIndex}) where {N,ValueType}
+    Pi = zeros(ValueType, length(Icombined), length(Jcombined))
+    nthreads = Threads.nthreads()
+    chunk_size, remainder = divrem(length(Jcombined), nthreads)
+    col_ranges = [((i - 1) * chunk_size + min(i - 1, remainder) + 1):(i * chunk_size + min(i, remainder)) for i in 1:nthreads]
+    @threads for tid in 1:nthreads
+        if !isempty(col_ranges[tid])
+            Pi[:, col_ranges[tid]] = filltensor(
+                ValueType, f, localdims,
+                Icombined, Jcombined[col_ranges[tid]], Val(0)
+            )
+        end
+    end
+    return Pi
+end
+
+function parallelfullsearch(::Type{ValueType}, f, tci, Icombined, Jcombined, teamsize, multithread_eval, teamjuliarank, subcomm) where {ValueType}
+    if teamsize == 1
+        t1 = time_ns()
+        if multithread_eval
+            Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+        else
+            Pi = reshape(
+                filltensor(ValueType, f, tci.localdims,
+                Icombined, Jcombined, Val(0)),
+                length(Icombined), length(Jcombined)
+            )
+        end
+        t2 = time_ns()
+        # For compilation purpouse with MPI
+        Icombined_copy = Icombined
+        Jcombined_copy = Jcombined
+    else # Teamwork
+        # Coordinate
+        t1 = time_ns()
+        Icombined_copy = MPI.bcast([Icombined], subcomm)[1]
+        Jcombined_copy = MPI.bcast([Jcombined], subcomm)[1]
+        # Subdivide
+        chunksize, remainder = divrem(length(Jcombined_copy), teamsize)
+        col_chunks = [chunksize + (i <= remainder ? 1 : 0) for i in 1:teamsize]
+        row_chunks = [length(Icombined_copy) for _ in 1:teamsize]
+        ranges = [(vcat([0],cumsum(col_chunks))[i] + 1):(cumsum(col_chunks)[i]) for i in 1:teamsize]
+        Jcombined_copy_local = Jcombined_copy[ranges[teamjuliarank]]
+        if !isempty(Jcombined_copy_local)
+            tlocalPi = time_ns()
+            if multithread_eval
+                localPi = multithreadPi(ValueType, f, tci.localdims, Icombined_copy, Jcombined_copy_local)
+            else
+                localPi = reshape(
+                    filltensor(ValueType, f, tci.localdims,
+                    Icombined_copy, Jcombined_copy_local, Val(0)),
+                    length(Icombined_copy), length(Jcombined_copy_local)
+                )
+            end
+            tlocalPi = (time_ns() - tlocalPi) * 1e-9
+        else
+            localPi = zeros(length(Icombined_copy), length(Jcombined_copy_local))
+        end
+        # Unite
+        Pi = zeros(length(Icombined_copy), length(Jcombined_copy))
+        sizes = vcat(row_chunks', col_chunks')
+        counts = vec(prod(sizes, dims=1))
+        Pi_vbuf = VBuffer(Pi, counts)
+        MPI.Allgatherv!(localPi, Pi_vbuf, subcomm)
+        t2 = time_ns()
+    end
+    return Pi, t1, t2
+end
 """
 Update pivots at bond `b` of `tci` using the TCI2 algorithm.
 Site tensors will be invalidated.
@@ -513,28 +722,52 @@ function updatepivots!(
     f::F,
     leftorthogonal::Bool;
     reltol::Float64=1e-14,
-    abstol::Float64=0.0,
+    abstol::Float64=1e-14, #it was 0...
     maxbonddim::Int=typemax(Int),
     sweepdirection::Symbol=:forward,
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     extraIset::Vector{MultiIndex}=MultiIndex[],
     extraJset::Vector{MultiIndex}=MultiIndex[],
+    estimatedbond::Int=100,
+    interbond::Bool=true,
+    multithread_eval::Bool=false,
+    subcomm=nothing
 ) where {F,ValueType}
     invalidatesitetensors!(tci)
+
+
+    if sweepdirection == :parallel && MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        mpirank = MPI.Comm_rank(comm)
+        juliarank = mpirank + 1
+        nprocs = MPI.Comm_size(comm)
+        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
+        leaders, leaderslist = _leaders(nprocs, noderanges)
+        teamrank = MPI.Comm_rank(subcomm)
+        teamjuliarank = teamrank + 1
+        teamsize = MPI.Comm_size(subcomm)
+    end
 
     Icombined = union(kronecker(tci.Iset[b], tci.localdims[b]), extraIset)
     Jcombined = union(kronecker(tci.localdims[b+1], tci.Jset[b+1]), extraJset)
 
     luci = if pivotsearch === :full
-        t1 = time_ns()
-        Pi = reshape(
-            filltensor(ValueType, f, tci.localdims,
-            Icombined, Jcombined, Val(0)),
-            length(Icombined), length(Jcombined)
-        )
-        t2 = time_ns()
-
+        if sweepdirection == :parallel && MPI.Initialized()
+            Pi, t1, t2 = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, teamjuliarank, subcomm)
+        else # Serial
+            t1 = time_ns()
+            if multithread_eval
+                Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+            else
+                Pi = reshape(
+                    filltensor(ValueType, f, tci.localdims,
+                    Icombined, Jcombined, Val(0)),
+                    length(Icombined), length(Jcombined)
+                )
+            end
+            t2 = time_ns()
+        end
         updatemaxsample!(tci, Pi)
         luci = MatrixLUCI(
             Pi,
@@ -553,30 +786,65 @@ function updatepivots!(
         t1 = time_ns()
         I0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(i), Icombined) for i in tci.Iset[b+1]))::Vector{Int}
         J0 = Int.(Iterators.filter(!isnothing, findfirst(isequal(j), Jcombined) for j in tci.Jset[b]))::Vector{Int}
-        Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
         t2 = time_ns()
-        res = MatrixLUCI(
-            ValueType,
-            Pif,
-            (length(Icombined), length(Jcombined)),
-            I0, J0;
-            reltol=reltol, abstol=abstol,
-            maxrank=maxbonddim,
-            leftorthogonal=leftorthogonal,
-            pivotsearch=:rook,
-            usebatcheval=true
-        )
+        if verbosity > 2
+            x, y = length(Icombined), length(Jcombined)
+            print("    Computing Pi ($x x $y) at bond $b: ")
+        end
+        if sweepdirection == :parallel && MPI.Initialized()
+            I0 = MPI.bcast([I0], subcomm)[1]
+            J0 = MPI.bcast([J0], subcomm)[1]
+            Icombined_copy = MPI.bcast([Icombined], subcomm)[1]
+            Jcombined_copy = MPI.bcast([Jcombined], subcomm)[1]
+            Pif = SubMatrix{ValueType}(f, Icombined_copy, Jcombined_copy)
+            res = MatrixLUCI(
+                ValueType,
+                Pif,
+                (length(Icombined_copy), length(Jcombined_copy)),
+                I0, J0;
+                reltol=reltol, abstol=abstol,
+                maxrank=maxbonddim,
+                leftorthogonal=leftorthogonal,
+                pivotsearch=:rook,
+                usebatcheval=true,
+                leaders=leaders,leaderslist=leaderslist, subcomm=subcomm
+            )
+            MPI.Barrier(subcomm)
+        else # Serial
+            Pif = SubMatrix{ValueType}(f, Icombined, Jcombined)
+            res = MatrixLUCI(
+                ValueType,
+                Pif,
+                (length(Icombined), length(Jcombined)),
+                I0, J0;
+                reltol=reltol, abstol=abstol,
+                maxrank=maxbonddim,
+                leftorthogonal=leftorthogonal,
+                pivotsearch=:rook,
+                usebatcheval=true,
+            )
+        end
         updatemaxsample!(tci, [ValueType(Pif.maxsamplevalue)])
 
         t3 = time_ns()
 
         # Fall back to full search if rook search fails
         if npivots(res) == 0
-            Pi = reshape(
-                filltensor(ValueType, f, tci.localdims,
-                Icombined, Jcombined, Val(0)),
-                length(Icombined), length(Jcombined)
-            )
+            if sweepdirection == :parallel && MPI.Initialized()
+                Pi, _, _ = parallelfullsearch(ValueType, f, tci, Icombined, Jcombined, teamsize, multithread_eval, teamjuliarank, subcomm)
+            else # Serial
+                t1 = time_ns()
+                if multithread_eval
+                    Pi = multithreadPi(ValueType, f, tci.localdims, Icombined, Jcombined)
+                else
+                    Pi = reshape(
+                        filltensor(ValueType, f, tci.localdims,
+                        Icombined, Jcombined, Val(0)),
+                        length(Icombined), length(Jcombined)
+                    )
+                end
+                t2 = time_ns()
+            end
             updatemaxsample!(tci, Pi)
             res = MatrixLUCI(
                 Pi,
@@ -588,17 +856,56 @@ function updatepivots!(
         end
 
         t4 = time_ns()
+        #if verbosity > 2
+        #    x, y = length(Icombined), length(Jcombined)
+        #    println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+        #end
         if verbosity > 2
             x, y = length(Icombined), length(Jcombined)
-            println("    Computing Pi ($x x $y) at bond $b: $(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
+            println("$(1e-9*(t2-t1)) sec, LU: $(1e-9*(t3-t2)) sec, fall back to full: $(1e-9*(t4-t3)) sec")
         end
         res
     else
         throw(ArgumentError("Unknown pivot search strategy $pivotsearch. Choose from :rook, :full."))
     end
-    tci.Iset[b+1] = Icombined[rowindices(luci)]
-    tci.Jset[b] = Jcombined[colindices(luci)]
-    if length(extraIset) == 0 && length(extraJset) == 0
+    # Receive after the send
+    if sweepdirection == :parallel && MPI.Initialized()
+        sreq = MPI.Request[]
+        if leaders[juliarank] != -1
+            if length(noderanges[juliarank]) == 1 && b == noderanges[juliarank][1] && juliarank != leaderslist[1] && juliarank != leaderslist[end] # If processor has only 1 bond then communicates both left and right
+                currentleader = findfirst(isequal(juliarank), leaderslist)
+                if currentleader != nothing
+                    push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=leaderslist[currentleader - 1] - 1, tag=(2*b+1)))
+                    push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=leaderslist[currentleader + 1] - 1, tag=2*(b+1)))
+                else
+                    println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                end
+            elseif b == noderanges[juliarank][1] && juliarank != leaderslist[1] # processor communicates left
+                currentleader = findfirst(isequal(juliarank), leaderslist)
+                if currentleader != nothing
+                    push!(sreq, MPI.isend([Jcombined[colindices(luci)]], comm; dest=leaderslist[currentleader - 1] - 1, tag=(2*b+1)))
+                else
+                    println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                end
+                tci.Iset[b+1] = Icombined[rowindices(luci)]
+            elseif b == noderanges[juliarank][end] && juliarank != leaderslist[end] # processor communicates right
+                currentleader = findfirst(isequal(juliarank), leaderslist)
+                if currentleader != nothing
+                    push!(sreq, MPI.isend([Icombined[rowindices(luci)]], comm; dest=leaderslist[currentleader + 1] - 1, tag=2*(b+1)))
+                else
+                    println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                end
+                tci.Jset[b] = Jcombined[colindices(luci)]
+            else # normal updates without MPI communications
+                tci.Iset[b+1] = Icombined[rowindices(luci)]
+                tci.Jset[b] = Jcombined[colindices(luci)]
+            end
+        end
+    else
+        tci.Iset[b+1] = Icombined[rowindices(luci)]
+        tci.Jset[b] = Jcombined[colindices(luci)]
+    end
+    if length(extraIset) == 0 && length(extraJset) == 0 && sweepdirection != :parallel
         setsitetensor!(tci, b, left(luci))
         setsitetensor!(tci, b + 1, right(luci))
     end
@@ -660,7 +967,11 @@ end
         maxnglobalpivot::Int=5,
         nsearchglobalpivot::Int=5,
         tolmarginglobalsearch::Float64=10.0,
-        strictlynested::Bool=false
+        strictlynested::Bool=false,
+        checkbatchevaluatable::Bool=false,
+        multithread_eval::Bool=false,
+        estimatedbond::Int=100,
+        interbond::Bool=true
     ) where {ValueType}
 
 Perform optimization sweeps using the TCI2 algorithm. This will sucessively improve the TCI approximation of a function until it fits `f` with an error smaller than `tolerance`, or until the maximum bond dimension (`maxbonddim`) is reached.
@@ -673,7 +984,7 @@ Arguments:
 - `tolerance::Float64` is a float specifying the target tolerance for the interpolation. Default: `1e-8`.
 - `maxbonddim::Int` specifies the maximum bond dimension for the TCI. Default: `typemax(Int)`, i.e. effectively unlimited.
 - `maxiter::Int` is the maximum number of iterations (i.e. optimization sweeps) before aborting the TCI construction. Default: `200`.
-- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), or back and forth (:backandforth) during optimization. Default: `:backandforth`.
+- `sweepstrategy::Symbol` specifies whether to sweep forward (:forward), backward (:backward), back and forth (:backandforth) or in parallel (:parallel) during optimization. Default: `:backandforth`.
 - `pivotsearch::Symbol` determins how pivots are searched (`:full` or `:rook`). Default: `:full`.
 - `verbosity::Int` can be set to `>= 1` to get convergence information on standard output during optimization. Default: `0`.
 - `loginterval::Int` can be set to `>= 1` to specify how frequently to print convergence information. Default: `10`.
@@ -683,6 +994,9 @@ Arguments:
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
+- `multithread_eval::Bool` determines whether to use multithreading for function evaluation. Default: `false`.
+- `estimatedbond::Int` is the estimated bond dimension after compression, set by the user to help balance the workload. Default: `100`.
+- `interbond::Bool` determines whether to distribute the workload across bonds or not. Default: `true`.
 - `checkconvglobalpivot::Bool` Check if the global pivot finder is converged. Default: `true`. In the future, this will be set to `false` by default.
 
 Arguments (deprecated):
@@ -716,6 +1030,9 @@ function optimize!(
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
     checkbatchevaluatable::Bool=false,
+    multithread_eval::Bool=false,
+    estimatedbond::Int=100,
+    interbond::Bool=true,
     checkconvglobalpivot::Bool=true
 ) where {ValueType}
     errors = Float64[]
@@ -753,6 +1070,18 @@ function optimize!(
         ))
     end
 
+    if (sweepstrategy == :parallel) && !MPI.Initialized()
+        println("Warning! Parallel strategy has been chosen, but MPI is not initialized, please use initializempi() before using crossinterpolate2()/quanticscrossinterpolate() and use finalizempi() afterwards")
+    end
+
+    if sweepstrategy == :parallel && MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        mpirank = MPI.Comm_rank(comm)
+        juliarank = mpirank + 1
+	    nprocs = MPI.Comm_size(comm)
+        noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
+        leaders, leaderslist = _leaders(nprocs, noderanges)
+    end
     # Create the global pivot finder
     finder = if isnothing(globalpivotfinder)
         DefaultGlobalPivotFinder(
@@ -783,7 +1112,10 @@ function optimize!(
             strictlynested=strictlynested,
             verbosity=verbosity,
             sweepstrategy=sweepstrategy,
-            fillsitetensors=true
+            fillsitetensors=true,
+            estimatedbond=estimatedbond,
+            interbond=interbond,
+            multithread_eval=multithread_eval
             )
         if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
             abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
@@ -801,14 +1133,16 @@ function optimize!(
         end
 
         # Find global pivots where the error is too large
-        input = GlobalPivotSearchInput(tci)
-        globalpivots = finder(
-            input, f, abstol;
-            verbosity=verbosity,
-            rng=Random.default_rng()
-        )
-        addglobalpivots!(tci, globalpivots)
-        push!(nglobalpivots, length(globalpivots))
+        if sweepstrategy != :parallel
+            input = GlobalPivotSearchInput(tci)
+            globalpivots = finder(
+                input, f, abstol;
+                verbosity=verbosity,
+                rng=Random.default_rng()
+            )
+            addglobalpivots!(tci, globalpivots)
+            push!(nglobalpivots, length(globalpivots))
+        end
 
         if verbosity > 1
             println("  Walltime $(1e-9*(time_ns() - tstart)) sec: done searching global pivots")
@@ -820,14 +1154,48 @@ function optimize!(
             println("iteration = $iter, rank = $(last(ranks)), error= $(last(errors)), maxsamplevalue= $(tci.maxsamplevalue), nglobalpivot=$(length(globalpivots))")
             flush(stdout)
         end
-        if convergencecriterion(
-            ranks, errors,
-            nglobalpivots,
-            abstol, maxbonddim, ncheckhistory;
-            checkconvglobalpivot=checkconvglobalpivot
+        # Checks if every processor has converged with its own subtrain
+        if sweepstrategy == :parallel && MPI.Initialized()
+            converged = leaders[juliarank] == -1 || convergencecriterion(ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory; checkconvglobalpivot=checkconvglobalpivot)
+            MPI.Barrier(comm)
+            global_converged = MPI.Allreduce(converged, MPI.LAND, comm)
+            if global_converged # If all the processors have converged
+                break
+            end
+        elseif convergencecriterion(
+            ranks, errors, nglobalpivots, abstol, maxbonddim, ncheckhistory; checkconvglobalpivot=checkconvglobalpivot
         )
             break
         end
+    end
+
+    # After convergence
+    # Allgatherv! not possible given type constraints
+    if sweepstrategy == :parallel && MPI.Initialized()
+        if juliarank == 1 # If we are the first processor, we take all the information from the other processes
+            for leader in leaderslist[2:end]
+                for b in noderanges[leader]
+                    tci.Iset[b] = MPI.recv(comm; source=leader - 1, tag=2*(b))[1]
+                    tci.Jset[b+1] = MPI.recv(comm; source=leader - 1, tag=2*(b+1)+1)[1]
+                    if leader == leaderslist[end]
+                        tci.Iset[length(tci)] = MPI.recv(comm; source=leader - 1, tag=2*(length(tci)+1)+1)[1]
+                    end
+                end
+            end
+        else # Other processors pass the infomation to the first one
+            if leaders[juliarank] != -1
+                for b in noderanges[juliarank]
+                    MPI.send([tci.Iset[b]], comm; dest=0, tag=2*(b))
+                    MPI.send([tci.Jset[b+1]], comm; dest=0, tag=2*(b+1)+1)
+                    if juliarank == leaderslist[end]
+                        MPI.send([tci.Iset[length(tci)]], comm; dest=0, tag=2*(length(tci)+1)+1)
+                    end
+                end
+            end
+        end
+        # BCast to all, so that all nodes have full knowledge
+        tci.Iset = MPI.bcast(tci.Iset, comm)
+        tci.Jset = MPI.bcast(tci.Jset, comm)
     end
 
     # Extra one sweep by the 1-site update to
@@ -861,14 +1229,23 @@ function sweep2site!(
     pivotsearch::Symbol=:full,
     verbosity::Int=0,
     strictlynested::Bool=false,
-    fillsitetensors::Bool=true
+    fillsitetensors::Bool=true,
+    estimatedbond::Int=100,
+    interbond::Bool=true,
+    multithread_eval::Bool=false
 ) where {ValueType}
     invalidatesitetensors!(tci)
 
     n = length(tci)
 
-    for iter in iter1:iter1+niter-1
+    if sweepstrategy == :parallel && MPI.Initialized()
+        comm = MPI.COMM_WORLD
+        mpirank = MPI.Comm_rank(comm)
+        juliarank = mpirank + 1
+        nprocs = MPI.Comm_size(comm)
+    end
 
+    for iter in iter1:iter1+niter-1
         extraIset = [MultiIndex[] for _ in 1:n]
         extraJset = [MultiIndex[] for _ in 1:n]
         if !strictlynested && length(tci.Iset_history) > 0
@@ -880,7 +1257,56 @@ function sweep2site!(
         push!(tci.Jset_history, deepcopy(tci.Jset))
 
         flushpivoterror!(tci)
-        if forwardsweep(sweepstrategy, iter) # forward sweep
+        if sweepstrategy == :parallel && MPI.Initialized()
+            noderanges = _noderanges(nprocs, length(tci) - 1, tci.localdims[1], estimatedbond; interbond)
+            leaders, leaderslist = _leaders(nprocs, noderanges)
+            colors = zeros(Int,nprocs)
+            count = -1
+            for i in 1:length(colors)
+                if leaders[i] != -1
+                    count += 1
+                end
+                colors[i] = count
+            end
+            color = colors[juliarank]
+            subcomm = MPI.Comm_split(comm, color, mpirank)
+            for bondindex in noderanges[juliarank]
+                updatepivots!(
+                    tci, bondindex, f, true;
+                    abstol=abstol,
+                    maxbonddim=maxbonddim,
+                    sweepdirection=:parallel,
+                    pivotsearch=pivotsearch,
+                    verbosity=verbosity,
+                    extraIset=extraIset[bondindex+1],
+                    extraJset=extraJset[bondindex],
+                    estimatedbond=estimatedbond,
+                    interbond=interbond,
+                    multithread_eval=multithread_eval,
+                    subcomm = subcomm
+                )
+            end
+            for b in noderanges[juliarank]
+                if leaders[juliarank] != -1
+                    if b == noderanges[juliarank][1] && juliarank != leaderslist[1]
+                        currentleader = findfirst(isequal(juliarank), leaderslist)
+                        if currentleader != nothing
+                            tci.Iset[b] = MPI.recv(comm; source=leaderslist[currentleader - 1] - 1, tag=2*b)[1]
+                        else
+                            println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                        end
+                    end
+                    if b == noderanges[juliarank][end] && juliarank != leaderslist[end]
+                        currentleader = findfirst(isequal(juliarank), leaderslist)
+                        if currentleader != nothing
+                            tci.Jset[b + 1] = MPI.recv(comm; source=leaderslist[currentleader + 1] - 1, tag=2*(b + 1) + 1)[1]
+                        else
+                            println("Error! Missmatch between leaders and leaderslist, unexpected behaviour! Please open an issue")
+                        end
+                    end
+                end
+            end
+        elseif forwardsweep(sweepstrategy, iter) # forward sweep
             for bondindex in 1:n-1
                 updatepivots!(
                     tci, bondindex, f, true;
@@ -891,6 +1317,7 @@ function sweep2site!(
                     verbosity=verbosity,
                     extraIset=extraIset[bondindex+1],
                     extraJset=extraJset[bondindex],
+                    multithread_eval=multithread_eval
                 )
             end
         else # backward sweep
@@ -904,12 +1331,13 @@ function sweep2site!(
                     verbosity=verbosity,
                     extraIset=extraIset[bondindex+1],
                     extraJset=extraJset[bondindex],
+                    multithread_eval=multithread_eval
                 )
             end
         end
     end
 
-    if fillsitetensors
+    if fillsitetensors && sweepstrategy != :parallel
         fillsitetensors!(tci, f)
     end
     nothing

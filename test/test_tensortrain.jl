@@ -253,3 +253,7 @@ end
     @test TCI.fulltensor(tt1) ≈ TCI.fulltensor(tt3)
 end
 
+@testset "factorize" begin
+
+end
+
