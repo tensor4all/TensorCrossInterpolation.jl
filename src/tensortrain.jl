@@ -416,9 +416,9 @@ function diagonalizemps(tt::TensorTrain{V,3})::TensorTrain{V,4} where {V}
 end
 
 function extractdiagonal(tt::TensorTrain{V,4})::TensorTrain{V,3} where {V}
-    mps = Vector{Array{V,3}}(undef, length(mpo))
-    for i in 1:length(mpo)
-        T = mpo.sitetensors[i]
+    mps = Vector{Array{V,3}}(undef, length(tt))
+    for i in 1:length(mps)
+        T = mps.sitetensors[i]
         a, b1, b2, c = size(T)
         @assert b1 == b2 "The MPO is not diagonal in the physical indices."
         mps[i] = zeros(V, a, b1, c)
