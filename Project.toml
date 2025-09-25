@@ -20,10 +20,10 @@ TCIITensorConversion = ["ITensors", "ITensorMPS"]
 [compat]
 BitIntegers = "0.3.5"
 EllipsisNotation = "1"
-ITensorMPS = "0.3"
-ITensors = "0.7, 0.8, 0.9"
+ITensorMPS = "0.2, 0.3"
+ITensors = "0.6, 0.7, 0.8, 0.9"
 QuadGK = "2.9"
-Random = "1.10.0"
+Random = "1.9.0"
 julia = "1.9"
 
 [extras]
@@ -37,4 +37,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Aqua", "Test", "Random", "ITensors", "Zygote", "Optim", "QuanticsGrids", "JET"]
+test = ["Aqua", "Test", "Random", "ITensors", "ITensorMPS", "Zygote", "Optim", "QuanticsGrids", "JET"]
