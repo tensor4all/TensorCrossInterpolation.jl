@@ -1,10 +1,14 @@
 module TCIITensorConversion
 
 import TensorCrossInterpolation as TCI
-using ITensors
+import TensorCrossInterpolation: evaluate
 
-export MPS
-export evaluate_mps
+using ITensors
+import ITensorMPS
+import ITensorMPS: MPS, MPO
+
+export MPS, MPO
+export evaluate
 
 include("ttmpsconversion.jl")
 include("mpsutil.jl")

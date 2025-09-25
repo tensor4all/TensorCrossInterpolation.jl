@@ -1,15 +1,4 @@
-
-"""
-    MPS(tt, siteindices...)
-
-Convert a tensor train to an ITensor MPS
-
- * `tt`            Tensor train
- * `siteindices`   Arrays of ITensor Index objects.
-
- If `siteindices` is left empty, a default set of indices will be used.
-"""
-function ITensors.MPS(tt::TCI.TensorTrain{T}; sites=nothing)::MPS where {T}
+function ITensorMPS.MPS(tt::TCI.TensorTrain{T}; sites=nothing)::MPS where {T}
     N = length(tt)
     localdims = [size(t, 2) for t in tt]
 
@@ -30,11 +19,21 @@ function ITensors.MPS(tt::TCI.TensorTrain{T}; sites=nothing)::MPS where {T}
     return MPS(tensors_)
 end
 
-function ITensors.MPS(tci::TCI.AbstractTensorTrain{T}; sites=nothing)::MPS where {T}
-    return MPS(TCI.tensortrain(tci), sites=sites)
+"""
+    MPS(tt::TCI.AbstractTensorTrain{T}; sites=nothing)
+
+Convert a tensor train to an `ITensorMPS.MPS`.
+Arguments:
+- `tt`: The tensor train to be converted.
+- `siteindices`: An array of ITensor Index objects, where `sites[n]` corresponds to the index for the nth site.
+
+If `siteindices` is left empty, a default set of indices will be generated.
+"""
+function ITensorMPS.MPS(tt::TCI.AbstractTensorTrain{T}; sites=nothing)::MPS where {T}
+    return MPS(TCI.tensortrain(tt), sites=sites)
 end
 
-function ITensors.MPO(tt::TCI.TensorTrain{T}; sites=nothing)::MPO where {T}
+function ITensorMPS.MPO(tt::TCI.TensorTrain{T}; sites=nothing)::ITensorMPS.MPO where {T}
     N = length(tt)
     localdims = TCI.sitedims(tt)
 
@@ -57,22 +56,32 @@ function ITensors.MPO(tt::TCI.TensorTrain{T}; sites=nothing)::MPO where {T}
     tensors_[1] *= onehot(links[1] => 1)
     tensors_[end] *= onehot(links[end] => 1)
 
-    return MPO(tensors_)
+    return ITensorMPS.MPO(tensors_)
 end
 
-function ITensors.MPO(tci::TCI.AbstractTensorTrain{T}; sites=nothing)::MPO where {T}
-    return MPO(TCI.tensortrain(tci), sites=sites)
+"""
+    MPO(tt::TCI.AbstractTensorTrain{T}; sites=nothing)
+
+Convert a tensor train to an `ITensorMPS.MPO`.
+Arguments:
+- `tt`: The tensor train to be converted.
+- `sites`: An array of arrays of ITensor Index objects, where `sites[n][m]` corresponds to the mth index attached to the nth site.
+
+If `siteindices` is left empty, a default set of indices will be generated.
+"""
+function ITensorMPS.MPO(tci::TCI.AbstractTensorTrain{T}; sites=nothing)::ITensorMPS.MPO where {T}
+    return ITensorMPS.MPO(TCI.tensortrain(tci), sites=sites)
 end
 
 
 """
-    function TCI.TensorTrain(mps::ITensors.MPS)
+    function TensorTrain(mps::ITensorMPS.MPS)
 
-Converts an ITensor MPS object into a TensorTrain. Note that this only works if the MPS has a single leg per site! Otherwise, use [`TCI.TensorTrain(mps::ITensors.MPO)`](@ref).
+Converts an `ITensorMPS.MPS` object into a TensorTrain. Note that this only works if the MPS has a single leg per site. Otherwise, use [`TensorCrossInterpolation.TensorTrain(mps::ITensorMPS.MPO)`](@ref).
 """
-function TCI.TensorTrain(mps::ITensors.MPS)
-    links = linkinds(mps)
-    sites = siteinds(mps)
+function TCI.TensorTrain(mps::ITensorMPS.MPS)
+    links = ITensorMPS.linkinds(mps)
+    sites = ITensors.SiteTypes.siteinds(mps)
     Tfirst = zeros(ComplexF64, 1, dim(sites[1]), dim(links[1]))
     Tfirst[1, :, :] = Array(mps[1], sites[1], links[1])
     Tlast =  zeros(ComplexF64, dim(links[end]), dim(sites[end]), 1)
@@ -87,15 +96,15 @@ function TCI.TensorTrain(mps::ITensors.MPS)
 end
 
 """
-    function TCI.TensorTrain(mps::ITensors.MPO)
+    function TensorTrain(mps::ITensorMPS.MPO)
 
-Convertes an ITensor MPO object into a TensorTrain.
+Converts an `ITensorMPS.MPO` object into a [`TensorCrossInterpolation.TensorTrain`](@ref).
 """
-function TCI.TensorTrain{V, N}(mpo::ITensors.MPO; sites=nothing) where {N, V}
-    links = linkinds(mpo)
+function TCI.TensorTrain{V, N}(mpo::ITensorMPS.MPO; sites=nothing) where {N, V}
+    links = ITensorMPS.linkinds(mpo)
     if sites === nothing
-        sites = siteinds(mpo)
-    elseif !all(issetequal.(siteinds(mpo), sites))
+        sites = ITensors.SiteTypes.siteinds(mpo)
+    elseif !all(issetequal.(ITensors.SiteTypes.siteinds(mpo), sites))
         error("Site indices do not correspond to the site indices of the MPO.")
     end
 

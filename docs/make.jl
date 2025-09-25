@@ -1,10 +1,21 @@
 using TensorCrossInterpolation
+using ITensors
+using ITensorMPS
 using Documenter
 
-DocMeta.setdocmeta!(TensorCrossInterpolation, :DocTestSetup, :(using TensorCrossInterpolation); recursive=true)
+preamble = quote
+    using TensorCrossInterpolation
+    using ITensors
+    using ITensorMPS
+end
+
+DocMeta.setdocmeta!(TensorCrossInterpolation, :DocTestSetup, preamble; recursive=true)
 
 makedocs(;
-    modules=[TensorCrossInterpolation],
+    modules=[
+        TensorCrossInterpolation,
+        Base.get_extension(TensorCrossInterpolation, :TCIITensorConversion)
+    ],
     authors="Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de> and contributors",
     sitename="TensorCrossInterpolation.jl",
     format=Documenter.HTML(;
@@ -14,7 +25,7 @@ makedocs(;
     pages=[
         "Home" => "index.md",
         "Documentation" => "documentation.md",
-        "Implementation details" => "implementation.md"
+        "Extensions" => "extensions.md",
     ]
 )
 
