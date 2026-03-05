@@ -181,13 +181,13 @@ function evaluate(
 end
 
 function getPiIset(tci::TensorCI1{V}, p::Int) where {V}
-    return IndexSet([
+    return IndexSet(MultiIndex[
         [is..., ups] for is in tci.Iset[p].fromint, ups in 1:tci.localdims[p]
     ][:])
 end
 
 function getPiJset(tci::TensorCI1{V}, p::Int) where {V}
-    return IndexSet([
+    return IndexSet(MultiIndex[
         [up1s, js...] for up1s in 1:tci.localdims[p], js in tci.Jset[p].fromint
     ][:])
 end
