@@ -17,6 +17,7 @@ using Optim
     @test TCI.linkdims(tci) == TCI.linkdims(tt)
     @test TCI.linkdims(tci) == reverse(TCI.linkdims(ttr))
     gsum = ComplexF64(0.0)
+    partialsum = zeros(ComplexF64, localdims[2])
     for i in allindices
         @test TCI.evaluate(tci, i) ≈ TCI.evaluate(tt, i)
         @test TCI.evaluate(tci, i) ≈ TCI.evaluate(ttr, reverse(Tuple(i)))
@@ -26,9 +27,12 @@ using Optim
         @test abs(TCI.evaluate(tt, i) - functionvalue) < tolerance
         @test abs(TCI.evaluate(ttr, reverse(Tuple(i))) - functionvalue) < tolerance
         gsum += functionvalue
+        partialsum[i[2]] += functionvalue
     end
-    @test gsum ≈ TCI.sum(tt)
-    @test gsum ≈ TCI.sum(ttr)
+    @test gsum ≈ sum(tt)
+    @test gsum ≈ sum(ttr)
+    @test partialsum ≈ sum(tt; dims=(1, 3, 4))[1][1, :, 1]
+    @test partialsum ≈ sum(ttr; dims=(1, 2, 4))[1][1, :, 1]
 
     for method in [:LU, :CI, :SVD]
         ttcompressed = deepcopy(tt)

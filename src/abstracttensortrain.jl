@@ -161,18 +161,41 @@ function (tt::AbstractTensorTrain{V})(indexset) where {V}
     return evaluate(tt, indexset)
 end
 
+function _sum(tt::AbstractTensorTrain{V}; dims::NTuple{N,Int}) where {V,N}
+    tensors = Array{V,3}[]
+    Tprod = Matrix{V}(I, 1, 1)
+    for (n, T) in enumerate(tt)
+        if n in dims
+            Tprod = Tprod * sum(T, dims=2)[:, 1, :]
+        else
+            Tprod = Tprod * reshape(T, size(T, 1), :)
+            push!(tensors, reshape(Tprod, size(Tprod, 1), size(T, 2), size(T, 3)))
+            Tprod = Matrix{V}(I, size(T, 3), size(T, 3))
+        end
+    end
+    if !isempty(tensors)
+        Tprod = reshape(tensors[end], :, size(tensors[end], 3)) * Tprod
+        tensors[end] = reshape(Tprod, size(tensors[end], 1), size(tensors[end], 2), size(Tprod, 2))
+        return TensorTrain{V, 3}(tensors)
+    else
+        return only(Tprod)
+    end
+end
+
 """
-    function sum(tt::TensorTrain{V}) where {V}
+    function sum(tt::AbstractTensorTrain{V}; dims::Tuple) where {V}
 
 Evaluates the sum of the tensor train approximation over all lattice sites in an efficient
-factorized manner.
+factorized manner. If `dims` is provided, the sum is only taken over the dimensions specified in `dims`, and the resulting tensor train has site dimensions corresponding to the dimensions not in `dims`.
 """
-function sum(tt::AbstractTensorTrain{V}) where {V}
-    v = transpose(sum(tt[1], dims=(1, 2))[1, 1, :])
-    for T in tt[2:end]
-        v *= sum(T, dims=2)[:, 1, :]
+function Base.sum(tt::AbstractTensorTrain{V}; dims=nothing) where {V}
+    if isnothing(dims)
+        return _sum(tt; dims=Tuple(1:length(tt)))
+    elseif dims isa Integer
+        return _sum(tt; dims=(dims,))
+    else
+        return _sum(tt; dims)
     end
-    return only(v)
 end
 
 function _addtttensor(
