@@ -2,8 +2,8 @@
     function integrate(
         ::Type{ValueType},
         f,
-        a::Vector{ValueType},
-        b::Vector{ValueType};
+        a::Vector{<:Real},
+        b::Vector{<:Real};
         tolerance=1e-8,
         GKorder::Int=15
     ) where {ValueType}
@@ -20,8 +20,8 @@ Arguments:
 function integrate(
     ::Type{ValueType},
     f,
-    a::Vector{ValueType},
-    b::Vector{ValueType};
+    a::Vector{<:Real},
+    b::Vector{<:Real};
     GKorder::Int=15,
     kwargs...
 ) where {ValueType}
