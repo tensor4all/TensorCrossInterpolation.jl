@@ -13,8 +13,10 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 [weakdeps]
 ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
 ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
+T4AITensorCompat = "864b39ca-388c-4f43-a593-a1076cf4b253"
 
 [extensions]
+TCIITensorCompatConversion = ["ITensors", "T4AITensorCompat"]
 TCIITensorConversion = ["ITensors", "ITensorMPS"]
 
 [compat]
@@ -24,6 +26,7 @@ ITensorMPS = "0.2, 0.3"
 ITensors = "0.6, 0.7, 0.8, 0.9"
 QuadGK = "2.9"
 Random = "1.9.0"
+T4AITensorCompat = "0.3"
 julia = "1.9"
 
 [extras]
@@ -37,4 +40,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Aqua", "Test", "Random", "ITensors", "ITensorMPS", "Zygote", "Optim", "QuanticsGrids", "JET"]
+test = ["Aqua", "Test", "Random", "ITensors", "ITensorMPS", "T4AITensorCompat", "Zygote", "Optim", "QuanticsGrids", "JET"]
