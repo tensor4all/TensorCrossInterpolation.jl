@@ -715,6 +715,7 @@ function optimize!(
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
+    batchedf=nothing,
     checkbatchevaluatable::Bool=false,
     checkconvglobalpivot::Bool=true
 ) where {ValueType}
@@ -723,9 +724,10 @@ function optimize!(
     nglobalpivots = Int[]
     local tol::Float64
 
-    if checkbatchevaluatable && !(f isa BatchEvaluator)
+    if checkbatchevaluatable && isnothing(batchedf) && !(f isa BatchEvaluator)
         error("Function `f` is not batch evaluatable")
     end
+    feval = isnothing(batchedf) ? f : makebatchevaluatable(ValueType, f, tci.localdims; batchedf)
 
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
@@ -775,7 +777,7 @@ function optimize!(
         end
 
         sweep2site!(
-            tci, f, 2;
+            tci, feval, 2;
             iter1 = 1,
             abstol=abstol,
             maxbonddim=maxbonddim,
@@ -786,7 +788,7 @@ function optimize!(
             fillsitetensors=true
             )
         if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
-            abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
+            abserr = [abs(evaluate(tci, p) - feval(p)) for p in globalpivots]
             nrejections = length(abserr .> abstol)
             if nrejections > 0
                 println("  Rejected $(nrejections) global pivots added in the previous iteration, errors are $(abserr)")
@@ -803,7 +805,7 @@ function optimize!(
         # Find global pivots where the error is too large
         input = GlobalPivotSearchInput(tci)
         globalpivots = finder(
-            input, f, abstol;
+            input, feval, abstol;
             verbosity=verbosity,
             rng=Random.default_rng()
         )
@@ -839,7 +841,7 @@ function optimize!(
     abstol = tol * errornormalization;
     sweep1site!(
         tci,
-        f,
+        feval,
         abstol=abstol,
         maxbonddim=maxbonddim,
     )
@@ -945,10 +947,11 @@ function crossinterpolate2(
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+    batchedf=nothing,
     kwargs...
 ) where {ValueType,N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
-    ranks, errors = optimize!(tci, f; kwargs...)
+    ranks, errors = optimize!(tci, f; batchedf, kwargs...)
     return tci, ranks, errors
 end
 
