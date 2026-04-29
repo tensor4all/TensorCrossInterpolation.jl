@@ -10,6 +10,9 @@ end
 makebatchevaluatable(::Type{T}, f, localdims; batchedf=nothing) where {T} =
     BatchEvaluatorAdapter{T,typeof(f),typeof(batchedf)}(f, batchedf, localdims)
 
+makebatchevaluatable(::Type{T}, f, batchedf, localdims) where {T} =
+    makebatchevaluatable(T, f, localdims; batchedf)
+
 function (bf::BatchEvaluatorAdapter{T})(indexset::MultiIndex)::T where T
     bf.f(indexset)
 end
