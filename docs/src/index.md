@@ -172,7 +172,7 @@ x = [1, 1, 1, 1]
 ```
 
 ## Batch Evaluation
-By default, TCI2 evaluates the interpolated function one index set at a time. If evaluating several points together is more efficient, pass a separate `batchedf` function to [`crossinterpolate2`](@ref).
+By default, TCI2 evaluates the interpolated function one index set at a time. If evaluating several points together is more efficient, pass a separate in-place `batchedf!` function to [`crossinterpolate2`](@ref).
 
 ```julia
 import TensorCrossInterpolation as TCI
@@ -181,39 +181,40 @@ localdims = [2, 2, 2, 2, 2]
 
 f(indexset) = sum(indexset)
 
-batchedf = indices -> [
-    sum(view(indices, :, p))
+function batchedf!(values, indices)
     for p in axes(indices, 2)
-]
-
-tci, ranks, errors = TCI.crossinterpolate2(
-    Float64,
-    f,
-    localdims;
-    batchedf,
-)
-```
-
-Here `f(indexset)` remains the scalar evaluator. `batchedf(indices)` receives an integer matrix with shape `(length(localdims), npoints)`. Each column is one point to evaluate, so the rightmost/second dimension is the batch dimension. `batchedf` must return one value for each column, in the same order.
-
-The body of `batchedf` can use threads, MPI, vectorized kernels, or an external batched backend. The scalar `f` is still used where TCI2 needs individual values, while `batchedf` is used for batch tensor fills.
-
-For example, if `f` is thread-safe, the batch evaluator can parallelize over the columns:
-
-```julia
-batchedf = indices -> begin
-    values = Vector{Float64}(undef, size(indices, 2))
-    Threads.@threads for p in axes(indices, 2)
-        values[p] = f(collect(view(indices, :, p)))
+        values[p] = sum(view(indices, :, p))
     end
-    values
+    return values
 end
 
 tci, ranks, errors = TCI.crossinterpolate2(
     Float64,
     f,
     localdims;
-    batchedf,
+    batchedf!,
+)
+```
+
+Here `f(indexset)` remains the scalar evaluator. `batchedf!(values, indices)` receives a preallocated output vector and an integer matrix with shape `(length(localdims), npoints)`. Each column is one point to evaluate, so the rightmost/second dimension is the batch dimension. `batchedf!` must write one value for each column to `values[p]`, in the same order. Its return value is ignored, though returning `values` is conventional.
+
+The body of `batchedf!` can use threads, MPI, vectorized kernels, or an external batched backend. The scalar `f` is still used where TCI2 needs individual values, while `batchedf!` is used for batch tensor fills.
+
+For example, if `f` is thread-safe, the batch evaluator can parallelize over the columns:
+
+```julia
+function batchedf!(values, indices)
+    Threads.@threads for p in axes(indices, 2)
+        values[p] = f(collect(view(indices, :, p)))
+    end
+    return values
+end
+
+tci, ranks, errors = TCI.crossinterpolate2(
+    Float64,
+    f,
+    localdims;
+    batchedf!,
 )
 ```
 

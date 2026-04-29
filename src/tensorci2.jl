@@ -682,7 +682,7 @@ Arguments:
 - `globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}` is a global pivot finder to use for searching global pivots. Default: `nothing`. If `nothing`, a default global pivot finder is used.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
-- `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
+- `checkbatchevaluatable::Bool` Check if `batchedf!` is provided. Default: `false`.
 - `checkconvglobalpivot::Bool` Check if the global pivot finder is converged. Default: `true`. In the future, this will be set to `false` by default.
 
 Arguments (deprecated):
@@ -715,7 +715,7 @@ function optimize!(
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
-    batchedf=nothing,
+    batchedf! = nothing,
     checkbatchevaluatable::Bool=false,
     checkconvglobalpivot::Bool=true
 ) where {ValueType}
@@ -724,10 +724,10 @@ function optimize!(
     nglobalpivots = Int[]
     local tol::Float64
 
-    if checkbatchevaluatable && isnothing(batchedf)
-        error("Function `f` is not batch evaluatable")
+    if checkbatchevaluatable && isnothing(batchedf!)
+        error("Keyword `batchedf!` must be provided when `checkbatchevaluatable=true`.")
     end
-    feval = isnothing(batchedf) ? f : _BatchedFunction(f, batchedf, tci.localdims)
+    feval = isnothing(batchedf!) ? f : _BatchedFunction(f, batchedf!, tci.localdims)
 
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
@@ -947,11 +947,11 @@ function crossinterpolate2(
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
-    batchedf=nothing,
+    batchedf! = nothing,
     kwargs...
 ) where {ValueType,N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
-    ranks, errors = optimize!(tci, f; batchedf, kwargs...)
+    ranks, errors = optimize!(tci, f; batchedf!, kwargs...)
     return tci, ranks, errors
 end
 

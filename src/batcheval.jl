@@ -1,6 +1,6 @@
 struct _BatchedFunction{F,B} <: Function
     f::F
-    batchedf::B
+    batchedf!::B
     localdims::Vector{Int}
 end
 
@@ -10,9 +10,10 @@ end
 
 """
 This file contains functions for evaluating a function on a batch of indices mainly for TensorCI2.
-If `batchedf` is supplied, it is called with an integer matrix whose columns are
-global index sets. Otherwise, the function is evaluated on each index
-individually using the usual function call syntax and loops.
+If `batchedf!` is supplied, it is called with a preallocated output vector and
+an integer matrix whose columns are global index sets. Otherwise, the function
+is evaluated on each index individually using the usual function call syntax and
+loops.
 """
 function _batchevaluate_dispatch(
     ::Type{V},
@@ -53,13 +54,13 @@ function _batchevaluate_dispatch(
     rightindexset::AbstractVector{MultiIndex},
     ::Val{M})::Array{V,M + 2} where {V,M}
 
-    return _batchevaluate_dispatch(V, bf.f, bf.batchedf, localdims, leftindexset, rightindexset, Val(M))
+    return _batchevaluate_dispatch(V, bf.f, bf.batchedf!, localdims, leftindexset, rightindexset, Val(M))
 end
 
 function _batchevaluate_dispatch(
     ::Type{V},
     f,
-    batchedf,
+    batchedf!,
     localdims::Vector{Int},
     leftindexset::AbstractVector{MultiIndex},
     rightindexset::AbstractVector{MultiIndex},
@@ -86,9 +87,7 @@ function _batchevaluate_dispatch(
         indices[nl+M+1:end, p] .= rindex
     end
 
-    values = batchedf(indices)
-    if length(values) != npoints
-        throw(DimensionMismatch("batchedf returned $(length(values)) values for $npoints points"))
-    end
+    values = Vector{V}(undef, npoints)
+    batchedf!(values, indices)
     return Array{V,M + 2}(reshape(values, result_dims))
 end

@@ -52,20 +52,23 @@ import QuanticsGrids as QD
         )
     end
 
-    @testset "batchedf keyword" begin
+    @testset "batchedf! keyword" begin
         localdims = fill(2, 5)
         f(x) = Float64(sum(x))
         calls = Ref(0)
-        batchedf = indices -> begin
+        function batchedf!(values, indices)
             calls[] += 1
-            [Float64(sum(view(indices, :, p))) for p in axes(indices, 2)]
+            for p in axes(indices, 2)
+                values[p] = Float64(sum(view(indices, :, p)))
+            end
+            return values
         end
 
         tci, ranks, errors = crossinterpolate2(
             Float64,
             f,
             localdims;
-            batchedf,
+            batchedf!,
             tolerance=1e-12,
             maxiter=2,
             checkbatchevaluatable=true,
