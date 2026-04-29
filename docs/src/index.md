@@ -171,185 +171,34 @@ x = [1, 1, 1, 1]
 @time cf(x)
 ```
 
-## Batch Evalaution
-By default, in TCI2, the function to be interpolated is evaluated for a single index at a time. However, there may be a need to parallelize the code by evaluating the function across multiple index sets concurrently using several CPU cores. This type of custom optimization can be achieved through batch evaluation.
-
-To utilize this feature, your function must inherit from  `TCI.BatchEvaluator{T}` and supports two additional types of function calls for evaluating $\mathrm{T}$ (one local index) and $\Pi$ tensors (two local indices):
+## Batch Evaluation
+By default, TCI2 evaluates the interpolated function one index set at a time. If evaluating several points together is more efficient, pass a separate `batchedf` function to [`crossinterpolate2`](@ref).
 
 ```julia
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: MultiIndex
-
-struct TestFunction{T} <: TCI.BatchEvaluator{T}
-    localdims::Vector{Int}
-    function TestFunction{T}(localdims) where {T}
-        new{T}(localdims)
-    end
-end
-
-# Evaluation for a single index set
-function (obj::TestFunction{T})(indexset::MultiIndex)::T where {T}
-    return sum(indexset)
-end
-
-
-# Evaluaiton of a T tensor with one local index
-function (obj::TestFunction{T})(leftindexset::Vector{MultiIndex}, rightindexset::Vector{MultiIndex}, ::Val{1})::Array{T,3} where {T}
-    if length(leftindexset) * length(rightindexset) == 0
-        return Array{T,3}(undef, 0, 0, 0, 0)
-    end
-
-    nl = length(leftindexset[1])
-    # This can be parallelized if you want
-    result = [obj(vcat(l, s1, r)) for l in leftindexset, s1 in 1:obj.localdims[nl+1], r in rightindexset]
-    return reshape(result, length(leftindexset), obj.localdims[nl+1], length(rightindexset))
-end
-
-
-# Evaluaiton of a Pi tensor with two local indices
-function (obj::TestFunction{T})(leftindexset::Vector{MultiIndex}, rightindexset::Vector{MultiIndex}, ::Val{2})::Array{T,4} where {T}
-    if length(leftindexset) * length(rightindexset) == 0
-        return Array{T,4}(undef, 0, 0, 0, 0)
-    end
-
-    nl = length(leftindexset[1])
-    # This can be parallelized if you want
-    result = [obj(vcat(l, s1, s2, r)) for l in leftindexset, s1 in 1:obj.localdims[nl+1], s2 in 1:obj.localdims[nl+2], r in rightindexset]
-    return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+2]..., length(rightindexset))
-end
 
 localdims = [2, 2, 2, 2, 2]
-f = TestFunction{Float64}(localdims)
 
-# Compute T tensor
-let
-    leftindexset = [[1, 1, 1], [2, 2, 1], [2, 1, 1]]
-    rightindexset = [[1, 1], [2, 2], [1, 2]]
+f(indexset) = sum(indexset)
 
-    # The returned object has shape of (3, 2, 3)
-    @assert f(leftindexset, rightindexset, Val(1)) ≈ [sum(vcat(l, s1, r)) for l in leftindexset, s1 in 1:localdims[4], r in rightindexset]
-end
+batchedf = indices -> [
+    sum(view(indices, :, p))
+    for p in axes(indices, 2)
+]
 
-# Compute Pi tensor
-let
-    leftindexset = [[1, 1], [2, 2], [2, 1]]
-    rightindexset = [[1, 1], [2, 2], [1, 2]]
-
-    # The returned object has shape of (3, 2, 2, 3)
-    @assert f(leftindexset, rightindexset, Val(2)) ≈ [sum(vcat(l, s1, s2, r)) for l in leftindexset, s1 in 1:localdims[3], s2 in 1:localdims[4], r in rightindexset]
-end
+tci, ranks, errors = TCI.crossinterpolate2(
+    Float64,
+    f,
+    localdims;
+    batchedf,
+)
 ```
 
-`CachedFunction{T}`  can wrap a function inheriting from `BatchEvaluator{T}`. In such cases, `CachedFunction{T}`  caches the results of batch evaluation.
+Here `f(indexset)` remains the scalar evaluator. `batchedf(indices)` receives an integer matrix with shape `(length(localdims), npoints)`. Each column is one point to evaluate, so the rightmost/second dimension is the batch dimension. `batchedf` must return one value for each column, in the same order.
 
-## Batch evaluation + parallelization
-The batch evalution can be combined with parallelization using threads, MPI, etc.
-The following sample code use `Threads` to parallelize function evaluations.
-Note that the function evaluation for a single index set must be thread-safe.
+The body of `batchedf` can use threads, MPI, vectorized kernels, or an external batched backend. The scalar `f` is still used where TCI2 needs individual values, while `batchedf` is used for batch tensor fills.
 
-We can run the code as (with 6 threads):
-
-```Bash
-julia --project=@. -t 6 samplecode.jl
-```
-
-```Julia
-import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: MultiIndex
-
-struct TestFunction{T} <: TCI.BatchEvaluator{T}
-    localdims::Vector{Int}
-    function TestFunction{T}(localdims) where {T}
-        new{T}(localdims)
-    end
-end
-
-# Evaluation for a single index set (takes 1 millisec)
-function (obj::TestFunction{T})(indexset::MultiIndex)::T where {T}
-    sleep(1e-3)
-    return sum(indexset)
-end
-
-
-# Batch evaluation (loop over all index sets)
-function (obj::TestFunction{T})(leftindexset::Vector{Vector{Int}}, rightindexset::Vector{Vector{Int}}, ::Val{M})::Array{T,M + 2} where {T,M}
-    if length(leftindexset) * length(rightindexset) == 0
-        return Array{T,M+2}(undef, ntuple(i->0, M+2)...)
-    end
-
-    nl = length(first(leftindexset))
-
-    t = time_ns()
-    cindexset = vec(collect(Iterators.product(ntuple(i->1:obj.localdims[nl+i], M)...)))
-    elements = collect(Iterators.product(1:length(leftindexset), 1:length(cindexset), 1:length(rightindexset)))
-    result = Array{T,3}(undef, length(leftindexset), length(cindexset), length(rightindexset))
-    t2 = time_ns()
-
-    Threads.@threads for indices in elements
-        l, c, r = leftindexset[indices[1]], cindexset[indices[2]], rightindexset[indices[3]]
-        result[indices...] = obj(vcat(l, c..., r))
-    end
-    t3 = time_ns()
-    println("Time: ", (t2-t)/1e9, " ", (t3-t2)/1e9)
-    return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+M]..., length(rightindexset))
-end
-
-
-L = 20
-localdims = fill(2, L)
-f = TestFunction{Float64}(localdims)
-
-println("Number of threads: ", Threads.nthreads())
-
-# Compute Pi tensor
-nl = 10
-nr = L - nl - 2
-
-# 20 left index sets, 20 right index sets
-leftindexset = [[rand(1:d) for d in localdims[1:nl]] for _ in 1:20]
-rightindexset = [[rand(1:d) for d in localdims[nl+3:end]] for _ in 1:20]
-
-f(leftindexset, rightindexset, Val(2))
-
-for i in 1:4
-    @time f(leftindexset, rightindexset, Val(2))
-end
-```
-
-If your function is thread-safe, you can parallelize your function readily using `ThreadedBatchEvaluator` as follows (the internal implementation is identical to the sample code shown above):
-
-```Julia
-import TensorCrossInterpolation as TCI
-
-# Evaluation takes 1 millisecond, make sure the function is thread-safe.
-function f(x)
-    sleep(1e-3)
-    return sum(x)
-end
-
-
-L = 20
-localdims = fill(2, L)
-parf = TCI.ThreadedBatchEvaluator{Float64}(f, localdims)
-
-println("Number of threads: ", Threads.nthreads())
-
-# Compute Pi tensor
-nl = 10
-nr = L - nl - 2
-
-# 20 left index sets, 20 right index sets
-leftindexset = [[rand(1:d) for d in localdims[1:nl]] for _ in 1:20]
-rightindexset = [[rand(1:d) for d in localdims[nl+3:end]] for _ in 1:20]
-
-parf(leftindexset, rightindexset, Val(2))
-
-for i in 1:4
-    @time parf(leftindexset, rightindexset, Val(2))
-end
-```
-
-You can simply pass the wrapped function `parf` to `crossinterpolate2`.
+For compatibility, the inherited `TCI.BatchEvaluator{T}` API is still supported, along with wrappers such as `TCI.ThreadedBatchEvaluator{T}` and `CachedFunction{T}`. New code should prefer the function-based `batchedf` keyword unless it already has a `BatchEvaluator` implementation.
 
 ## Global pivot finder 
 A each TCI2 sweep, we can find the index sets with high interpolation error and add them to the TCI2 object.
