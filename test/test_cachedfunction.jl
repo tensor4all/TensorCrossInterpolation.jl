@@ -1,47 +1,6 @@
 using Test
 import TensorCrossInterpolation as TCI
-import TensorCrossInterpolation: BatchEvaluator, MultiIndex
 import BitIntegers
-struct TestF <: TCI.BatchEvaluator{Float64}
-end
-
-function (f::TestF)(x::T) where {T}
-    return one(T)
-end
-
-function (obj::TestF)(
-    leftindexset::AbstractVector{MultiIndex},
-    rightindexset::AbstractVector{MultiIndex},
-    ::Val{M}
-)::Array{Float64,M + 2} where {M}
-    if length(leftindexset) * length(rightindexset) == 0
-        return zeros{Float64}(0)
-    end
-
-    nl = length(first(leftindexset))
-    nr = length(first(rightindexset))
-    L = nl + nr + M
-
-    return ones(Float64, length(leftindexset), fill(2, M)..., length(rightindexset))
-end
-
-
-struct TestFunction{T} <: TCI.BatchEvaluator{T}
-    localdims::Vector{Int}
-    function TestFunction{T}(localdims) where {T}
-        new{T}(localdims)
-    end
-end
-
-function (obj::TestFunction{T})(indexset)::T where {T}
-    return sum(indexset)
-end
-
-function (obj::TestFunction{T})(leftindexset, rightindexset, ::Val{M})::Array{T,M + 2} where {T,M}
-    nl = length(first(leftindexset))
-    result = [sum(vcat(l, collect(c), r)) for l in leftindexset, c in Iterators.product((1:d for d in obj.localdims[nl+1:nl+M])...), r in rightindexset]
-    return reshape(result, length(leftindexset), obj.localdims[nl+1:nl+M]..., length(rightindexset))
-end
 
 
 @testset "Cached Function" begin
@@ -56,40 +15,6 @@ end
             @test TCI._key(cf, x) ∈ keys(cf.cache)
             @test cf(x) == f(x) # Second access
         end
-    end
-
-    #==
-    @testset "cache(batcheval)" begin
-        localdims = [2, 2, 2, 2, 2]
-        cf = TCI.CachedFunction{Float64}(TestF(), localdims)
-        x = [1, 1, 1, 1, 1]
-        @test cf(x) == 1.0
-    end
-
-    @testset "cache(non-batcheval)" begin
-        localdims = [2, 2, 2, 2, 2]
-        cf = TCI.CachedFunction{Float64}(x->1.0, localdims)
-        x = [1, 1, 1, 1, 1]
-        @show cf(x)
-        @test cf(x) == 1.0
-        @time cf([[1,1]], [[1,1]], Val(1))
-        @time cf([[1,1]], [[1,1]], Val(1))
-    end
-
-    @testset "cache(non-batcheval)" begin
-    end
-    ==#
-    @testset "cache(batcheval)" for T in [Float64, ComplexF64]
-        localdims = [2, 2, 2, 2, 2]
-        leftindexset = [[1, 1] for _ in 1:100]
-        rightindexset = [[1, 1] for _ in 1:100]
-
-        f = TCI.CachedFunction{T}(TestFunction{T}(localdims), localdims)
-        @assert TCI.isbatchevaluable(f)
-        result = TCI._batchevaluate_dispatch(T, f, localdims, leftindexset, rightindexset, Val(1))
-        ref = [sum(vcat(l, c, r)) for l in leftindexset, c in 1:localdims[3], r in rightindexset]
-
-        @test result ≈ ref
     end
 
     @testset "many bits" begin

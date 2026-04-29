@@ -489,10 +489,10 @@ function _submatrix_batcheval(obj::SubMatrix{T}, f, irows::Vector{Int}, icols::V
 end
 
 
-function _submatrix_batcheval(obj::SubMatrix{T}, f::BatchEvaluator{T}, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
+function _submatrix_batcheval(obj::SubMatrix{T}, f::_BatchedFunction, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
     Iset = [obj.rows[i] for i in irows]
     Jset = [obj.cols[j] for j in icols]
-    return f(Iset, Jset, Val(0))
+    return _batchevaluate_dispatch(T, f, f.localdims, Iset, Jset, Val(0))
 end
 
 
@@ -724,10 +724,10 @@ function optimize!(
     nglobalpivots = Int[]
     local tol::Float64
 
-    if checkbatchevaluatable && isnothing(batchedf) && !(f isa BatchEvaluator)
+    if checkbatchevaluatable && isnothing(batchedf)
         error("Function `f` is not batch evaluatable")
     end
-    feval = isnothing(batchedf) ? f : makebatchevaluatable(ValueType, f, tci.localdims; batchedf)
+    feval = isnothing(batchedf) ? f : _BatchedFunction(f, batchedf, tci.localdims)
 
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")

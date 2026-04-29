@@ -198,7 +198,24 @@ Here `f(indexset)` remains the scalar evaluator. `batchedf(indices)` receives an
 
 The body of `batchedf` can use threads, MPI, vectorized kernels, or an external batched backend. The scalar `f` is still used where TCI2 needs individual values, while `batchedf` is used for batch tensor fills.
 
-For compatibility, the inherited `TCI.BatchEvaluator{T}` API is still supported, along with wrappers such as `TCI.ThreadedBatchEvaluator{T}` and `CachedFunction{T}`. New code should prefer the function-based `batchedf` keyword unless it already has a `BatchEvaluator` implementation.
+For example, if `f` is thread-safe, the batch evaluator can parallelize over the columns:
+
+```julia
+batchedf = indices -> begin
+    values = Vector{Float64}(undef, size(indices, 2))
+    Threads.@threads for p in axes(indices, 2)
+        values[p] = f(collect(view(indices, :, p)))
+    end
+    values
+end
+
+tci, ranks, errors = TCI.crossinterpolate2(
+    Float64,
+    f,
+    localdims;
+    batchedf,
+)
+```
 
 ## Global pivot finder 
 A each TCI2 sweep, we can find the index sets with high interpolation error and add them to the TCI2 object.

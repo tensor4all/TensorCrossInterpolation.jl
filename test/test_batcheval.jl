@@ -2,14 +2,13 @@ using Test
 import TensorCrossInterpolation as TCI
 
 
-struct NonBatchEvaluator{T} <: Function end
-
-function (f::NonBatchEvaluator{T})(x::Vector{Int})::T where {T}
-    return sum(x)
-end
-
-
 @testset "batcheval" begin
+    @testset "removed inherited API" begin
+        @test !isdefined(TCI, :BatchEvaluator)
+        @test !isdefined(TCI, :ThreadedBatchEvaluator)
+        @test !isdefined(TCI, :makebatchevaluatable)
+    end
+
     @testset "M=1" begin
         localdims = [2, 2, 2, 2, 2]
         leftindexset = [[1, 1] for _ in 1:100]
@@ -100,43 +99,17 @@ end
         )
     end
 
-    @testset "BatchEvaluator" begin
-        tbf = NonBatchEvaluator{Float64}()
-
-        leftindexset = [[1], [2]]
-        rightindexset = [[1], [2]]
-        localdims = [3, 3, 3, 3]
-
-        bf = TCI.makebatchevaluatable(Float64, tbf, localdims)
-        @test size(bf(leftindexset, rightindexset, Val(1))) == (2, 3, 2)
-    end
-
-    @testset "BatchEvaluator direct batchedf wrapper" begin
-        localdims = [1, 2, 1]
-        f = x -> sum(x)
-        batchedf_calls = Ref(0)
-        batchedf_indices = Ref{Matrix{Int}}()
-        batchedf = indices -> begin
-            batchedf_calls[] += 1
-            batchedf_indices[] = copy(indices)
-            [100 + p for p in axes(indices, 2)]
-        end
-
-        wrapped = TCI.makebatchevaluatable(Float64, f, batchedf, localdims)
-
-        @test TCI.isbatchevaluable(wrapped)
-        @test wrapped([1, 1, 1]) == f([1, 1, 1])
-        @test wrapped([[1]], [[1]], Val(1)) ≈ reshape([101, 102], 1, 2, 1)
-        @test batchedf_calls[] == 1
-        @test batchedf_indices[] == [1 1; 1 2; 1 1]
-    end
-
-    @testset "ThreadedBatchEvaluator" begin
+    @testset "threaded batchedf" begin
         L = 20
         localdims = fill(2, L)
         f = x -> sum(x)
-
-        f = TCI.ThreadedBatchEvaluator{Float64}(f, localdims)
+        batchedf = indices -> begin
+            values = Vector{Float64}(undef, size(indices, 2))
+            Threads.@threads for p in axes(indices, 2)
+                values[p] = sum(view(indices, :, p))
+            end
+            values
+        end
 
         # Compute Pi tensor
         nl = 10
@@ -146,23 +119,29 @@ end
         leftindexset = [[rand(1:d) for d in localdims[1:nl]] for _ in 1:20]
         rightindexset = [[rand(1:d) for d in localdims[nl+3:end]] for _ in 1:20]
 
-        result = f(leftindexset, rightindexset, Val(2))
+        result = TCI._batchevaluate_dispatch(Float64, f, batchedf, localdims, leftindexset, rightindexset, Val(2))
         ref = [sum(vcat(l, c, cp, r)) for l in leftindexset, c in 1:localdims[nl+1], cp in 1:localdims[nl+2], r in rightindexset]
 
         @test result ≈ ref
     end
 
-    @testset "ThreadedBatchEvaluator (from Matsuura)" begin
+    @testset "crossinterpolate2 threaded batchedf" begin
         function f(x)
             sleep(1e-3)
-            return sum(x)
+            return Float64(sum(x))
         end
 
         L = 20
         localdims = fill(2, L)
-        parf = TCI.ThreadedBatchEvaluator{Float64}(f, localdims)
+        batchedf = indices -> begin
+            values = Vector{Float64}(undef, size(indices, 2))
+            Threads.@threads for p in axes(indices, 2)
+                values[p] = f(collect(view(indices, :, p)))
+            end
+            values
+        end
 
-        tci, ranks, errors = TCI.crossinterpolate2(Float64, parf, localdims)
+        tci, ranks, errors = TCI.crossinterpolate2(Float64, f, localdims; batchedf)
 
         tci_ref, ranks_ref, errors_ref = TCI.crossinterpolate2(Float64, f, localdims)
 
