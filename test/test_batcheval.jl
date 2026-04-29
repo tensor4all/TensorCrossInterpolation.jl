@@ -43,6 +43,7 @@ end
 
         f = x -> sum(x)
         batchedf = indices -> begin
+            @test indices isa Matrix{Int}
             seen_shape[] = size(indices)
             seen_indices[] = copy(indices)
             [sum(view(indices, :, p)) for p in axes(indices, 2)]
@@ -65,11 +66,22 @@ end
                 cp in 1:localdims[3],
                 r in rightindexset
         ]
+        expected_indices = Matrix{Int}(undef, length(localdims), length(result))
+        p = 1
+        for r in rightindexset
+            for cp in 1:localdims[3]
+                for c in 1:localdims[2]
+                    for l in leftindexset
+                        expected_indices[:, p] .= vcat(l, c, cp, r)
+                        p += 1
+                    end
+                end
+            end
+        end
 
         @test seen_shape[] == (length(localdims), length(result))
         @test result ≈ ref
-        @test seen_indices[][:, 1] == [1, 1, 1, 1]
-        @test seen_indices[][:, 2] == [2, 1, 1, 1]
+        @test seen_indices[] == expected_indices
     end
 
     @testset "batchedf validates output length" begin
