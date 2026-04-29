@@ -34,6 +34,60 @@ end
         @test result ≈ ref
     end
 
+    @testset "batchedf matrix API" begin
+        localdims = [2, 3, 2, 4]
+        leftindexset = [[1], [2]]
+        rightindexset = [[1], [3], [4]]
+        seen_shape = Ref{Tuple{Int,Int}}()
+        seen_indices = Ref{Matrix{Int}}()
+
+        f = x -> sum(x)
+        batchedf = indices -> begin
+            seen_shape[] = size(indices)
+            seen_indices[] = copy(indices)
+            [sum(view(indices, :, p)) for p in axes(indices, 2)]
+        end
+
+        result = TCI._batchevaluate_dispatch(
+            Float64,
+            f,
+            batchedf,
+            localdims,
+            leftindexset,
+            rightindexset,
+            Val(2),
+        )
+
+        ref = [
+            sum(vcat(l, c, cp, r))
+            for l in leftindexset,
+                c in 1:localdims[2],
+                cp in 1:localdims[3],
+                r in rightindexset
+        ]
+
+        @test seen_shape[] == (length(localdims), length(result))
+        @test result ≈ ref
+        @test seen_indices[][:, 1] == [1, 1, 1, 1]
+        @test seen_indices[][:, 2] == [2, 1, 1, 1]
+    end
+
+    @testset "batchedf validates output length" begin
+        localdims = [2, 2, 2]
+        f = x -> sum(x)
+        bad_batchedf = indices -> ones(Float64, size(indices, 2) - 1)
+
+        @test_throws DimensionMismatch TCI._batchevaluate_dispatch(
+            Float64,
+            f,
+            bad_batchedf,
+            localdims,
+            [[1]],
+            [[1]],
+            Val(1),
+        )
+    end
+
     @testset "BatchEvaluator" begin
         tbf = NonBatchEvaluator{Float64}()
 
