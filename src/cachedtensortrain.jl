@@ -1,12 +1,9 @@
-abstract type BatchEvaluator{V} <: AbstractTensorTrain{V} end
-
-
 """
     struct TTCache{ValueType}
 
 Cached evalulation of a tensor train. This is useful when the same TT is evaluated multiple times with the same indices. The number of site indices per tensor core can be arbitray irrespective of the number of site indices of the original tensor train.
 """
-struct TTCache{ValueType} <: BatchEvaluator{ValueType}
+struct TTCache{ValueType} <: AbstractTensorTrain{ValueType}
     sitetensors::Vector{Array{ValueType,3}}
     cacheleft::Vector{Dict{MultiIndex,Vector{ValueType}}}
     cacheright::Vector{Dict{MultiIndex,Vector{ValueType}}}
@@ -224,6 +221,3 @@ function (tt::TTCache{V})(
     return batchevaluate(tt, leftindexset, rightindexset, Val(M))
 end
 
-
-isbatchevaluable(f) = false
-isbatchevaluable(f::BatchEvaluator) = true

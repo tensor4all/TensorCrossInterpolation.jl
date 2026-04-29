@@ -52,6 +52,32 @@ import QuanticsGrids as QD
         )
     end
 
+    @testset "batchedf! keyword" begin
+        localdims = fill(2, 5)
+        f(x) = Float64(sum(x))
+        calls = Ref(0)
+        function batchedf!(values, indices)
+            calls[] += 1
+            for p in axes(indices, 2)
+                values[p] = Float64(sum(view(indices, :, p)))
+            end
+            return values
+        end
+
+        tci, ranks, errors = crossinterpolate2(
+            Float64,
+            f,
+            localdims;
+            batchedf!,
+            tolerance=1e-12,
+            maxiter=2,
+            checkbatchevaluatable=true,
+        )
+
+        @test calls[] > 0
+        @test evaluate(tci, ones(Int, length(localdims))) ≈ f(ones(Int, length(localdims)))
+    end
+
     @testset "trivial MPS(exp): pivotsearch=$pivotsearch" for pivotsearch in [:full, :rook], strictlynested in [false, true], nsearchglobalpivot in [0, 10]
         if nsearchglobalpivot > 0 && strictlynested
             continue
