@@ -114,13 +114,21 @@ end
     @testset "BatchEvaluator direct batchedf wrapper" begin
         localdims = [1, 2, 1]
         f = x -> sum(x)
-        batchedf = indices -> [sum(view(indices, :, p)) for p in axes(indices, 2)]
+        batchedf_calls = Ref(0)
+        batchedf_indices = Ref{Matrix{Int}}()
+        batchedf = indices -> begin
+            batchedf_calls[] += 1
+            batchedf_indices[] = copy(indices)
+            [100 + p for p in axes(indices, 2)]
+        end
 
         wrapped = TCI.makebatchevaluatable(Float64, f, batchedf, localdims)
 
         @test TCI.isbatchevaluable(wrapped)
         @test wrapped([1, 1, 1]) == f([1, 1, 1])
-        @test wrapped([[1]], [[1]], Val(1)) ≈ reshape(batchedf([1 1; 1 2; 1 1]), 1, 2, 1)
+        @test wrapped([[1]], [[1]], Val(1)) ≈ reshape([101, 102], 1, 2, 1)
+        @test batchedf_calls[] == 1
+        @test batchedf_indices[] == [1 1; 1 2; 1 1]
     end
 
     @testset "ThreadedBatchEvaluator" begin
