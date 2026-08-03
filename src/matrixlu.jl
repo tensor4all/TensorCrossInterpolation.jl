@@ -32,6 +32,41 @@ function submatrixargmax(
 end
 
 function submatrixargmax(
+    bondweighting::Function,
+    f::Function, # real valued function
+    A::AbstractMatrix{T},
+    rows::Union{AbstractVector,UnitRange},
+    cols::Union{AbstractVector,UnitRange};
+    colmask::Function=x->true,
+    rowmask::Function=x->true
+) where {T}
+    m = typemin(f(first(A)))
+    !isempty(rows) || throw(ArgumentError("rows must not be empty"))
+    !isempty(cols) || throw(ArgumentError("cols must not be empty"))
+    mr = first(rows)
+    mc = first(cols)
+    rows ⊆ axes(A, 1) || throw(ArgumentError("rows ⊆ axes(A, 1) must be satified"))
+    cols ⊆ axes(A, 2) || throw(ArgumentError("cols ⊆ axes(A, 2) must be satified"))
+    @inbounds for c in cols
+        if !colmask(c)
+            continue
+        end
+        for r in rows
+            if !rowmask(r)
+                continue
+            end
+            v = f(A[r, c] * bondweighting(r,c)) # lower bondweight leads to lower importance
+            newm = v > m
+            m = ifelse(newm, v, m)
+            mr = ifelse(newm, r, mr)
+            mc = ifelse(newm, c, mc)
+        end
+    end
+    return mr, mc
+end
+
+
+function submatrixargmax(
     A::AbstractMatrix,
     rows::Union{AbstractVector,UnitRange},
     cols::Union{AbstractVector,UnitRange},
@@ -63,6 +98,15 @@ end
 function submatrixargmax(f::Function, A::AbstractMatrix, startindex::Int; colmask::Function=x->true, rowmask::Function=x->true)
     return submatrixargmax(f, A, startindex:size(A, 1), startindex:size(A, 2); colmask=colmask, rowmask=rowmask)
 end
+
+function submatrixargmax(::Nothing, f::Function, A::AbstractMatrix, startindex::Int; colmask::Function=x->true, rowmask::Function=x->true)
+    return submatrixargmax(f, A, startindex; colmask=colmask, rowmask=rowmask)
+end
+
+function submatrixargmax(bondweighting::Function, f::Function, A::AbstractMatrix, startindex::Int; colmask::Function=x->true, rowmask::Function=x->true)
+    return submatrixargmax(bondweighting, f, A, startindex:size(A, 1), startindex:size(A, 2); colmask=colmask, rowmask=rowmask)
+end
+
 
 function submatrixargmax(A::AbstractMatrix, startindex::Int)
     return submatrixargmax(identity, A, startindex:size(A, 1), startindex:size(A, 2))
@@ -141,6 +185,7 @@ _count_rows_selected(lu, rows)::Int = sum([r ∈ lu.rowpermutation[1:lu.npivot] 
 function _optimizerrlu!(
     lu::rrLU{T},
     A::AbstractMatrix{T};
+    bondweighting::Union{Function, Nothing}=nothing,
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0
@@ -148,14 +193,20 @@ function _optimizerrlu!(
     maxrank = min(maxrank, size(A, 1), size(A, 2))
     maxerror = 0.0
     while lu.npivot < maxrank
+        bondweighting_sub = if isnothing(bondweighting)
+            nothing
+        else
+            (i,j) -> bondweighting(lu.rowpermutation[i], lu.colpermutation[j])
+        end
         k = lu.npivot + 1
-        newpivot = submatrixargmax(abs2, A, k)
+        newpivot = submatrixargmax(bondweighting_sub, abs2, A, k)
         lu.error = abs(A[newpivot[1], newpivot[2]])
+        bw = isnothing(bondweighting) ? abs(one(T)) : bondweighting(lu.rowpermutation[newpivot[1]], lu.colpermutation[newpivot[2]])
         # Add at least 1 pivot to get a well-defined L * U
-        if (abs(lu.error) < reltol * maxerror || abs(lu.error) < abstol) && lu.npivot > 0
+        if (abs(lu.error) < reltol * maxerror || abs(lu.error * bw) < abstol) && lu.npivot > 0
             break
         end
-        maxerror = max(maxerror, lu.error)
+        maxerror = max(maxerror, lu.error * bw)
         addpivot!(lu, A, newpivot)
     end
 
@@ -196,10 +247,11 @@ function rrlu!(
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0,
-    leftorthogonal::Bool=true
+    leftorthogonal::Bool=true,
+    bondweighting::Union{Function, Nothing}=nothing
 )::rrLU{T} where {T}
     lu = rrLU{T}(A, leftorthogonal=leftorthogonal)
-    _optimizerrlu!(lu, A; maxrank=maxrank, reltol=reltol, abstol=abstol)
+    _optimizerrlu!(lu, A; bondweighting=bondweighting, maxrank=maxrank, reltol=reltol, abstol=abstol)
     return lu
 end
 
@@ -216,12 +268,13 @@ Rank-revealing LU decomposition.
 """
 function rrlu(
     A::AbstractMatrix{T};
+    bondweighting::Union{Function, Nothing}=nothing,
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
     abstol::Number=0.0,
     leftorthogonal::Bool=true
 )::rrLU{T} where {T}
-    return rrlu!(copy(A); maxrank, reltol, abstol, leftorthogonal)
+    return rrlu!(copy(A); bondweighting=bondweighting, maxrank, reltol, abstol, leftorthogonal)
 end
 
 function arrlu(
