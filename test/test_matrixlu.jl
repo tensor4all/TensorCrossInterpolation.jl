@@ -26,6 +26,8 @@ using Random
 
         @test TCI.submatrixargmax(A, 1) == Tuple(argmax(A))
         @test TCI.submatrixargmax(A, minimum(size(A))) == (minimum(size(A)), minimum(size(A)))
+        @test TCI.submatrixargmax((i, j) -> (j==1) ? 1.0 : 0.0, abs2, A, 1:size(A, 1), 1:size(A,2)) == (9,1)
+        @test TCI.submatrixargmax(nothing, abs2, A, 1) == TCI.submatrixargmax(abs2, A, 1)
     end
 
     @testset "Argmax finder test_throws" begin
