@@ -203,7 +203,7 @@ function _optimizerrlu!(
         lu.error = abs(A[newpivot[1], newpivot[2]])
         bw = isnothing(bondweighting) ? abs(one(T)) : bondweighting(lu.rowpermutation[newpivot[1]], lu.colpermutation[newpivot[2]])
         # Add at least 1 pivot to get a well-defined L * U
-        if (abs(lu.error) < reltol * maxerror || abs(lu.error * bw) < abstol) && lu.npivot > 0
+        if (abs(lu.error * bw) < reltol * maxerror || abs(lu.error * bw) < abstol) && lu.npivot > 0
             break
         end
         maxerror = max(maxerror, lu.error * bw)
