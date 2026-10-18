@@ -1110,6 +1110,7 @@ function contract_fit(mpoA::TensorTrain{ValueType,4},
     random_update::Bool=false,
     random_env::Bool=false,
     stable::Bool=true,
+    abgauge::Symbol=:percopy, # serial: :percopy = original (re-canonicalise A,B each update), :twosided = precomputed
     kwargs...)::TensorTrain{ValueType,4} where {ValueType}
     if length(mpoA) != length(mpoB)
         throw(ArgumentError("Cannot contract tensor trains with different length."))
@@ -1143,9 +1144,11 @@ function contract_fit(mpoA::TensorTrain{ValueType,4},
     tot_time_update = 0.
 
     time_qr = time_ns()
+    abprepA = abgauge === :twosided ? _twosided_prep(A) : nothing
+    abprepB = abgauge === :twosided ? _twosided_prep(B) : nothing
     if !random_env && stable
-        centercanonicalize!(A, 1)
-        centercanonicalize!(B, 1)
+        _center_inputs!(A, abprepA, abgauge, 1)
+        _center_inputs!(B, abprepB, abgauge, 1)
     end
     centercanonicalize!(X, 1)
     tot_time_qr += (time_ns() - time_qr)*1e-9
@@ -1181,8 +1184,8 @@ function contract_fit(mpoA::TensorTrain{ValueType,4},
 
                 time_qr = time_ns()
                 if !random_env && stable
-                    centercanonicalize!(A, i)
-                    centercanonicalize!(B, i)
+                    _center_inputs!(A, abprepA, abgauge, i)
+                    _center_inputs!(B, abprepB, abgauge, i)
                 end
                 centercanonicalize!(X, i)
                 tot_time_qr += (time_ns() - time_qr)*1e-9
@@ -1216,8 +1219,8 @@ function contract_fit(mpoA::TensorTrain{ValueType,4},
                 
                 time_qr = time_ns()
                 if !random_env && stable
-                    centercanonicalize!(A, i)
-                    centercanonicalize!(B, i)
+                    _center_inputs!(A, abprepA, abgauge, i)
+                    _center_inputs!(B, abprepB, abgauge, i)
                 end
                 centercanonicalize!(X, i)
 
@@ -1913,6 +1916,48 @@ Conctractos tensor trains A and B using the fit algorithm.
 - `synchedinput::Bool`: Whether the input MPOs are synchronized. Use "true" if you know that the input MPOs are exactly the same across different nodes.
 - `synchedoutput::Bool`: Whether the output MPOs must be synchronized. Use "true" if you want that all the nodes have the correct MPOs as output.
 """
+
+"""
+    _twosided_prep(T)
+
+Left-canonical copy `AL`, right-canonical copy `AR` and bond matrices `Cb[i]` of a fixed input
+tensor train, with `AL[1:i] * Cb[i] * AR[i+1:n] == T` for every bond `i`.  `Cb[i]` is the overlap
+`AL[1:i]^dagger AR[1:i]` -- a product, never an inverse.  Computed once, identically on every rank.
+"""
+function _twosided_prep(T::Vector{Array{V,4}}) where {V}
+    AL = deepcopy(T); centercanonicalize!(AL, length(AL))
+    AR = deepcopy(T); centercanonicalize!(AR, 1)
+    Cb = Vector{Matrix{V}}(undef, length(T))
+    E = ones(V, 1, 1)
+    for i in eachindex(T)
+        tmp = _contract(E, conj(AL[i]), (1,), (1,))
+        E = _contract(tmp, AR[i], (1, 2, 3), (1, 2, 3))
+        Cb[i] = E
+    end
+    return (AL, AR, Cb)
+end
+
+"""
+    _center_inputs!(T, prep, abgauge, i)
+
+Put the fixed input `T` in mixed-canonical form centred at site `i`.  `:twosided` uses the
+precomputed data: `AL` left of `i`, `AL[i]*Cb[i]` at `i`, `AR` right of `i`.  Every rank therefore
+holds bit-identical tensors on every bond left/right of its centre, so environments exchanged
+between ranks are always contracted in matching bases.  `:percopy` is the original behaviour
+(each rank re-canonicalises its private copy), which desynchronises the gauges across ranks.
+"""
+function _center_inputs!(T, prep, abgauge::Symbol, i::Int)
+    if abgauge === :twosided
+        AL, AR, Cb = prep
+        for j in eachindex(T)
+            T[j] = j < i ? AL[j] : (j > i ? AR[j] : _contract(AL[j], Cb[j], (4,), (1,)))
+        end
+    else
+        centercanonicalize!(T, i)
+    end
+    return T
+end
+
 function contract_distr_fit(
     mpoA::TensorTrain{ValueType,4},
     mpoB::TensorTrain{ValueType,4};
@@ -1928,6 +1973,7 @@ function contract_distr_fit(
     random_update::Bool=false,
     random_env::Bool=false,
     stable::Bool=true,
+    abgauge::Symbol=:twosided, # :twosided (consistent, default) or :percopy (original per-rank re-canonicalisation)
     kwargs...
 )::TensorTrain{ValueType,4} where {ValueType}
     if length(mpoA) != length(mpoB)
@@ -1961,6 +2007,10 @@ function contract_distr_fit(
             end
         end
     end
+
+    # One-time, rank-identical canonical data for the inputs (see _twosided_prep).
+    abprepA = abgauge === :twosided ? _twosided_prep(A) : nothing
+    abprepB = abgauge === :twosided ? _twosided_prep(B) : nothing
 
     if MPI.Initialized()
         if subcomm != nothing
@@ -2059,10 +2109,10 @@ function contract_distr_fit(
 
         if juliarank % 2 == 1 # Precompute right environment if going forward
             if !random_env && stable
-                centercanonicalize!(A, first)
-                # centercanonicalize!(A, 1)
-                centercanonicalize!(B, first)
-                # centercanonicalize!(B, 1)
+                _center_inputs!(A, abprepA, abgauge, first)
+                # _center_inputs!(A, abprepA, abgauge, 1)
+                _center_inputs!(B, abprepB, abgauge, first)
+                # _center_inputs!(B, abprepB, abgauge, 1)
             end
             centercanonicalize!(X, first)
             for i in last:-1:first+2#n:-1:3#last:-1:first+2
@@ -2074,10 +2124,10 @@ function contract_distr_fit(
             end
         else # Precompute left environment if going backward
             if !random_env && stable
-                centercanonicalize!(A, last-1)
-                # centercanonicalize!(A, n)
-                centercanonicalize!(B, last-1)
-                # centercanonicalize!(B, n)
+                _center_inputs!(A, abprepA, abgauge, last-1)
+                # _center_inputs!(A, abprepA, abgauge, n)
+                _center_inputs!(B, abprepB, abgauge, last-1)
+                # _center_inputs!(B, abprepB, abgauge, n)
             end
             centercanonicalize!(X, last)
             for i in first:last-2#1:n-2#first:last-2
@@ -2107,8 +2157,8 @@ function contract_distr_fit(
             if sweep % 2 == juliarank % 2
                 for i in first:last-1
                     if !random_env && stable
-                        centercanonicalize!(A, i)
-                        centercanonicalize!(B, i)
+                        _center_inputs!(A, abprepA, abgauge, i)
+                        _center_inputs!(B, abprepB, abgauge, i)
                     end
                     # println("Max sweep $sweep: ", [maximum(A[i]) for i in 1:length(A)])
                     # println("Max sweep $sweep: ", [maximum(B[i]) for i in 1:length(B)])
@@ -2135,8 +2185,8 @@ function contract_distr_fit(
             else
                 for i in last-1:-1:first
                     if !random_env && stable
-                        centercanonicalize!(A, i)
-                        centercanonicalize!(B, i)
+                        _center_inputs!(A, abprepA, abgauge, i)
+                        _center_inputs!(B, abprepB, abgauge, i)
                     end
 
                     # println("Juliarank $juliarank updating site $i backward with X=$(checkorthogonality(X))")
@@ -2177,8 +2227,8 @@ function contract_distr_fit(
                 if juliarank % 2 == sweep % 2 # Left
                     if juliarank != nprocs
                         if !random_env && stable
-                            centercanonicalize!(A, last)
-                            centercanonicalize!(B, last)
+                            _center_inputs!(A, abprepA, abgauge, last)
+                            _center_inputs!(B, abprepB, abgauge, last)
                         end
 
                         Ls[last-1] = leftenvironment(A, B, X, last-1; L=Ls[last-2], Li=last-1, random_env)
@@ -2202,8 +2252,8 @@ function contract_distr_fit(
                 else # Right
                     if juliarank != 1
                         if !random_env && stable
-                            centercanonicalize!(A, first)
-                            centercanonicalize!(B, first)
+                            _center_inputs!(A, abprepA, abgauge, first)
+                            _center_inputs!(B, abprepB, abgauge, first)
                         end
 
                         Rs[first+1] = rightenvironment(A, B, X, first+1; R=Rs[first+2], Ri=first+1, random_env)
@@ -2262,16 +2312,18 @@ function contract_distr_fit(
 
                 juliapartner = juliarank + delta
                 if !random_env && stable
-                    centercanonicalize!(A, my_last)
-                    centercanonicalize!(B, my_last)
+                    _center_inputs!(A, abprepA, abgauge, my_last)
+                    _center_inputs!(B, abprepB, abgauge, my_last)
                 end
 
                 # println("Juliarank $juliarank at round $s trying to center on site $my_last with X=$(checkorthogonality(X)), X=$([size(X[i]) for i in 1:length(X)])")
                 centercanonicalize!(X, my_last)
 
                 X[partner_first:partner_last] = MPI.recv(comm; source = juliapartner-1, tag = 2*juliapartner)
-                MPI.send(A[partner_first:partner_last], comm; dest = juliapartner-1, tag = 2*juliarank)
-                MPI.send(B[partner_first:partner_last], comm; dest = juliapartner-1, tag = 2*juliarank + 1)
+                if abgauge !== :twosided # :twosided: every rank already holds the same AL/AR (see _center_inputs!)
+                    MPI.send(A[partner_first:partner_last], comm; dest = juliapartner-1, tag = 2*juliarank)
+                    MPI.send(B[partner_first:partner_last], comm; dest = juliapartner-1, tag = 2*juliarank + 1)
+                end
 
                 # R = MPI.recv(comm; source = juliapartner-1, tag = 2*juliapartner+1)
                 Ri = partner_first
@@ -2331,8 +2383,8 @@ function contract_distr_fit(
                 # println("Juliarank $juliarank is a sender at round $s with $my_first:$my_last sending to $juliapartner with $partner_first:$partner_last")
                 # println("Juliarank $juliarank at round $s trying to center on site $my_first with X=$(checkorthogonality(X)), X=$([size(X[i]) for i in 1:length(X)])")
                 if !random_env && stable
-                    centercanonicalize!(A, my_first)
-                    centercanonicalize!(B, my_first)
+                    _center_inputs!(A, abprepA, abgauge, my_first)
+                    _center_inputs!(B, abprepB, abgauge, my_first)
                 end
                 # println("Juliarank $juliarank at round $s trying to center on site $my_first with X=$(checkorthogonality(X)), X=$([size(X[i]) for i in 1:length(X)])")
                 centercanonicalize!(X, my_first)
@@ -2341,8 +2393,10 @@ function contract_distr_fit(
 
                  # send X[my_first:my_last] to receiver
                 MPI.send(X[my_first:my_last], comm; dest = juliapartner - 1, tag = 2*juliarank)
-                A[my_first:my_last] = MPI.recv(comm; source = juliapartner-1, tag = 2*juliapartner)
-                B[my_first:my_last] = MPI.recv(comm; source = juliapartner-1, tag = 2*juliapartner+1)
+                if abgauge !== :twosided
+                    A[my_first:my_last] = MPI.recv(comm; source = juliapartner-1, tag = 2*juliapartner)
+                    B[my_first:my_last] = MPI.recv(comm; source = juliapartner-1, tag = 2*juliapartner+1)
+                end
 
 
                 # TODO this is a bored implementation, I could improve it.
@@ -2397,8 +2451,10 @@ function contract_distr_fit(
     end
     nprocs = MPI.Comm_size(comm) # In case not all processes where used to compute
 
-    # Redistribute the tensor train among the processes.
-    if synchedoutput || true
+    # Redistribute the tensor train among the processes (only if asked, as in the inverse-canonical
+    # path; the original forced it with `synchedoutput || true`, charging P-1 serial sends of the
+    # whole train to the site-canonical timing only).  Rank 0's output is unaffected.
+    if synchedoutput
         if juliarank == 1
             for j in 2:nprocs
                 MPI.send(X, comm; dest=j-1, tag=1)

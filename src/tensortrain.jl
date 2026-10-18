@@ -94,7 +94,7 @@ end
 
 function _factorize(
     A::AbstractMatrix{V}, method::Symbol; tolerance::Float64, maxbonddim::Int, leftorthogonal::Bool=false, diamond::Bool=false, normalizeerror=true, q::Int=0, p::Int=16
-)::Union{Tuple{Matrix{V},Matrix{V},Int,Float64},Tuple{Matrix{V},Vector{Float64},Matrix{V},Int,Float64},Tuple{Matrix{V},Vector{Float64},Matrix{V},Int},Tuple{Matrix{V},Matrix{V},Int}} where {V}
+)::Tuple where {V}   # was a Union fixing Vector{Float64}/Float64: breaks (or silently promotes) Float32 input
     reltol = 1e-14
     abstol = 0.0
     if normalizeerror
