@@ -50,7 +50,7 @@ function colstimespivotinv(luci::MatrixLUCI{T}) where {T}
     result = Matrix{T}(I, size(luci, 1), n)
     if n < size(luci, 1)
         L = left(luci.lu; permute=false)
-        result[n+1:end, :] = L[n+1:end, :] / LowerTriangular(L[1:n, :])
+        result[n+1:end, :] = view(L, n+1:size(L, 1), :) / LowerTriangular(view(L, 1:n, :))
     end
     result[luci.lu.rowpermutation, :] = result
     return result
@@ -61,7 +61,7 @@ function pivotinvtimesrows(luci::MatrixLUCI{T}) where {T}
     result = Matrix{T}(I, n, size(luci, 2))
     if n < size(luci, 2)
         U = right(luci.lu; permute=false)
-        result[:, n+1:end] = UpperTriangular(U[:, 1:n]) \ U[:, n+1:end]
+        result[:, n+1:end] = UpperTriangular(view(U, :, 1:n)) \ view(U, :, n+1:size(U, 2))
     end
     result[:, luci.lu.colpermutation] = result
     return result
