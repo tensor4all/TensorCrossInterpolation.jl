@@ -159,22 +159,7 @@ function (finder::DefaultGlobalPivotFinder)(
     found_pivots = MultiIndex[]
     for point in initial_points
         # Perform local search from each initial point
-        current_point = copy(point)
-        best_error = 0.0
-        best_point = copy(point)
-
-        # Local search
-        for p in 1:L
-            for v in 1:input.localdims[p]
-                current_point[p] = v
-                error = abs(f(current_point) - input.current_tt(current_point))
-                if error > best_error
-                    best_error = error
-                    best_point = copy(current_point)
-                end
-            end
-            current_point[p] = point[p]  # Reset to original point
-        end
+        best_error, best_point = localsearchpoint(f, input, point)
 
         # Add point if error is above threshold
         if best_error > abstol * tolmarginglobalsearch
@@ -192,4 +177,65 @@ function (finder::DefaultGlobalPivotFinder)(
     end
 
     return found_pivots
-end 
+end
+
+"""
+    localsearchpoint(f, input, point) -> (best_error, best_point)
+
+Local search of `DefaultGlobalPivotFinder` from one start point. Coordinate `p` is reset in turn to
+every value `1:input.localdims[p]` while the other coordinates keep the values of `point`, and the
+point with the largest interpolation error is kept.
+
+This is the pointwise path, used for a plain callable `f`: it evaluates `f` once per candidate, that
+is `sum(input.localdims)` times per start. See the `BatchEvaluator` method for the batched path.
+"""
+function localsearchpoint(f, input::GlobalPivotSearchInput, point::MultiIndex)
+    best_error = 0.0
+    best_point = copy(point)
+    current_point = copy(point)
+
+    for p in 1:length(input.localdims)
+        for v in 1:input.localdims[p]
+            current_point[p] = v
+            error = abs(f(current_point) - input.current_tt(current_point))
+            if error > best_error
+                best_error = error
+                best_point = copy(current_point)
+            end
+        end
+        current_point[p] = point[p]  # Reset to original point
+    end
+
+    return best_error, best_point
+end
+
+"""
+    localsearchpoint(f::BatchEvaluator, input, point) -> (best_error, best_point)
+
+Batched local search. Every candidate at coordinate `p` differs from `point` only in `p`, so the
+candidate set is the slice `point[1:p-1] x (1:input.localdims[p]) x point[p+1:end]`, which one
+`f(left, right, Val(1))` call returns instead of `sum(input.localdims)` single-point evaluations.
+The candidates, their order and the error comparison are those of the pointwise path, so the
+selected pivot is unchanged for the same start point.
+"""
+function localsearchpoint(f::BatchEvaluator, input::GlobalPivotSearchInput, point::MultiIndex)
+    best_error = 0.0
+    best_point = copy(point)
+    current_point = copy(point)
+
+    for p in 1:length(input.localdims)
+        # The shared prefix and suffix carry every coordinate other than p.
+        values = f(MultiIndex[point[1:p-1]], MultiIndex[point[p+1:end]], Val(1))
+        for v in 1:input.localdims[p]
+            current_point[p] = v
+            error = abs(values[1, v, 1] - input.current_tt(current_point))
+            if error > best_error
+                best_error = error
+                best_point = copy(current_point)
+            end
+        end
+        current_point[p] = point[p]  # Reset to original point
+    end
+
+    return best_error, best_point
+end

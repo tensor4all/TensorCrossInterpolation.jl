@@ -21,6 +21,7 @@ include("test_conversion.jl")
 include("test_contraction.jl")
 include("test_integration.jl")
 include("test_globalsearch.jl")
+include("test_globalpivotfinder.jl")
 
 # TCIITensorConversion extension
 include("test_TCIITensorConversion.jl")
