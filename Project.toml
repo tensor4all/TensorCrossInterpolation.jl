@@ -1,7 +1,7 @@
 name = "TensorCrossInterpolation"
 uuid = "b261b2ec-6378-4871-b32e-9173bb050604"
-authors = ["Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de>, Hiroshi Shinaoka <h.shinaoka@gmail.com> and contributors"]
 version = "0.9.19"
+authors = ["Ritter.Marc <Ritter.Marc@physik.uni-muenchen.de>, Hiroshi Shinaoka <h.shinaoka@gmail.com> and contributors"]
 
 [deps]
 BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
@@ -20,7 +20,7 @@ TCIITensorConversion = ["ITensors", "ITensorMPS"]
 [compat]
 BitIntegers = "0.3.5"
 EllipsisNotation = "1"
-ITensorMPS = "0.2, 0.3"
+ITensorMPS = "0.2, 0.3, 0.4"
 ITensors = "0.6, 0.7, 0.8, 0.9"
 QuadGK = "2.9"
 Random = "1.9.0"
