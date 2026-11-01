@@ -76,23 +76,42 @@ end
 
 """
     function TensorTrain(mps::ITensorMPS.MPS)
+    function TensorTrain{V}(mps::ITensorMPS.MPS)
 
 Converts an `ITensorMPS.MPS` object into a TensorTrain. Note that this only works if the MPS has a single leg per site. Otherwise, use [`TensorCrossInterpolation.TensorTrain(mps::ITensorMPS.MPO)`](@ref).
+
+The untyped form returns a `TensorTrain{ComplexF64,3}`, as before. The typed form converts
+every site tensor to `V`, so an `MPS` of one eltype can be turned into a `TensorTrain` of
+another (for example `TensorTrain{Float32}(mps::MPS{Float64})`) instead of failing with a
+`MethodError` inside the constructor. Both forms handle a two-site MPS, which used to build a
+`Vector{Any}` because the middle-tensor comprehension is empty.
 """
-function TCI.TensorTrain(mps::ITensorMPS.MPS)
+function TCI.TensorTrain{V}(mps::ITensorMPS.MPS) where {V}
     links = ITensorMPS.linkinds(mps)
     sites = ITensors.SiteTypes.siteinds(mps)
-    Tfirst = zeros(ComplexF64, 1, dim(sites[1]), dim(links[1]))
-    Tfirst[1, :, :] = Array(mps[1], sites[1], links[1])
-    Tlast =  zeros(ComplexF64, dim(links[end]), dim(sites[end]), 1)
-    Tlast[:, :, 1] = Array(mps[end], links[end], sites[end])
-    return TCI.TensorTrain{ComplexF64,3}(
-        vcat(
-            [Tfirst],
-            [Array(mps[i], links[i-1], sites[i], links[i]) for i in 2:length(mps)-1],
-            [Tlast]
-        )
-    )
+    nsites = length(mps)
+    tensors = Array{V,3}[]
+    sizehint!(tensors, nsites)
+    for i in 1:nsites
+        leftdim = i == 1 ? 1 : dim(links[i-1])
+        rightdim = i == nsites ? 1 : dim(links[i])
+        tensor = zeros(V, leftdim, dim(sites[i]), rightdim)
+        if nsites == 1
+            tensor[1, :, 1] = Array(mps[i], sites[i])
+        elseif i == 1
+            tensor[1, :, :] = Array(mps[i], sites[i], links[i])
+        elseif i == nsites
+            tensor[:, :, 1] = Array(mps[i], links[i-1], sites[i])
+        else
+            tensor[:, :, :] = Array(mps[i], links[i-1], sites[i], links[i])
+        end
+        push!(tensors, tensor)
+    end
+    return TCI.TensorTrain{V,3}(tensors)
+end
+
+function TCI.TensorTrain(mps::ITensorMPS.MPS)
+    return TCI.TensorTrain{ComplexF64}(mps)
 end
 
 """

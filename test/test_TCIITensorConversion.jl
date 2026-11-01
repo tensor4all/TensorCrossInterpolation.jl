@@ -12,6 +12,26 @@ using ITensorMPS
         @test ITensorMPS.linkdims(mps) == [4, 2, 7]
     end
 
+    @testset "MPS to TT conversion" begin
+        tt = TCI.TensorTrain([rand(1, 2, 3), rand(3, 2, 4), rand(4, 2, 1)])
+        mps = ITensorMPS.MPS(tt)
+
+        tt64 = TCI.TensorTrain(mps)
+        @test tt64 isa TCI.TensorTrain{ComplexF64,3}
+        @test length(tt64) == length(tt)
+        @test all(tt64[i] ≈ tt[i] for i in 1:length(tt))
+
+        tt32 = TCI.TensorTrain{Float32}(mps)
+        @test tt32 isa TCI.TensorTrain{Float32,3}
+        @test all(eltype(tt32[i]) == Float32 for i in 1:length(tt32))
+        @test all(tt32[i] ≈ Float32.(tt[i]) for i in 1:length(tt))
+
+        mps2 = ITensorMPS.MPS(TCI.TensorTrain([rand(1, 2, 3), rand(3, 2, 1)]))
+        tt2 = TCI.TensorTrain(mps2)
+        @test tt2 isa TCI.TensorTrain{ComplexF64,3}
+        @test length(tt2) == 2
+    end
+
     @testset "TT to MPO conversion and back" begin
         tt = TCI.TensorTrain([rand(1, 4, 3, 4), rand(4, 2, 4, 2), rand(2, 5, 1, 7), rand(7, 9, 4, 1)])
         mpo = ITensorMPS.MPO(tt)
