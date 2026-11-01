@@ -2,7 +2,7 @@
 Contraction of two TTOs
 Optionally, the contraction can be done with a function applied to the result.
 """
-struct Contraction{T} <: BatchEvaluator{T}
+struct Contraction{T} <: Function
     mpo::NTuple{2,TensorTrain{T,4}}
     leftcache::Dict{Vector{Tuple{Int,Int}},Matrix{T}}
     rightcache::Dict{Vector{Tuple{Int,Int}},Matrix{T}}
