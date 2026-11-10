@@ -252,3 +252,17 @@ using Random
     end
     ==#
 end
+
+@testset "lastpivoterror of arrlu with a binding maxrank (#81)" begin
+    Random.seed!(1)
+    n, r = 200, 20
+    A = randn(n, r) * randn(r, n)
+    for cap in (5, 10, 19)
+        rook = TCI.arrlu(Float64, (I, J) -> A[I, J], (n, n); maxrank=cap, usebatcheval=true)
+        @test TCI.npivots(rook) == cap
+        # A rank ceiling on a sampled block used to report exactly 0.0 here.
+        @test TCI.lastpivoterror(rook) > 0
+    end
+    B = randn(20, 20)
+    @test TCI.lastpivoterror(TCI.arrlu(Float64, (I, J) -> B[I, J], (20, 20); maxrank=20)) == 0.0
+end
