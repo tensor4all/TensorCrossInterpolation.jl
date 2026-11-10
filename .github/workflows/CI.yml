@@ -27,7 +27,7 @@ jobs:
           - 'lts'
           - '1'
         os:
-          - ubuntu-latest
+          - ubuntu-24.04 # `ubuntu-latest` moved to 26.04 and its Julia 1.9.4 toolcache cannot load libopenlibm
           #- macOS-latest
           #- windows-latest
         arch:
