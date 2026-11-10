@@ -152,6 +152,11 @@ function (finder::DefaultGlobalPivotFinder)(
     maxnglobalpivot = finder.maxnglobalpivot
     tolmarginglobalsearch = finder.tolmarginglobalsearch
 
+    # Zero means zero: with no pivot slot to fill, no candidate is worth evaluating.
+    if maxnglobalpivot <= 0 || nsearch <= 0
+        return MultiIndex[]
+    end
+
     # Generate random initial points
     initial_points = [[rand(rng, 1:input.localdims[p]) for p in 1:L] for _ in 1:nsearch]
 
