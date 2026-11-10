@@ -176,9 +176,11 @@ function _optimizerrlu!(
 
     # The pivot set spans the whole matrix: there is no remaining residual.
     # When `A` is only a sampled block of a larger matrix (see `arrlu`), a full-
-    # rank block says nothing about the rest of the matrix, so the error of the
-    # last accepted pivot is kept: it is a lower bound of the remaining residual
-    # and never zero.
+    # rank block says nothing about the rest of the matrix, so the magnitude of
+    # the last accepted pivot is kept, which is the usual meaning of the last
+    # pivot error, and is never zero. It is not a bound on the remaining residual:
+    # a block that already reproduces the matrix where the cap sampled can leave
+    # a zero residual behind a non-negligible pivot.
     if lu.npivot >= minimum(fullsize)
         lu.error = 0
     end
