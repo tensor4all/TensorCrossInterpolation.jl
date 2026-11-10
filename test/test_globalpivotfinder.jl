@@ -106,3 +106,21 @@ end
     @test count_evals((; maxnglobalpivot=0)) ==
         count_evals((; maxnglobalpivot=0, nsearchglobalpivot=0))
 end
+
+@testset "global pivots: the rejection line counts true rejections" begin
+    h(v) = (x = (v .- 1) ./ 64; exp(-sum(abs2, x .- 0.2) / 0.002) + exp(-sum(abs2, x .- 0.8) / 0.002))
+    path, io = mktemp()
+    try
+        redirect_stdout(io) do
+            TCI.crossinterpolate2(Float64, h, fill(64, 3), [ones(Int, 3)];
+                tolerance=1e-8, maxiter=3, verbosity=1, loginterval=1)
+        end
+    finally
+        close(io)
+    end
+    log = read(path, String)
+    rm(path; force=true)
+    # A global pivot is only rejected when its error at the next iteration is still above abstol.
+    @test !occursin("Rejected", log)
+    @test occursin("nglobalpivot=5", log)
+end

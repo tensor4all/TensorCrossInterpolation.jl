@@ -680,7 +680,7 @@ Arguments:
 - `normalizeerror::Bool` determines whether to scale the error by the maximum absolute value of `f` found during sampling. If set to `false`, the algorithm continues until the *absolute* error is below `tolerance`. If set to `true`, the algorithm uses the absolute error divided by the maximum sample instead. This is helpful if the magnitude of the function is not known in advance. Default: `true`.
 - `ncheckhistory::Int` is the number of history points to use for convergence checks. Default: `3`.
 - `globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}` is a global pivot finder to use for searching global pivots. Default: `nothing`. If `nothing`, a default global pivot finder is used.
-- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration. `0` disables the global pivot search entirely (no candidate is evaluated).
+- `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration. `0` disables the search when the default finder is built from these keywords (no candidate is evaluated); a finder passed through `globalpivotfinder` is called as given.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
 - `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
 - `checkconvglobalpivot::Bool` Check if the global pivot finder is converged. Default: `true`. In the future, this will be set to `false` by default.
