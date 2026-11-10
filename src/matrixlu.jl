@@ -143,7 +143,8 @@ function _optimizerrlu!(
     A::AbstractMatrix{T};
     maxrank::Int=typemax(Int),
     reltol::Number=1e-14,
-    abstol::Number=0.0
+    abstol::Number=0.0,
+    fullsize::Tuple{Int,Int}=(size(A, 1), size(A, 2))
 ) where {T}
     maxrank = min(maxrank, size(A, 1), size(A, 2))
     maxerror = 0.0
@@ -173,7 +174,14 @@ function _optimizerrlu!(
         lu.U[diagind(lu.U)] .= one(T)
     end
 
-    if lu.npivot >= minimum(size(A))
+    # The pivot set spans the whole matrix: there is no remaining residual.
+    # When `A` is only a sampled block of a larger matrix (see `arrlu`), a full-
+    # rank block says nothing about the rest of the matrix, so the magnitude of
+    # the last accepted pivot is kept, which is the usual meaning of the last
+    # pivot error, and is never zero. It is not a bound on the remaining residual:
+    # a block that already reproduces the matrix where the cap sampled can leave
+    # a zero residual behind a non-negligible pivot.
+    if lu.npivot >= minimum(fullsize)
         lu.error = 0
     end
 
@@ -258,7 +266,7 @@ function arrlu(
                 _batchf(lu.rowpermutation, J0)
             end
             lu.npivot = 0
-            _optimizerrlu!(lu, submatrix; maxrank, reltol, abstol)
+            _optimizerrlu!(lu, submatrix; maxrank, reltol, abstol, fullsize=matrixsize)
             islowrank |= npivots(lu) < minimum(size(submatrix))
             if rowindices(lu) == I0 && colindices(lu) == J0
                 break
