@@ -489,10 +489,10 @@ function _submatrix_batcheval(obj::SubMatrix{T}, f, irows::Vector{Int}, icols::V
 end
 
 
-function _submatrix_batcheval(obj::SubMatrix{T}, f::BatchEvaluator{T}, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
+function _submatrix_batcheval(obj::SubMatrix{T}, f::_BatchedFunction, irows::Vector{Int}, icols::Vector{Int})::Matrix{T} where {T}
     Iset = [obj.rows[i] for i in irows]
     Jset = [obj.cols[j] for j in icols]
-    return f(Iset, Jset, Val(0))
+    return _batchevaluate_dispatch(T, f, f.localdims, Iset, Jset, Val(0))
 end
 
 
@@ -682,7 +682,7 @@ Arguments:
 - `globalpivotfinder::Union{AbstractGlobalPivotFinder, Nothing}` is a global pivot finder to use for searching global pivots. Default: `nothing`. If `nothing`, a default global pivot finder is used.
 - `maxnglobalpivot::Int` can be set to `>= 0`. Default: `5`. The maximum number of global pivots to add in each iteration.
 - `strictlynested::Bool` determines whether to preserve partial nesting in the TCI algorithm. Default: `false`.
-- `checkbatchevaluatable::Bool` Check if the function `f` is batch evaluatable. Default: `false`.
+- `checkbatchevaluatable::Bool` Check if `batchedf!` is provided. Default: `false`.
 - `checkconvglobalpivot::Bool` Check if the global pivot finder is converged. Default: `true`. In the future, this will be set to `false` by default.
 
 Arguments (deprecated):
@@ -715,6 +715,7 @@ function optimize!(
     nsearchglobalpivot::Int=5,
     tolmarginglobalsearch::Float64=10.0,
     strictlynested::Bool=false,
+    batchedf! = nothing,
     checkbatchevaluatable::Bool=false,
     checkconvglobalpivot::Bool=true
 ) where {ValueType}
@@ -723,9 +724,10 @@ function optimize!(
     nglobalpivots = Int[]
     local tol::Float64
 
-    if checkbatchevaluatable && !(f isa BatchEvaluator)
-        error("Function `f` is not batch evaluatable")
+    if checkbatchevaluatable && isnothing(batchedf!)
+        error("Keyword `batchedf!` must be provided when `checkbatchevaluatable=true`.")
     end
+    feval = isnothing(batchedf!) ? f : _BatchedFunction(f, batchedf!, tci.localdims)
 
     if nsearchglobalpivot > 0 && nsearchglobalpivot < maxnglobalpivot
         error("nsearchglobalpivot < maxnglobalpivot!")
@@ -775,7 +777,7 @@ function optimize!(
         end
 
         sweep2site!(
-            tci, f, 2;
+            tci, feval, 2;
             iter1 = 1,
             abstol=abstol,
             maxbonddim=maxbonddim,
@@ -786,7 +788,7 @@ function optimize!(
             fillsitetensors=true
             )
         if verbosity > 0 && length(globalpivots) > 0 && mod(iter, loginterval) == 0
-            abserr = [abs(evaluate(tci, p) - f(p)) for p in globalpivots]
+            abserr = [abs(evaluate(tci, p) - feval(p)) for p in globalpivots]
             nrejections = length(abserr .> abstol)
             if nrejections > 0
                 println("  Rejected $(nrejections) global pivots added in the previous iteration, errors are $(abserr)")
@@ -803,7 +805,7 @@ function optimize!(
         # Find global pivots where the error is too large
         input = GlobalPivotSearchInput(tci)
         globalpivots = finder(
-            input, f, abstol;
+            input, feval, abstol;
             verbosity=verbosity,
             rng=Random.default_rng()
         )
@@ -839,7 +841,7 @@ function optimize!(
     abstol = tol * errornormalization;
     sweep1site!(
         tci,
-        f,
+        feval,
         abstol=abstol,
         maxbonddim=maxbonddim,
     )
@@ -945,10 +947,11 @@ function crossinterpolate2(
     f,
     localdims::Union{Vector{Int},NTuple{N,Int}},
     initialpivots::Vector{MultiIndex}=[ones(Int, length(localdims))];
+    batchedf! = nothing,
     kwargs...
 ) where {ValueType,N}
     tci = TensorCI2{ValueType}(f, localdims, initialpivots)
-    ranks, errors = optimize!(tci, f; kwargs...)
+    ranks, errors = optimize!(tci, f; batchedf!, kwargs...)
     return tci, ranks, errors
 end
 
